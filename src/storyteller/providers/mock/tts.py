@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import wave
 from pathlib import Path
 
 from ...core.models import VoiceConfig
@@ -35,17 +36,23 @@ MOCK_VOICES = [
 ]
 
 
-# Minimal valid WAV header (44 bytes) for an empty 0-length PCM file.
-# pydub/ffmpeg can read this; we just need a non-empty file for tests.
-_WAV_HEADER = (
-    b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00"
-    b"\x01\x00\x40\x1f\x00\x00\x40\x1f\x00\x00\x01\x00\x08\x00"
-    b"data\x00\x00\x00\x00"
-)
+def _write_silence_wav(path, duration_ms=100, frame_rate=16000):
+    """Write a real silent WAV file using the stdlib wave module.
+
+    pydub/ffmpeg can read this regardless of the file extension.
+    """
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    n_frames = int(frame_rate * duration_ms / 1000)
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(frame_rate)
+        wf.writeframes(b"\x00\x00" * n_frames)
 
 
 class MockTTSProvider(BaseProvider, TTSProvider):
-    """TTS provider that writes empty placeholder audio files. Used for tests."""
+    """TTS provider that writes silent placeholder audio files. Used for tests."""
 
     def __init__(self, config):
         super().__init__(config)
@@ -74,8 +81,5 @@ class MockTTSProvider(BaseProvider, TTSProvider):
         )
         if self._error is not None:
             raise self._error
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        # Write a small placeholder WAV so the file exists and is non-empty.
-        output_path.write_bytes(_WAV_HEADER)
-        return output_path
+        _write_silence_wav(output_path)
+        return Path(output_path)
