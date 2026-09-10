@@ -149,7 +149,7 @@ def _dry_run_script(pipeline, topic, length, complexity):
 
 
 # ========== continue ==========
-@cli.command()
+@cli.command(name="continue")
 @click.argument("project_id")
 @click.option("--output-format", "-f", default=None)
 @click.option("--tts-providers", default=None)
@@ -224,8 +224,7 @@ def list_voices(tts_providers):
             click.echo("  {}  ({})".format(voice.voice_id, voice.voice_type))
 
 
-# Alias continue_ to `continue` (reserved word in Python)
-continue_.name = "continue"
+# Note: The continue command is registered with name="continue" above.
 
 
 if __name__ == "__main__":
