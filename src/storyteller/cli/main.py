@@ -7,9 +7,30 @@ from ..core.pipeline import Pipeline
 from ..providers.bootstrap import register_providers_from_config
 
 
-@click.group()
-def cli():
+@click.group(invoke_without_command=True)
+@click.pass_context
+def cli(ctx):
     """storyteller - 把故事主题变成带角色声音的音频故事。"""
+    if ctx.invoked_subcommand is None:
+        ctx.invoke(wizard)
+
+
+@cli.command()
+def wizard():
+    """交互式向导模式（无参数运行时的默认入口）。"""
+    from .interactive import run_wizard
+
+    pipeline, topic, length, complexity, output_format, tts_providers = run_wizard()
+    kwargs = {"output_format": output_format}
+    if tts_providers:
+        kwargs["tts_providers"] = tts_providers
+    try:
+        output_path = pipeline.run(
+            topic, length=length, complexity=complexity, **kwargs
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc))
+    click.echo("Done! Output: {}".format(output_path))
 
 
 # ========== 通用选项 ==========
