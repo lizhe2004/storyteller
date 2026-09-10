@@ -137,7 +137,6 @@ class Pipeline:
         state.state = "completed"
         self.projects.save_project(state)
 
-        self._log_progress("Done! Output: %s" % output_path)
         return str(output_path)
 
     # ----- helpers -----

@@ -93,3 +93,18 @@ def test_config_from_env_file(tmp_path, monkeypatch):
     config = Config.from_env(str(env_file))
     assert config.get("log_level") == "warning"
     assert config.get("project_dir") == "/tmp/projects"
+
+
+def test_config_loads_dotenv_from_cwd(tmp_path, monkeypatch):
+    """A .env in the current working directory must be discovered."""
+    (tmp_path / ".env").write_text(
+        "STORYTELLER_TTS_PROVIDERS=mock\n"
+        "STORYTELLER_TTS_MOCK_TYPE=mock\n"
+        "STORYTELLER_TTS_DEFAULT_PROVIDER=mock\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    # Make sure no inherited env var masks the file
+    monkeypatch.delenv("STORYTELLER_TTS_PROVIDERS", raising=False)
+    config = Config.from_env()
+    assert config.get("tts.providers") == ["mock"]
+    assert config.get("tts.provider_config.mock.type") == "mock"

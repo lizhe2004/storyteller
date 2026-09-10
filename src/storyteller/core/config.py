@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 
 
 class Config:
@@ -40,11 +40,16 @@ class Config:
 
     @classmethod
     def from_env(cls, env_file=None):
-        """Load configuration from a .env file (optional) and environment."""
-        if env_file and Path(env_file).exists():
+        """Load configuration from a .env file (optional) and environment.
+
+        The .env file is searched starting from the current working
+        directory (where the CLI is invoked), not the package location.
+        """
+        if env_file:
             load_dotenv(env_file)
         else:
-            load_dotenv()
+            # usecwd=True makes dotenv walk up from the shell's CWD.
+            load_dotenv(find_dotenv(usecwd=True))
 
         config = cls()
 
