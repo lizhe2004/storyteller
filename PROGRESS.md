@@ -1,51 +1,44 @@
 # Storyteller 项目进度
 
-## 当前阶段：实现计划已完成，等待执行
+## 当前阶段：MVP 实现完成（mock 链路已验证），待对接真实火山引擎
 
 ### 已完成
-- [x] 需求收集和澄清
-- [x] 架构方案选择（经典分层架构）
-- [x] 架构设计
-- [x] 数据模型设计
-- [x] 核心组件职责定义
-- [x] Pipeline 流程设计
-- [x] 配置设计
-- [x] CLI 交互设计
-- [x] 错误处理设计
-- [x] 测试策略
-- [x] 设计文档完善
-- [x] 设计文档自审
-- [x] 设计文档保存
-- [x] 实现计划编写
+- [x] Brainstorming（需求 + 设计文档）
+- [x] 实现计划（15 个任务）
+- [x] Task 1-15 全部实现
+- [x] 140 个测试全部通过
+- [x] 包可编辑安装（pip install -e .）
+- [x] mock provider 端到端冒烟测试通过
 
-### 待开始
-- [ ] 用户选择执行方式
-- [ ] 执行实现计划
+### 冒烟测试结论
+- CLI 参数模式 / 交互式向导均可用
+- 完整链路：剧本生成 → 声音匹配 → 分段 TTS → 拼接 → 输出 mp3
+- 真实运行修复了 2 个单测未覆盖的问题：
+  - .env 从 CWD 加载（find_dotenv usecwd）
+  - 完成日志重复打印
 
----
-
-## 已确认的关键决策
-
-| 决策项 | 选择 |
-|--------|------|
-| 编程语言 | Python |
-| 架构风格 | 经典分层架构 |
-| LLM | 火山引擎（优先），支持多provider |
-| TTS | 火山引擎（优先），支持多provider，每个角色可用不同provider |
-| 剧本格式 | 结构化JSON/YAML |
-| CLI交互 | 交互式向导 + 参数模式 |
-| 配置方式 | 环境变量为主，配置文件为辅 |
-| 错误处理 | 可配置严格/宽松 |
-| 进度显示 | 可配置级别 |
-| 声音配置 | 自动匹配 + 手动选择 |
-| 自定义Provider | 支持OpenAI兼容格式（配置式） |
+### 待办
+- [ ] 对接真实火山引擎 LLM（Doubao/Ark）验证
+- [ ] 对接真实火山引擎 TTS 验证（鉴权方式、音色ID、请求格式待按真实账号确认）
+- [ ] Claude Code 技能 /storyteller（skills/ 目录尚未创建）
+- [ ] 手动选择声音的交互（目前自动匹配为主）
+- [ ] 背景音乐/音效（数据模型已预留，逻辑未实现）
 
 ---
 
-## 文档位置
+## 关键命令
 
-- 设计文档：`docs/superpowers/specs/2026-09-10-storyteller-design.md`
-- 实现计划：`docs/superpowers/plans/2026-09-10-storyteller-mvp.md`
+```bash
+# 激活虚拟环境
+source .venv/bin/activate
+
+# 运行测试
+pytest
+
+# 冒烟测试（mock，无需 key）
+# 在任意目录放 .env（内容见 .env.example，provider type 设为 mock）
+storyteller generate "故事主题"
+```
 
 ---
 
