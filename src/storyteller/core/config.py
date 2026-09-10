@@ -80,7 +80,7 @@ class Config:
         for provider in providers:
             prefix = "STORYTELLER_{}_{}_".format(kind.upper(), provider.upper())
             provider_config = {}
-            for key in ("api_key", "model", "endpoint", "base_url"):
+            for key in ("type", "api_key", "model", "endpoint", "base_url"):
                 value = os.getenv(prefix + key.upper())
                 if value:
                     provider_config[key] = value
