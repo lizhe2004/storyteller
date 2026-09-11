@@ -430,18 +430,39 @@ def _print_voice_table(voices):
 @click.option("--tags", default="", help="逗号分隔的标签")
 @click.option("--format", "audio_format", default="mp3", help="输出格式 mp3/wav")
 @click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
-def make_sound(prompt, name, kind, description, tags, audio_format, sound_dir):
+@click.option(
+    "--sound-provider",
+    default=None,
+    help="使用的音效 provider（默认取 STORYTELLER_SOUND_DEFAULT_PROVIDER）",
+)
+def make_sound(prompt, name, kind, description, tags, audio_format,
+               sound_dir, sound_provider):
     """用文字提示生成/复用一个音效，写入全局音效库。"""
     config = Config.from_env()
     if sound_dir:
         config.set("sound.dir", sound_dir)
 
     from ..core.sound_library import SoundLibrary
-    from ..providers.volcengine.sfx import VolcengineSoundProvider
+    from ..providers.registry import ProviderRegistry
 
-    library = SoundLibrary(config.get("sound.dir") or "./.storyteller/sounds")
+    registry = ProviderRegistry(config)
+    register_providers_from_config(config, registry)
+
+    chosen = sound_provider or config.get("sound.default_provider")
+    available = registry.list_sound_names()
+    if chosen is None and available:
+        chosen = available[0]
+    if chosen is None or chosen not in available:
+        raise click.ClickException(
+            "No sound provider configured: set "
+            "STORYTELLER_SOUND_<NAME>_API_KEY (or pass --sound-provider)."
+        )
+
+    library = SoundLibrary(
+        config.get("sound.dir") or "./.storyteller/sounds"
+    )
     try:
-        provider = VolcengineSoundProvider(config)
+        provider = registry.get_sound(chosen)
         path, record, created = library.get_or_create(
             provider,
             prompt=prompt,
@@ -451,6 +472,8 @@ def make_sound(prompt, name, kind, description, tags, audio_format, sound_dir):
             tags=[t.strip() for t in tags.split(",") if t.strip()],
             audio_format=audio_format,
         )
+    except click.ClickException:
+        raise
     except Exception as exc:
         raise click.ClickException(str(exc))
 

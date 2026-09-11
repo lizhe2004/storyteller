@@ -204,3 +204,29 @@ def test_wizard_rejects_empty_topic():
         )
         assert result.exit_code == 0, result.output
         assert "不能为空" in result.output
+
+
+def test_make_sound_uses_registry_provider():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["make-sound", "舒缓的雨声", "--sound-provider", "mock"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code == 0, result.output
+        assert "Generated" in result.output
+
+
+def test_make_sound_without_configured_provider_errors():
+    runner = CliRunner()
+    env = {
+        "STORYTELLER_LLM_PROVIDERS": "mock",
+        "STORYTELLER_TTS_PROVIDERS": "mock",
+    }
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli, ["make-sound", "风声"], env=env
+        )
+        assert result.exit_code != 0
+        assert "No sound provider configured" in result.output
