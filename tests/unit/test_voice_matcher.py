@@ -4,7 +4,7 @@ import pytest
 
 from storyteller.core.config import Config
 from storyteller.core.models import Character, Script
-from storyteller.core.voice_matcher import VoiceMatcher, _infer_age
+from storyteller.core.voice_matcher import VoiceMatcher, _infer_age, _infer_gender, is_narration_voice
 from storyteller.core.exceptions import ProviderError
 from storyteller.providers.registry import ProviderRegistry
 from storyteller.providers.mock.tts import MockTTSProvider
@@ -34,7 +34,7 @@ def test_match_voices_assigns_narrator_voice():
     script = _make_script_with_characters(narrator)
     matcher.match_voices(script)
     assert narrator.voice_config is not None
-    assert narrator.voice_config.voice_type == "narrator"
+    assert is_narration_voice(narrator.voice_config)
     assert narrator.voice_config.provider == "mock"
 
 
@@ -43,7 +43,7 @@ def test_match_voices_male_by_description():
     hero = Character(id="hero", name="大壮", description="一个成年男子，勇敢")
     script = _make_script_with_characters(hero)
     matcher.match_voices(script)
-    assert hero.voice_config.voice_type == "male"
+    assert hero.voice_config.gender == "male"
 
 
 def test_match_voices_female_by_description():
@@ -51,7 +51,7 @@ def test_match_voices_female_by_description():
     girl = Character(id="girl", name="小红", description="温柔的女孩")
     script = _make_script_with_characters(girl)
     matcher.match_voices(script)
-    assert girl.voice_config.voice_type == "female"
+    assert girl.voice_config.gender == "female"
 
 
 def test_match_voices_gender_from_kinship_title():
@@ -60,8 +60,8 @@ def test_match_voices_gender_from_kinship_title():
     dad = Character(id="dad", name="熊爸爸", description="成年熊，沉稳可靠")
     script = _make_script_with_characters(mom, dad)
     matcher.match_voices(script)
-    assert mom.voice_config.voice_type == "female"
-    assert dad.voice_config.voice_type == "male"
+    assert mom.voice_config.gender == "female"
+    assert dad.voice_config.gender == "male"
 
 
 def test_match_voices_child_by_description():
@@ -69,7 +69,7 @@ def test_match_voices_child_by_description():
     kid = Character(id="kid", name="小明", description="一个五六岁的小男孩")
     script = _make_script_with_characters(kid)
     matcher.match_voices(script)
-    assert kid.voice_config.voice_type == "child"
+    assert kid.voice_config.age == "child"
 
 
 def test_adult_described_with_child_word_is_not_child():
@@ -81,8 +81,8 @@ def test_adult_described_with_child_word_is_not_child():
                     description="活泼好奇的幼年男孩，声音清脆")
     script = _make_script_with_characters(granny, kid)
     matcher.match_voices(script)
-    assert granny.voice_config.voice_type == "female"
-    assert kid.voice_config.voice_type == "child"
+    assert granny.voice_config.gender == "female"
+    assert kid.voice_config.age == "child"
 
 
 def test_match_voices_child_by_numeric_age():
@@ -91,9 +91,9 @@ def test_match_voices_child_by_numeric_age():
     teen = Character(id="teen", name="阿杰", description="15岁，男孩")
     script = _make_script_with_characters(kid, teen)
     matcher.match_voices(script)
-    assert kid.voice_config.voice_type == "child"
-    # 13+ is a teenager, not the single child voice.
-    assert teen.voice_config.voice_type == "male"
+    assert kid.voice_config.age == "child"
+    # 13+ is a teenager: matched by gender, not collapsed to the child voice.
+    assert teen.voice_config.gender == "male"
 
 
 def test_match_voices_does_not_reuse_same_voice():
@@ -105,19 +105,22 @@ def test_match_voices_does_not_reuse_same_voice():
     assert a.voice_config.voice_id != b.voice_config.voice_id
 
 
-def test_match_voices_uses_narrator_only_as_last_resort():
-    # With one female voice available, three female characters fall through
-    # child -> male; narrator must be the very last fallback, never first.
+def test_match_voices_dialogue_prefers_character_female_before_narration():
     matcher = _make_matcher()
-    girls = [
-        Character(id="g{}".format(i), name="女{}".format(i), description="女孩")
-        for i in range(3)
-    ]
-    script = _make_script_with_characters(*girls)
+    first = Character(id="g0", name="女0", description="女孩")
+    script = _make_script_with_characters(first)
     matcher.match_voices(script)
-    assigned = {g.voice_config.voice_type for g in girls}
-    assert "narrator" not in assigned
-    assert "female" in assigned
+    # female_01 is a normal 通用场景 female voice; narrator_01 is the
+    # 有声阅读 female voice and must not be grabbed first for dialogue.
+    assert first.voice_config.voice_id == "female_01"
+
+
+def test_dialogue_never_gets_opposite_gender():
+    matcher = _make_matcher()
+    boy = Character(id="boy", name="阿强", description="一个成年男人")
+    script = _make_script_with_characters(boy)
+    matcher.match_voices(script)
+    assert boy.voice_config.gender == "male"
 
 
 def test_match_voices_respects_allowed_voice_ids():
@@ -173,6 +176,17 @@ def test_infer_age(name, desc, expected):
     assert _infer_age("{} {}".format(name, desc)) == expected
 
 
+# ---------- gender inference ----------
+@pytest.mark.parametrize("desc,expected", [
+    ("温柔的女孩", "female"),
+    ("成年男子，勇敢", "male"),
+    ("企鹅妈妈，温柔", "female"),
+    ("一只小动物", "male"),  # default
+])
+def test_infer_gender(desc, expected):
+    assert _infer_gender(desc) == expected
+
+
 # ---------- LLM semantic matching ----------
 def _two_call_llm(classify, assign):
     """Mock LLM returning classify JSON on call #1, assign JSON on #2."""
@@ -200,7 +214,8 @@ def test_llm_classify_then_pick_assigns_voices():
     script = _make_script_with_characters(narrator, mom)
     matcher.match_voices(script)
     assert narrator.voice_config.voice_id == "narrator_01"
-    # Candidates are grouped [narrator, female]; mom's female pick is index 2.
+    # Global candidate order is narration-first then female/male then age:
+    # [narrator_01, female_01, child_01, male_01]; mom's female pick is index 2.
     assert mom.voice_config.voice_id == "female_01"
     assert mom.voice_config.description
 
@@ -213,15 +228,15 @@ def test_llm_classifies_boy_as_child_and_picks_child_voice():
         {"character_id": "b1", "gender": "male", "age": "child"},
     ]}
     assign = {"assignments": [
-        {"character_id": "b1", "voice_index": 1},
+        {"character_id": "b1", "voice_index": 3},
     ]}
     matcher = _make_matcher(
         llm=_two_call_llm(classify, assign), mode="llm"
     )
     script = _make_script_with_characters(boy)
     matcher.match_voices(script)
-    assert boy.voice_config.voice_type == "child"
     assert boy.voice_config.voice_id == "child_01"
+    assert boy.voice_config.age == "child"
 
 
 def test_llm_pick_falls_back_on_out_of_range_index():
@@ -236,7 +251,7 @@ def test_llm_pick_falls_back_on_out_of_range_index():
     script = _make_script_with_characters(mom)
     matcher.match_voices(script)
     assert mom.voice_config is not None
-    assert mom.voice_config.voice_type == "female"
+    assert mom.voice_config.gender == "female"
 
 
 def test_llm_classify_bad_json_falls_back_to_rules():
@@ -246,7 +261,7 @@ def test_llm_classify_bad_json_falls_back_to_rules():
     matcher = _make_matcher(llm=llm, mode="llm")
     script = _make_script_with_characters(mom)
     matcher.match_voices(script)
-    assert mom.voice_config.voice_type == "female"
+    assert mom.voice_config.gender == "female"
 
 
 def test_llm_classify_error_falls_back_to_rules():
@@ -256,7 +271,7 @@ def test_llm_classify_error_falls_back_to_rules():
     matcher = _make_matcher(llm=llm, mode="llm")
     script = _make_script_with_characters(mom)
     matcher.match_voices(script)  # must not raise
-    assert mom.voice_config.voice_type == "female"
+    assert mom.voice_config.gender == "female"
 
 
 def test_llm_invalid_gender_ignored_and_rule_used():
@@ -271,7 +286,7 @@ def test_llm_invalid_gender_ignored_and_rule_used():
     script = _make_script_with_characters(mom)
     matcher.match_voices(script)
     # Invalid classification dropped -> rule path still gives a female voice.
-    assert mom.voice_config.voice_type == "female"
+    assert mom.voice_config.gender == "female"
 
 
 def test_llm_duplicate_index_falls_back_to_distinct_voice():
@@ -283,10 +298,10 @@ def test_llm_duplicate_index_falls_back_to_distinct_voice():
 
         def list_voices(self, **kwargs):
             return [
-                VoiceConfig(provider="p", voice_id="f1", voice_type="female",
+                VoiceConfig(provider="p", voice_id="f1", gender="female",
                             name="年轻御姐", age="young_adult",
                             description="干练利落的年轻女声"),
-                VoiceConfig(provider="p", voice_id="f2", voice_type="female",
+                VoiceConfig(provider="p", voice_id="f2", gender="female",
                             name="温柔妈妈", age="middle_aged",
                             description="舒缓温润的中年女声"),
             ]
@@ -321,4 +336,4 @@ def test_rule_mode_does_not_call_llm():
     script = _make_script_with_characters(mom)
     matcher.match_voices(script)
     assert llm.calls == []
-    assert mom.voice_config.voice_type == "female"
+    assert mom.voice_config.gender == "female"

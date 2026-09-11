@@ -42,25 +42,30 @@ _AGE_LABELS = {
     "middle_aged": "中年",
     "senior": "老年",
 }
-_TYPE_LABELS = {
-    "narrator": "旁白",
-    "child": "儿童",
-    "female": "女声",
-    "male": "男声",
-}
-_GROUP_ORDER = ("narrator", "child", "female", "male")
+_GENDER_LABELS = {"male": "男", "female": "女"}
+_AGE_RANK = {"child": 0, "teen": 1, "young_adult": 2,
+             "middle_aged": 3, "senior": 4}
+_GENDER_ORDER = {"female": 0, "male": 1}
+NARRATION_CATEGORIES = {"有声阅读"}
+
+
+def is_narration_voice(voice):
+    """True for reading/narration-suited voices (soft signal, not a type)."""
+    return voice.category in NARRATION_CATEGORIES
+
 
 _LLM_SYSTEM_PROMPT = (
     "你是一位经验丰富的广播剧配音导演。请根据每个角色的设定，"
     "从给定的候选音色中挑选最贴切的一个。\n"
     "规则：\n"
     "1. 每个角色必须且只能选择一个候选音色，用候选前面的序号表示。\n"
-    "2. 旁白角色只能从【旁白】组中选择。\n"
-    "3. 严格遵守性别：女性角色不可选男声，男性角色不可选女声。\n"
+    "2. 严格遵守性别：女性角色不可选男声，男性角色不可选女声；"
+    "标注为旁白的角色无性别限制。\n"
+    "3. 旁白角色优先选择「有声阅读」类、语气平稳连贯的音色；"
+    "儿童故事也可以根据气质选择温暖的年轻音色或儿童音色。\n"
     "4. 年龄和气质要贴合：例如慈祥的老婆婆要避免年轻御姐音，"
-    "优先中年/老年、语气温和缓慢的音色；孩子选儿童音色。\n"
-    "5. 结合音色的名称、分类和描述里的语气、风格来判断，"
-    "不要只看性别。\n"
+    "优先中年/老年、语气温和缓慢的音色；孩子选儿童年龄段音色。\n"
+    "5. 结合音色的名称、分类和描述里的语气、风格来判断，不要只看性别。\n"
     "6. 不同角色尽量选择不同的音色，序号不可重复。\n"
     "7. 只输出 JSON，不要任何额外文字，格式：\n"
     '{"assignments":[{"character_id":"角色id","voice_index":序号}]}'
@@ -84,17 +89,13 @@ _AGE_BANDS = ("child", "teen", "young_adult", "middle_aged", "senior")
 _GENDERS = ("male", "female")
 
 
-def _infer_voice_type(description):
-    """Guess a voice_type from a character description.
+def _infer_gender(description):
+    """Guess male/female from explicit words, kinship titles, pronouns.
 
-    voice_type is one of: narrator, child, male, female. A child-age band
-    (driven by _infer_age) yields child; otherwise gender comes from
-    explicit words, kinship titles, or pronouns, defaulting male. Age is
-    the authority for childhood so an adult "哄孩子" is not misread.
+    Defaults to male. Childhood no longer collapses gender: a child still
+    has its own gender (age is tracked separately).
     """
     desc = description or ""
-    if _infer_age(desc) == "child":
-        return "child"
     if any(word in desc for word in _FEMALE_WORDS):
         return "female"
     if any(word in desc for word in _MALE_WORDS):
@@ -132,34 +133,51 @@ def _infer_age(description):
     return "young_adult"
 
 
-def _type_preference(wanted_type):
-    """Fallback order of voice types.
-
-    Dialogue characters should keep to character voices: narrator voices
-    are the last resort, so a missing female/male voice never silently
-    becomes a narrator timbre.
-    """
-    if wanted_type == "narrator":
-        return ["narrator", "female", "male", "child"]
-    if wanted_type == "child":
-        return ["child", "female", "male", "narrator"]
-    if wanted_type == "female":
-        return ["female", "child", "male", "narrator"]
-    return ["male", "child", "female", "narrator"]
-
-
 def _is_narrator(character):
     text = "{} {}".format(character.id, character.name).lower()
     return any(kw in text for kw in _NARRATOR_KEYWORDS)
+
+
+def _age_distance(a, b):
+    return abs(_AGE_RANK.get(a, 2) - _AGE_RANK.get(b, 2))
+
+
+def _gender_pool(voices, gender):
+    """Hard gender preference, falling back to neutral then any voice."""
+    exact = [v for v in voices if v.gender == gender]
+    if exact:
+        return exact
+    neutral = [v for v in voices if not v.gender]
+    if neutral:
+        return neutral
+    return list(voices)
+
+
+def _voice_sort_key(voice, age, narrator):
+    if narrator:
+        # Narration-suited voices first; ties by age then stable id.
+        return (
+            0 if is_narration_voice(voice) else 1,
+            _AGE_RANK.get(voice.age, 9),
+            voice.voice_id,
+        )
+    # Dialogue: reading voices are the last resort; otherwise nearest age.
+    return (
+        1 if is_narration_voice(voice) else 0,
+        _age_distance(voice.age, age),
+        _AGE_RANK.get(voice.age, 9),
+        voice.voice_id,
+    )
 
 
 class VoiceMatcher:
     """Assigns a VoiceConfig to every character in a script.
 
     mode="llm" asks the LLM to semantically pick voices using each
-    candidate's name/age/category/description, constrained to the inferred
-    gender/age/narrator type; any character the LLM cannot validly assign
-    falls back to deterministic rule matching. mode="rule" skips the LLM.
+    candidate's name/age/category/description, matching by gender/age with
+    a soft preference for 有声阅读 (narration-suited) voices on narrator
+    characters; any character the LLM cannot validly assign falls back to
+    deterministic rule matching. mode="rule" skips the LLM.
     """
 
     def __init__(self, registry, llm=None, mode="rule"):
@@ -190,15 +208,12 @@ class VoiceMatcher:
                 )
             )
 
-        by_type = {}
-        for voice in voices:
-            by_type.setdefault(voice.voice_type, []).append(voice)
-
         narrators = [c for c in script.characters if _is_narrator(c)]
         others = [c for c in script.characters if not _is_narrator(c)]
         ordered = narrators + others
 
-        wanted = {c.id: ("narrator", None) for c in narrators}
+        # wanted[char_id] = (gender_or_None, age_or_None); narrator is (None, None).
+        wanted = {c.id: (None, None) for c in narrators}
         classified = {}
         if self.mode == "llm" and self.llm is not None and others:
             classified = self._classify_characters(others)
@@ -206,18 +221,15 @@ class VoiceMatcher:
             text = "{} {}".format(character.name, character.description)
             if character.id in classified:
                 gender, age = classified[character.id]
-                vtype = "child" if age == "child" else gender
             else:
-                # Rule fallback for characters the LLM call did not resolve.
-                vtype, age = _infer_voice_type(text), _infer_age(text)
-            wanted[character.id] = (vtype, age)
+                gender = _infer_gender(text)
+                age = _infer_age(text)
+            wanted[character.id] = (gender, age)
 
         used_ids = set()
         llm_picks = {}
         if self.mode == "llm" and self.llm is not None:
-            llm_picks = self._safe_llm_assign(
-                ordered, wanted, by_type
-            )
+            llm_picks = self._safe_llm_assign(ordered, wanted, voices)
             for voice in llm_picks.values():
                 used_ids.add(voice.voice_id)
 
@@ -225,9 +237,10 @@ class VoiceMatcher:
             if character.id in llm_picks:
                 character.voice_config = llm_picks[character.id]
                 continue
-            wanted_type = wanted[character.id][0]
+            gender, age = wanted[character.id]
             chosen = self._rule_pick(
-                by_type, wanted_type, used_ids, default_provider
+                voices, used_ids, default_provider,
+                gender=gender, age=age, narrator=gender is None,
             )
             character.voice_config = chosen
             used_ids.add(chosen.voice_id)
@@ -283,7 +296,7 @@ class VoiceMatcher:
             result[str(cid)] = (gender, age)
         return result
 
-    def _safe_llm_assign(self, ordered, wanted, by_type):
+    def _safe_llm_assign(self, ordered, wanted, voices):
         """Return {character_id: VoiceConfig} for valid LLM picks.
 
         Any failure (call error, unparseable JSON, out-of-range index,
@@ -291,9 +304,7 @@ class VoiceMatcher:
         caller fills it with rule matching; the method never raises.
         """
         try:
-            candidates, response = self._request_llm(
-                ordered, wanted, by_type
-            )
+            candidates, response = self._request_llm(ordered, wanted, voices)
         except Exception:
             return {}
 
@@ -321,49 +332,57 @@ class VoiceMatcher:
                 continue
             if index in used_index:
                 continue
+            want_gender = wanted[char_id][0]
             voice = candidates[index - 1]
-            # Hard constraint: narrator/child/gender type must agree.
-            if voice.voice_type != wanted[char_id][0]:
+            # Hard constraint for dialogue only: gender must agree.
+            # Narrators (want_gender is None) have no gender restriction.
+            if want_gender is not None and voice.gender != want_gender:
                 continue
             picks[str(char_id)] = voice
             used_index.add(index)
         return picks
 
-    def _request_llm(self, ordered, wanted, by_type):
-        needed = []
-        for character in ordered:
-            vtype = wanted[character.id][0]
-            if vtype not in needed:
-                needed.append(vtype)
-        group_order = [t for t in _GROUP_ORDER if t in needed]
-
-        candidates = []
+    def _request_llm(self, ordered, wanted, voices):
+        candidates = sorted(
+            voices,
+            key=lambda v: (
+                0 if is_narration_voice(v) else 1,
+                _GENDER_ORDER.get(v.gender, 9),
+                _AGE_RANK.get(v.age, 9),
+                v.voice_id,
+            ),
+        )
         lines = []
-        for vtype in group_order:
-            lines.append("【{}】".format(_TYPE_LABELS.get(vtype, vtype)))
-            for voice in by_type.get(vtype, []):
-                candidates.append(voice)
-                index = len(candidates)
-                lines.append(
-                    "[{}] {} | {} | {} | {}".format(
-                        index,
-                        voice.name or voice.voice_id,
-                        _AGE_LABELS.get(voice.age, voice.age or "-"),
-                        voice.category or "-",
-                        voice.description or "-",
-                    )
+        for voice in candidates:
+            index = len(lines) + 1
+            gender_label = _GENDER_LABELS.get(voice.gender, "中性")
+            lines.append(
+                "[{}] {} | {} | {} | {} | {}".format(
+                    index,
+                    voice.name or voice.voice_id,
+                    gender_label,
+                    _AGE_LABELS.get(voice.age, voice.age or "-"),
+                    voice.category or "-",
+                    voice.description or "-",
                 )
+            )
 
         char_lines = []
         for character in ordered:
-            vtype, age = wanted[character.id]
+            gender, age = wanted[character.id]
+            if gender is None:
+                need = "旁白（无性别限制，优先有声阅读类）"
+            else:
+                need = "{}声，年龄={}".format(
+                    _GENDER_LABELS.get(gender, gender),
+                    _AGE_LABELS.get(age, age or "-"),
+                )
             char_lines.append(
-                "- character_id={} 「{}」：{} ｜ 需要声线={} 年龄={}".format(
+                "- character_id={} 「{}」：{} ｜ {}".format(
                     character.id,
                     character.name,
                     character.description or "-",
-                    _TYPE_LABELS.get(vtype, vtype),
-                    _AGE_LABELS.get(age, age or "-"),
+                    need,
                 )
             )
 
@@ -379,38 +398,17 @@ class VoiceMatcher:
         response = self.llm.chat(messages, temperature=0.0)
         return candidates, response
 
-    def _rule_pick(self, by_type, wanted_type, used_ids, default_provider):
+    def _rule_pick(self, voices, used_ids, default_provider,
+                   *, gender, age, narrator):
         """Deterministic selection used at init and as LLM fallback."""
-        candidates = [
-            voice
-            for vtype in _type_preference(wanted_type)
-            for voice in by_type.get(vtype, [])
-        ]
-
-        for voice in candidates:
-            if voice.voice_id in used_ids:
-                continue
-            if (
-                default_provider
-                and voice.provider != default_provider
-                and _any_available(by_type, used_ids, default_provider)
-            ):
-                continue
-            return voice
-
-        # Nothing unused: reuse the first candidate.
-        return candidates[0] if candidates else _flatten(by_type)[0]
-
-
-def _flatten(by_type):
-    result = []
-    for voices in by_type.values():
-        result.extend(voices)
-    return result
-
-
-def _any_available(by_type, used_ids, provider):
-    return any(
-        v.provider == provider and v.voice_id not in used_ids
-        for v in _flatten(by_type)
-    )
+        pool = list(voices) if narrator else _gender_pool(voices, gender)
+        ranked = sorted(pool, key=lambda v: _voice_sort_key(v, age, narrator))
+        unused = [v for v in ranked if v.voice_id not in used_ids]
+        if default_provider:
+            on_default = [v for v in unused if v.provider == default_provider]
+            if on_default:
+                return on_default[0]
+        if unused:
+            return unused[0]
+        # Every pool voice is already used: reuse the highest-ranked one.
+        return ranked[0]
