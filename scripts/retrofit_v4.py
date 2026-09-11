@@ -108,24 +108,43 @@ def main():
     library = SoundLibrary(config.get("sound.dir"))
 
     # Materialize every pending cue. Skip per-cue failures (e.g. seed-audio
-    # returning a near-silent clip that the library discards) so one bad
-    # generation doesn't abort the whole remix; the cue just drops out.
+    # returning a near-silent clip that the library refuses to admit) so one
+    # bad generation doesn't abort the whole remix; the raw clip stays in the
+    # project's sounds/ dir and the cue drops out of the mix.
     from storyteller.core.exceptions import SoundGenerationError
+    from storyteller.core.sound_library import safe_sound_name, unique_path
+    import shutil
+
+    project_sounds = D / "sounds"
     pending = []
     for ln in script["lines"]:
         for raw in ln.get("sound_effects", []):
             if raw.get("prompt") and not raw.get("source_path"):
                 pending.append((ln, raw))
     for ln, raw in pending:
+        created = False
         try:
-            path, record, created = library.get_or_create(
-                provider, prompt=raw["prompt"], name=raw["name"],
-                kind=KIND.get(raw["type"], "sfx"),
-                description=raw.get("description") or "",
-                tags=raw.get("tags") or [], audio_format="mp3",
-            )
+            fallback = "sfx_" + str(raw.get("effect_id", ""))[-6:]
+            stem = safe_sound_name(raw.get("name") or raw["prompt"][:12], fallback)
+            clip_path = unique_path(project_sounds, stem, "mp3")
+            clip_path.parent.mkdir(parents=True, exist_ok=True)
+            record = library.find(provider, raw["prompt"], audio_format="mp3")
+            if record is not None:
+                shutil.copy2(library.path_for(record), clip_path)
+            else:
+                _, gen_duration = provider.generate(
+                    raw["prompt"], clip_path, audio_format="mp3"
+                )
+                record = library.admit(
+                    clip_path, provider, prompt=raw["prompt"],
+                    name=raw["name"], kind=KIND.get(raw["type"], "sfx"),
+                    description=raw.get("description") or "",
+                    tags=raw.get("tags") or [], audio_format="mp3",
+                    duration=gen_duration,
+                )
+                created = True
         except SoundGenerationError as exc:
-            print("  %-8s %s -> SKIP (discarded: %s)" % (
+            print("  %-8s %s -> SKIP (kept raw, not admitted: %s)" % (
                 ln["line_id"], raw["name"], str(exc)[:80]), flush=True)
             continue
         except Exception as exc:  # noqa: BLE001 - don't abort remix on one cue
@@ -133,11 +152,11 @@ def main():
                 ln["line_id"], raw["name"], type(exc).__name__, str(exc)[:80]),
                 flush=True)
             continue
-        raw["source_path"] = str(path)
+        raw["source_path"] = str(clip_path)
         raw["source_type"] = "local"
         raw["duration"] = record.get("duration")
         print("  %-8s %s -> %s (%.1fs, created=%s)" % (
-            ln["line_id"], raw["name"], Path(path).name,
+            ln["line_id"], raw["name"], Path(clip_path).name,
             record.get("duration") or 0, created), flush=True)
     script_path.write_text(
         json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8"
