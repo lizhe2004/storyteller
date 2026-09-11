@@ -111,3 +111,59 @@ def test_config_loads_dotenv_from_cwd(tmp_path, monkeypatch):
     config = Config.from_env()
     assert config.get("tts.providers") == ["mock"]
     assert config.get("tts.provider_config.mock.type") == "mock"
+
+
+def test_tts_provider_auto_discovered_without_providers_list(monkeypatch):
+    # Configuring per-provider vars is enough to become selectable;
+    # no STORYTELLER_TTS_PROVIDERS edit required.
+    monkeypatch.setenv("STORYTELLER_TTS_ALIYUN_TYPE", "aliyun")
+    monkeypatch.setenv("STORYTELLER_TTS_ALIYUN_API_KEY", "dashscope-key")
+    config = Config.from_env()
+    assert config.get("tts.providers") == ["aliyun"]
+    assert config.get("tts.provider_config.aliyun.type") == "aliyun"
+    assert config.get("tts.provider_config.aliyun.api_key") == "dashscope-key"
+
+
+def test_listed_providers_first_discovered_sorted_and_deduped(monkeypatch):
+    monkeypatch.setenv("STORYTELLER_TTS_PROVIDERS", "volcengine")
+    monkeypatch.setenv("STORYTELLER_TTS_VOLCENGINE_API_KEY", "vkey")
+    monkeypatch.setenv("STORYTELLER_TTS_MOCK_API_KEY", "unused")
+    monkeypatch.setenv("STORYTELLER_TTS_ALIYUN_API_KEY", "akey")
+    config = Config.from_env()
+    assert config.get("tts.providers") == ["volcengine", "aliyun", "mock"]
+
+
+def test_llm_auto_discovery_parity(monkeypatch):
+    monkeypatch.setenv("STORYTELLER_LLM_VOLCENGINE_API_KEY", "llm-key")
+    config = Config.from_env()
+    assert config.get("llm.providers") == ["volcengine"]
+    assert config.get("llm.provider_config.volcengine.api_key") == "llm-key"
+
+
+def test_sound_group_loads_providers_default_and_config(monkeypatch):
+    monkeypatch.setenv("STORYTELLER_SOUND_PROVIDERS", "volcengine")
+    monkeypatch.setenv("STORYTELLER_SOUND_DEFAULT_PROVIDER", "volcengine")
+    monkeypatch.setenv("STORYTELLER_SOUND_VOLCENGINE_API_KEY", "sound-key")
+    monkeypatch.setenv("STORYTELLER_SOUND_VOLCENGINE_MODEL", "seed-audio-1.0")
+    config = Config.from_env()
+    assert config.get("sound.providers") == ["volcengine"]
+    assert config.get("sound.default_provider") == "volcengine"
+    assert config.get("sound.provider_config.volcengine.api_key") == "sound-key"
+    assert config.get("sound.provider_config.volcengine.model") == "seed-audio-1.0"
+
+
+def test_sound_reserved_names_are_not_providers(monkeypatch):
+    monkeypatch.setenv("STORYTELLER_SOUND_ENABLED", "true")
+    monkeypatch.setenv("STORYTELLER_SOUND_DIR", "/tmp/sounds")
+    config = Config.from_env()
+    assert config.get("sound.providers") == []
+    assert config.get("sound.enabled") is True
+    assert config.get("sound.dir") == "/tmp/sounds"
+
+
+def test_legacy_sfx_vars_are_no_longer_read(monkeypatch):
+    monkeypatch.setenv("STORYTELLER_SFX_VOLCENGINE_API_KEY", "old-key")
+    monkeypatch.setenv("STORYTELLER_SFX_VOLCENGINE_MODEL", "old-model")
+    config = Config.from_env()
+    assert config.get("sound.providers") == []
+    assert config.get("sound.provider_config.volcengine") is None

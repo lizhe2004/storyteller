@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from storyteller.core.config import Config
+from storyteller.core.exceptions import TTSError
 from storyteller.core.pipeline import Pipeline
 from storyteller.providers.mock.llm import MockLLMProvider
 from storyteller.providers.mock.tts import MockTTSProvider
@@ -375,3 +376,67 @@ def test_sound_disabled_by_default_ignores_cues(tmp_path):
     assert Path(result_path).exists()
     assert provider.calls == []
     assert not (tmp_path / "sounds").exists()
+
+
+def _make_registry_sound_pipeline(tmp_path, llm, library):
+    """Like _make_sound_pipeline, but the sound provider comes from the
+    registry (config-selected) instead of constructor injection."""
+    from storyteller.providers.mock.sfx import MockSoundProvider
+
+    config = Config()
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
+    config.set("sound.enabled", True)
+    config.set("sound.dir", str(tmp_path / "sounds"))
+    config.set("sound.default_provider", "mock")
+    config.set("llm.default_provider", "mock")
+    config.set("tts.default_provider", "mock")
+    pipeline = Pipeline(config, sound_library=library)
+    pipeline.registry.register_llm("mock", lambda c: llm)
+    pipeline.registry.register_tts("mock", MockTTSProvider)
+    pipeline.registry.register_sound("mock", MockSoundProvider)
+    return pipeline
+
+
+def test_run_resolves_sound_provider_from_registry(tmp_path):
+    from storyteller.providers.mock.sfx import MockSoundProvider
+    from storyteller.core.sound_library import SoundLibrary
+
+    config = Config()
+    llm = MockLLMProvider(config)
+    llm.set_response(_sound_script())
+    library = SoundLibrary(tmp_path / "sounds")
+    pipeline = _make_registry_sound_pipeline(tmp_path, llm, library)
+
+    result_path = Path(pipeline.run("雨夜"))
+    assert result_path.exists()
+    # Both cues generated through the registry-resolved mock provider.
+    assert len(library.all()) == 2
+    assert isinstance(pipeline._get_sound_provider(), MockSoundProvider)
+
+
+def test_sound_enabled_without_any_provider_raises(tmp_path):
+    # The mock default script has no cues, so use _sound_script(): the
+    # soundtrack stage only resolves the provider when pending cues exist.
+    config = Config()
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
+    config.set("sound.enabled", True)
+    config.set("sound.dir", str(tmp_path / "sounds"))
+    config.set("llm.default_provider", "mock")
+    config.set("tts.default_provider", "mock")
+    llm = MockLLMProvider(config)
+    llm.set_response(_sound_script())
+    pipeline = Pipeline(config)
+    pipeline.registry.register_llm("mock", lambda c: llm)
+    pipeline.registry.register_tts("mock", MockTTSProvider)
+    # No sound provider registered at all.
+
+    with pytest.raises(TTSError, match="No sound provider configured"):
+        pipeline.run("雨夜")
+
+
+def test_unknown_tts_provider_fails_before_matching(tmp_path):
+    pipeline = _make_pipeline(tmp_path)
+    with pytest.raises(TTSError, match="Unknown TTS provider"):
+        pipeline.run("雨夜", tts_providers=["aliyun"])

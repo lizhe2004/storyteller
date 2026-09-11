@@ -28,9 +28,19 @@ except ImportError:  # pragma: no cover
     MockLLMProvider = None
     MockTTSProvider = None
 
+try:
+    from .volcengine.sfx import VolcengineSoundProvider
+except ImportError:  # pragma: no cover
+    VolcengineSoundProvider = None
+
+try:
+    from .mock.sfx import MockSoundProvider
+except ImportError:  # pragma: no cover
+    MockSoundProvider = None
+
 
 def register_providers_from_config(config, registry):
-    """Register LLM and TTS providers based on the config's provider lists.
+    """Register LLM, TTS, and sound providers based on the config's provider lists.
 
     - Providers listed in ``llm.providers`` / ``tts.providers`` are
       registered (defaulting to the Volcengine implementation unless the
@@ -42,6 +52,7 @@ def register_providers_from_config(config, registry):
     """
     _register_llms(config, registry)
     _register_tts(config, registry)
+    _register_sounds(config, registry)
     _set_defaults(config, registry)
 
 
@@ -84,6 +95,25 @@ def _register_tts(config, registry):
             registry.register_tts(name, lambda c: VolcengineTTS(c))
 
 
+def _register_sounds(config, registry):
+    for name in config.get("sound.providers", []) or []:
+        provider_config = config.get(
+            "sound.provider_config.{}".format(name), {}
+        ) or {}
+        provider_type = provider_config.get("type")
+
+        if provider_type == "mock" and MockSoundProvider:
+            registry.register_sound(
+                name, lambda c: MockSoundProvider(c)
+            )
+        elif provider_type in (None, "volcengine") and VolcengineSoundProvider:
+            registry.register_sound(
+                name, lambda c: VolcengineSoundProvider(c)
+            )
+        # Other types (aliyun/openai_compatible/...) have no sound
+        # implementation yet — skip quietly, like missing LLM impls.
+
+
 def _set_defaults(config, registry):
     llm_default = config.get("llm.default_provider")
     if llm_default:
@@ -96,5 +126,12 @@ def _set_defaults(config, registry):
     if tts_default:
         try:
             registry.set_default_tts(tts_default)
+        except ProviderError:
+            pass  # not registered, ignore
+
+    sound_default = config.get("sound.default_provider")
+    if sound_default:
+        try:
+            registry.set_default_sound(sound_default)
         except ProviderError:
             pass  # not registered, ignore

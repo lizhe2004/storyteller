@@ -2,6 +2,7 @@ import base64
 import json
 
 import pytest
+import requests
 
 from storyteller.core.config import Config
 from storyteller.core.exceptions import TTSError
@@ -29,9 +30,10 @@ class _FakeResponse:
 
 
 class _FakeSession:
-    def __init__(self, response=None, get_response=None):
+    def __init__(self, response=None, get_response=None, get_error=None):
         self._response = response
         self._get_response = get_response
+        self._get_error = get_error
         self.post_calls = []
         self.get_calls = []
 
@@ -41,6 +43,8 @@ class _FakeSession:
 
     def get(self, url, **kwargs):
         self.get_calls.append({"url": url, **kwargs})
+        if self._get_error is not None:
+            raise self._get_error
         return self._get_response
 
 
@@ -134,6 +138,43 @@ def test_generate_raises_when_no_audio_or_url(tmp_path):
         provider.generate("x", tmp_path / "s.mp3")
 
 
+def test_download_network_error_does_not_leak_signed_url(tmp_path):
+    signed_url = "https://cdn.example.com/signature=SECRETTOKEN/s.mp3?Expires=123"
+    payload = {"code": 0, "url": signed_url}
+    get_error = requests.ConnectionError("bad url: " + signed_url)
+    session = _FakeSession(
+        _FakeResponse(200, payload), get_error=get_error
+    )
+    provider = VolcengineSoundProvider(_config(), session=session)
+
+    with pytest.raises(TTSError) as exc:
+        provider.generate("x", tmp_path / "s.mp3")
+
+    message = str(exc.value)
+    assert "network error" in message
+    assert "ConnectionError" in message
+    assert signed_url not in message
+    assert "SECRETTOKEN" not in message
+
+
+def test_download_http_error_does_not_leak_signed_url(tmp_path):
+    signed_url = "https://cdn.example.com/signature=SECRETTOKEN/s.mp3?Expires=123"
+    payload = {"code": 0, "url": signed_url}
+    get_response = _FakeResponse(500, {})
+    session = _FakeSession(
+        _FakeResponse(200, payload), get_response=get_response
+    )
+    provider = VolcengineSoundProvider(_config(), session=session)
+
+    with pytest.raises(TTSError) as exc:
+        provider.generate("x", tmp_path / "s.mp3")
+
+    message = str(exc.value)
+    assert "HTTP 500" in message
+    assert signed_url not in message
+    assert "SECRETTOKEN" not in message
+
+
 def test_generate_raises_on_http_error(tmp_path):
     session = _FakeSession(_FakeResponse(500, {}))
     provider = VolcengineSoundProvider(_config(), session=session)
@@ -161,17 +202,15 @@ def test_missing_key_raises():
         VolcengineSoundProvider(config)
 
 
-def test_reuses_tts_key_when_sound_key_absent(tmp_path):
+def test_tts_key_is_not_used_as_fallback():
     config = Config()
     config.set(
         "tts.provider_config.volcengine",
         {"api_key": "tts-key", "endpoint": _ENDPOINT},
     )
-    session = _FakeSession(
-        _FakeResponse(
-            200, {"code": 0, "audio": base64.b64encode(b"x").decode()}
-        )
-    )
-    provider = VolcengineSoundProvider(config, session=session)
-    provider.generate("x", tmp_path / "s.mp3")
-    assert session.post_calls[0]["headers"]["X-Api-Key"] == "tts-key"
+    with pytest.raises(TTSError) as exc:
+        VolcengineSoundProvider(config)
+    message = str(exc.value)
+    assert "STORYTELLER_SOUND_VOLCENGINE_API_KEY" in message
+    # The unrelated TTS key must not appear in the error either.
+    assert "tts-key" not in message

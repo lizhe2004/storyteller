@@ -29,7 +29,14 @@ def wizard():
     """交互式向导模式（无参数运行时的默认入口）。"""
     from .interactive import run_wizard
 
-    pipeline, topic, length, complexity, output_format, tts_providers = run_wizard()
+    (
+        pipeline, topic, length, complexity, output_format,
+        tts_providers, with_sfx, sound_provider,
+    ) = run_wizard()
+    if with_sfx:
+        pipeline.config.set("sound.enabled", True)
+    if sound_provider:
+        pipeline.config.set("sound.default_provider", sound_provider)
     kwargs = {"output_format": output_format}
     if tts_providers:
         kwargs["tts_providers"] = tts_providers
@@ -91,9 +98,21 @@ def _build_pipeline(**options):
         config.set("llm.default_provider", options["default_llm_provider"])
     if options.get("default_tts_provider"):
         config.set("tts.default_provider", options["default_tts_provider"])
+    if options.get("sound_provider"):
+        config.set("sound.default_provider", options["sound_provider"])
 
     pipeline = Pipeline(config)
     register_providers_from_config(config, pipeline.registry)
+
+    requested_sound = options.get("sound_provider")
+    if requested_sound is not None:
+        available = pipeline.registry.list_sound_names()
+        if requested_sound not in available:
+            raise click.ClickException(
+                "Unknown sound provider: {}. Configured sound providers: "
+                "{}. Set STORYTELLER_SOUND_<NAME>_API_KEY to configure one."
+                .format(requested_sound, ", ".join(available) or "(none)")
+            )
     return pipeline
 
 
@@ -128,6 +147,11 @@ def _build_pipeline(**options):
     help="生成音效与背景音乐并自动混音（seed-audio，结果缓存到音效库）",
 )
 @click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
+@click.option(
+    "--sound-provider",
+    default=None,
+    help="本次运行使用的音效 provider（覆盖环境默认）",
+)
 def generate(
     topic,
     length,
@@ -199,6 +223,13 @@ def generate(
     help="生成音效与背景音乐并自动混音（seed-audio，结果缓存到音效库）",
 )
 @click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
+@click.option("--default-llm-provider", default=None, help="默认LLM provider")
+@click.option("--default-tts-provider", default=None, help="默认TTS provider")
+@click.option(
+    "--sound-provider",
+    default=None,
+    help="本次运行使用的音效 provider（覆盖环境默认）",
+)
 def continue_(project_id, **options):
     """从断点继续一个项目。"""
     pipeline = _build_pipeline(**options)
@@ -406,18 +437,39 @@ def _print_voice_table(voices):
 @click.option("--tags", default="", help="逗号分隔的标签")
 @click.option("--format", "audio_format", default="mp3", help="输出格式 mp3/wav")
 @click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
-def make_sound(prompt, name, kind, description, tags, audio_format, sound_dir):
+@click.option(
+    "--sound-provider",
+    default=None,
+    help="使用的音效 provider（默认取 STORYTELLER_SOUND_DEFAULT_PROVIDER）",
+)
+def make_sound(prompt, name, kind, description, tags, audio_format,
+               sound_dir, sound_provider):
     """用文字提示生成/复用一个音效，写入全局音效库。"""
     config = Config.from_env()
     if sound_dir:
         config.set("sound.dir", sound_dir)
 
     from ..core.sound_library import SoundLibrary
-    from ..providers.volcengine.sfx import VolcengineSoundProvider
+    from ..providers.registry import ProviderRegistry
 
-    library = SoundLibrary(config.get("sound.dir") or "./.storyteller/sounds")
+    registry = ProviderRegistry(config)
+    register_providers_from_config(config, registry)
+
+    chosen = sound_provider or config.get("sound.default_provider")
+    available = registry.list_sound_names()
+    if chosen is None and available:
+        chosen = available[0]
+    if chosen is None or chosen not in available:
+        raise click.ClickException(
+            "No sound provider configured: set "
+            "STORYTELLER_SOUND_<NAME>_API_KEY (or pass --sound-provider)."
+        )
+
+    library = SoundLibrary(
+        config.get("sound.dir") or "./.storyteller/sounds"
+    )
     try:
-        provider = VolcengineSoundProvider(config)
+        provider = registry.get_sound(chosen)
         path, record, created = library.get_or_create(
             provider,
             prompt=prompt,
@@ -427,6 +479,8 @@ def make_sound(prompt, name, kind, description, tags, audio_format, sound_dir):
             tags=[t.strip() for t in tags.split(",") if t.strip()],
             audio_format=audio_format,
         )
+    except click.ClickException:
+        raise
     except Exception as exc:
         raise click.ClickException(str(exc))
 

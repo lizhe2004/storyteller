@@ -21,6 +21,8 @@ _MOCK_ENV = {
     "STORYTELLER_TTS_PROVIDERS": "mock",
     "STORYTELLER_TTS_MOCK_TYPE": "mock",
     "STORYTELLER_TTS_DEFAULT_PROVIDER": "mock",
+    "STORYTELLER_SOUND_PROVIDERS": "mock",
+    "STORYTELLER_SOUND_MOCK_TYPE": "mock",
 }
 
 
@@ -106,6 +108,49 @@ def test_generate_dry_run():
         assert "Dry-run" in result.output
 
 
+def test_generate_with_sound_provider_flag():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["generate", "测试故事", "--with-sfx", "--sound-provider", "mock"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code == 0, result.output
+
+
+def test_generate_unknown_sound_provider_fails_before_generation():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["generate", "测试故事", "--sound-provider", "nope"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code != 0
+        assert "Unknown sound provider" in result.output
+        assert "mock" in result.output
+
+
+def test_continue_accepts_provider_selection_flags():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        # Unknown project, but click must accept every flag first
+        # (regression: continue used to lack these options).
+        result = runner.invoke(
+            cli,
+            [
+                "continue", "proj_does_not_exist",
+                "--default-llm-provider", "mock",
+                "--default-tts-provider", "mock",
+                "--sound-provider", "mock",
+            ],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code != 0
+        assert "no such option" not in result.output.lower()
+
+
 def test_list_projects_empty():
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -123,7 +168,8 @@ def test_unknown_command_fails():
 def test_wizard_full_flow():
     runner = CliRunner()
     with runner.isolated_filesystem():
-        # Input sequence: topic, length, complexity, format, voice-mode
+        # Input sequence: topic, length, complexity, format, voice-mode,
+        # sound on/off (empty = default off)
         user_input = "\n".join(
             [
                 "小猫迷路了",  # topic
@@ -131,6 +177,7 @@ def test_wizard_full_flow():
                 "1",           # complexity: simple
                 "1",           # format: mp3
                 "1",           # voice mode: auto
+                "",            # sound: no
             ]
         ) + "\n"
         result = runner.invoke(
@@ -152,6 +199,7 @@ def test_wizard_rejects_empty_topic():
                 "1",
                 "1",
                 "1",
+                "",            # sound: no
             ]
         ) + "\n"
         result = runner.invoke(
@@ -159,3 +207,61 @@ def test_wizard_rejects_empty_topic():
         )
         assert result.exit_code == 0, result.output
         assert "不能为空" in result.output
+
+
+def test_make_sound_uses_registry_provider():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["make-sound", "舒缓的雨声", "--sound-provider", "mock"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code == 0, result.output
+        assert "Generated" in result.output
+
+
+def test_make_sound_without_configured_provider_errors():
+    runner = CliRunner()
+    env = {
+        "STORYTELLER_LLM_PROVIDERS": "mock",
+        "STORYTELLER_TTS_PROVIDERS": "mock",
+    }
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli, ["make-sound", "风声"], env=env
+        )
+        assert result.exit_code != 0
+        assert "No sound provider configured" in result.output
+
+
+def test_wizard_enables_sound_with_single_provider():
+    runner = CliRunner()
+    env = dict(_MOCK_ENV)
+    env["STORYTELLER_SOUND_PROVIDERS"] = "mock"
+    with runner.isolated_filesystem():
+        user_input = "\n".join(
+            ["雨夜", "2", "1", "1", "1", "y"]
+        ) + "\n"
+        result = runner.invoke(cli, [], input=user_input, env=env)
+        assert result.exit_code == 0, result.output
+        assert "Done" in result.output
+
+
+def test_wizard_chooses_between_multiple_sound_providers():
+    runner = CliRunner()
+    env = dict(_MOCK_ENV)
+    env.update(
+        {
+            "STORYTELLER_SOUND_PROVIDERS": "mock,mock2",
+            "STORYTELLER_SOUND_MOCK_TYPE": "mock",
+            "STORYTELLER_SOUND_MOCK2_TYPE": "mock",
+        }
+    )
+    with runner.isolated_filesystem():
+        user_input = "\n".join(
+            ["雨夜", "2", "1", "1", "1", "y", "1"]
+        ) + "\n"
+        result = runner.invoke(cli, [], input=user_input, env=env)
+        assert result.exit_code == 0, result.output
+        assert "音效 provider" in result.output

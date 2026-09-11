@@ -71,8 +71,12 @@ def run_wizard(config=None):
 
     pipeline = _build_pipeline(config)
     tts_providers = _prompt_voice_mode(pipeline, config)
+    with_sfx, sound_provider = _prompt_sound(pipeline, config)
 
-    return pipeline, topic, length, complexity, output_format, tts_providers
+    return (
+        pipeline, topic, length, complexity, output_format,
+        tts_providers, with_sfx, sound_provider,
+    )
 
 
 def _apply_common(config):
@@ -113,6 +117,33 @@ def _prompt_voice_mode(pipeline, config):
         return None
     # Manual mode not yet wired; treated as auto for now.
     return None
+
+
+def _prompt_sound(pipeline, config):
+    """Ask whether to enable sound effects, and which provider when >1."""
+    default_enabled = bool(config.get("sound.enabled"))
+    click.echo("\n音效与背景音乐：")
+    raw = click.prompt(
+        "是否启用音效与背景音乐？(y/n)",
+        default="y" if default_enabled else "n",
+        show_default=True,
+    )
+    enabled = parse_yes_no(raw, default=default_enabled)
+    if not enabled:
+        return False, None
+
+    names = pipeline.registry.list_sound_names()
+    if len(names) == 1:
+        return True, names[0]
+    if len(names) > 1:
+        click.echo("\n选择音效 provider：")
+        for i, name in enumerate(names, start=1):
+            click.echo("  [{}] {}".format(i, name))
+        chosen = parse_choice(click.prompt("请选择", default="1"), names, 0)
+        return True, chosen
+    # Enabled but no provider configured; let the run fail with the clear
+    # config error rather than rejecting the answer in the wizard.
+    return True, None
 
 
 def _build_pipeline(config):

@@ -119,6 +119,21 @@ class Pipeline:
 
         # Step 2: Match voices (if not already done)
         if state.state not in ("voice_configured", "generating_audio", "audio_generated", "post_processing"):
+            selected_tts = kwargs.get("tts_providers")
+            if selected_tts is not None:
+                known_tts = self.registry.list_tts_names()
+                unknown_tts = [p for p in selected_tts if p not in known_tts]
+                if unknown_tts:
+                    raise TTSError(
+                        "Unknown TTS provider(s): {}. Configured providers: "
+                        "{}. Set STORYTELLER_TTS_<NAME>_API_KEY for each "
+                        "(and STORYTELLER_TTS_<NAME>_TYPE for non-Volcengine "
+                        "implementations), or choose from the configured list."
+                        .format(
+                            ", ".join(unknown_tts),
+                            ", ".join(known_tts) or "(none)",
+                        )
+                    )
             tts_voices = self.registry.list_tts_voices()
             if not tts_voices:
                 raise TTSError("No TTS voices available")
@@ -350,9 +365,19 @@ class Pipeline:
     def _get_sound_provider(self):
         if self._sound_provider is not None:
             return self._sound_provider
-        from ..providers.volcengine.sfx import VolcengineSoundProvider
-
-        self._sound_provider = VolcengineSoundProvider(self.config)
+        names = self.registry.list_sound_names()
+        name = self.config.get("sound.default_provider")
+        if name not in names:
+            # An unregistered default is ignored the same way bootstrap
+            # ignores it; fall back to the first registered provider.
+            name = names[0] if names else None
+        if name is None:
+            raise TTSError(
+                "No sound provider configured: set "
+                "STORYTELLER_SOUND_<NAME>_API_KEY "
+                "(use --sound-provider to choose one)"
+            )
+        self._sound_provider = self.registry.get_sound(name)
         return self._sound_provider
 
     def _get_sound_library(self):

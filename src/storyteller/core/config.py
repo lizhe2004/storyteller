@@ -34,6 +34,8 @@ class Config:
         "sound": {
             "enabled": False,
             "dir": None,
+            "providers": [],
+            "default_provider": None,
             "provider_config": {},
         },
     }
@@ -86,6 +88,7 @@ class Config:
         cls._load_provider_group(config, "llm")
         cls._load_provider_group(config, "tts")
         cls._load_openai_compatible_tts(config)
+        cls._load_provider_group(config, "sound")
         cls._load_sound(config)
 
         # Artifact dirs are derived lazily in get() from data_dir, so an
@@ -122,48 +125,63 @@ class Config:
         if sound_dir:
             config.set("sound.dir", sound_dir)
 
-        # Dedicated seed-audio credentials; falls back to the TTS key at use
-        # time when left empty.
-        sfx_config = {}
-        for env_suffix, key in (
-            ("API_KEY", "api_key"),
-            ("ENDPOINT", "endpoint"),
-            ("MODEL", "model"),
-        ):
-            value = os.getenv(
-                "STORYTELLER_SFX_VOLCENGINE_{}".format(env_suffix)
-            )
-            if value:
-                sfx_config[key] = value
-        if sfx_config:
-            config.set("sound.provider_config.volcengine", sfx_config)
+    # Per-provider config keys shared by the llm/tts/sound groups.
+    _PROVIDER_CONFIG_KEYS = (
+        "type", "api_key", "model", "endpoint", "base_url", "resource_id",
+    )
 
     @staticmethod
     def _load_provider_group(config, kind):
-        """Load the provider list, default provider, and per-provider config."""
-        providers_env = os.getenv(
-            "STORYTELLER_{}_PROVIDERS".format(kind.upper()), ""
-        )
+        """Load one provider group (llm/tts/sound).
+
+        Names in STORYTELLER_<KIND>_PROVIDERS come first (default enablement
+        and ordering). Any other name with a per-provider env var is
+        auto-discovered and appended in sorted order, so configuring a key
+        is enough to make a provider CLI-selectable without editing the
+        PROVIDERS list.
+        """
+        upper = kind.upper()
+        group_prefix = "STORYTELLER_{}_".format(upper)
+
+        providers_env = os.getenv(group_prefix + "PROVIDERS", "")
         providers = [p.strip() for p in providers_env.split(",") if p.strip()]
+
+        config.set(
+            "{}.default_provider".format(kind),
+            os.getenv(group_prefix + "DEFAULT_PROVIDER"),
+        )
+
+        # The suffix allowlist alone excludes reserved names (PROVIDERS,
+        # DEFAULT_PROVIDER, ENABLED, DIR all lack a recognised suffix).
+        discovered = set()
+        for env_key in os.environ:
+            if not env_key.startswith(group_prefix):
+                continue
+            rest = env_key[len(group_prefix):]
+            if kind == "tts" and rest.startswith("OPENAI_COMPATIBLE"):
+                continue
+            parts = rest.split("_", 1)
+            if len(parts) != 2:
+                continue
+            name, suffix = parts
+            if not name or suffix.lower() not in Config._PROVIDER_CONFIG_KEYS:
+                continue
+            discovered.add(name.lower())
+
+        seen = {p.lower() for p in providers}
+        for name in sorted(discovered):
+            if name not in seen:
+                providers.append(name)
+                seen.add(name)
         config.set("{}.providers".format(kind), providers)
 
-        default = os.getenv(
-            "STORYTELLER_{}_DEFAULT_PROVIDER".format(kind.upper())
-        )
-        config.set("{}.default_provider".format(kind), default)
-
         for provider in providers:
-            prefix = "STORYTELLER_{}_{}_".format(kind.upper(), provider.upper())
+            provider_prefix = "STORYTELLER_{}_{}_".format(
+                upper, provider.upper()
+            )
             provider_config = {}
-            for key in (
-                "type",
-                "api_key",
-                "model",
-                "endpoint",
-                "base_url",
-                "resource_id",
-            ):
-                value = os.getenv(prefix + key.upper())
+            for key in Config._PROVIDER_CONFIG_KEYS:
+                value = os.getenv(provider_prefix + key.upper())
                 if value:
                     provider_config[key] = value
             if provider_config:

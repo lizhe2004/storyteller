@@ -7,7 +7,7 @@ from ..core.models import VoiceConfig
 
 
 class ProviderRegistry:
-    """Central registry for LLM and TTS providers.
+    """Central registry for LLM, TTS, and sound providers.
 
     Providers are instantiated once and cached. TTS voice lists are
     aggregated across registered providers, optionally filtered.
@@ -21,6 +21,9 @@ class ProviderRegistry:
         self._tts_instances = {}
         self._default_llm = None
         self._default_tts = None
+        self._sound_factories = {}
+        self._sound_instances = {}
+        self._default_sound = None
 
     # ----- LLM -----
     def register_llm(self, name, factory):
@@ -74,6 +77,32 @@ class ProviderRegistry:
 
     def list_tts_names(self):
         return list(self._tts_factories.keys())
+
+    # ----- Sound -----
+    def register_sound(self, name, factory):
+        """Register a sound provider. factory is a class/callable taking
+        (config) and returning a SoundEffectProvider instance."""
+        self._sound_factories[name] = factory
+
+    def get_sound(self, name):
+        if name not in self._sound_factories:
+            raise ProviderError("Unknown sound provider: {}".format(name))
+        if name not in self._sound_instances:
+            self._sound_instances[name] = self._sound_factories[name](self.config)
+        return self._sound_instances[name]
+
+    def set_default_sound(self, name):
+        if name not in self._sound_factories:
+            raise ProviderError("Unknown sound provider: {}".format(name))
+        self._default_sound = name
+
+    def get_default_sound(self):
+        if self._default_sound is None:
+            return None
+        return self.get_sound(self._default_sound)
+
+    def list_sound_names(self):
+        return list(self._sound_factories.keys())
 
     # ----- Voice aggregation -----
     def list_tts_voices(self, provider_names=None, allowed_voice_ids=None):
