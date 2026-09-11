@@ -168,7 +168,8 @@ def test_unknown_command_fails():
 def test_wizard_full_flow():
     runner = CliRunner()
     with runner.isolated_filesystem():
-        # Input sequence: topic, length, complexity, format, voice-mode
+        # Input sequence: topic, length, complexity, format, voice-mode,
+        # sound on/off (empty = default off)
         user_input = "\n".join(
             [
                 "小猫迷路了",  # topic
@@ -176,6 +177,7 @@ def test_wizard_full_flow():
                 "1",           # complexity: simple
                 "1",           # format: mp3
                 "1",           # voice mode: auto
+                "",            # sound: no
             ]
         ) + "\n"
         result = runner.invoke(
@@ -197,6 +199,7 @@ def test_wizard_rejects_empty_topic():
                 "1",
                 "1",
                 "1",
+                "",            # sound: no
             ]
         ) + "\n"
         result = runner.invoke(
@@ -230,3 +233,35 @@ def test_make_sound_without_configured_provider_errors():
         )
         assert result.exit_code != 0
         assert "No sound provider configured" in result.output
+
+
+def test_wizard_enables_sound_with_single_provider():
+    runner = CliRunner()
+    env = dict(_MOCK_ENV)
+    env["STORYTELLER_SOUND_PROVIDERS"] = "mock"
+    with runner.isolated_filesystem():
+        user_input = "\n".join(
+            ["雨夜", "2", "1", "1", "1", "y"]
+        ) + "\n"
+        result = runner.invoke(cli, [], input=user_input, env=env)
+        assert result.exit_code == 0, result.output
+        assert "Done" in result.output
+
+
+def test_wizard_chooses_between_multiple_sound_providers():
+    runner = CliRunner()
+    env = dict(_MOCK_ENV)
+    env.update(
+        {
+            "STORYTELLER_SOUND_PROVIDERS": "mock,mock2",
+            "STORYTELLER_SOUND_MOCK_TYPE": "mock",
+            "STORYTELLER_SOUND_MOCK2_TYPE": "mock",
+        }
+    )
+    with runner.isolated_filesystem():
+        user_input = "\n".join(
+            ["雨夜", "2", "1", "1", "1", "y", "1"]
+        ) + "\n"
+        result = runner.invoke(cli, [], input=user_input, env=env)
+        assert result.exit_code == 0, result.output
+        assert "音效 provider" in result.output

@@ -29,7 +29,14 @@ def wizard():
     """交互式向导模式（无参数运行时的默认入口）。"""
     from .interactive import run_wizard
 
-    pipeline, topic, length, complexity, output_format, tts_providers = run_wizard()
+    (
+        pipeline, topic, length, complexity, output_format,
+        tts_providers, with_sfx, sound_provider,
+    ) = run_wizard()
+    if with_sfx:
+        pipeline.config.set("sound.enabled", True)
+    if sound_provider:
+        pipeline.config.set("sound.default_provider", sound_provider)
     kwargs = {"output_format": output_format}
     if tts_providers:
         kwargs["tts_providers"] = tts_providers
