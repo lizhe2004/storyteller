@@ -50,6 +50,14 @@ class VolcengineTTS(BaseProvider, TTSProvider):
     def name(self):
         return "volcengine"
 
+    @property
+    def display_name(self):
+        return "火山引擎"
+
+    @property
+    def display_description(self):
+        return "seed-tts 2.0 语音合成（火山方舟）"
+
     def _resource_id_for(self, voice_id):
         """Resource id for a voice from the catalog, else the configured one.
 
@@ -66,7 +74,6 @@ class VolcengineTTS(BaseProvider, TTSProvider):
             VoiceConfig(
                 provider="volcengine",
                 voice_id=record["voice_id"],
-                voice_type=record["voice_type"],
                 language=record.get("language", "zh-CN"),
                 name=record.get("name"),
                 gender=record.get("gender"),
@@ -235,7 +242,7 @@ def _safe_log2(value):
 def load_voice_catalog():
     """Return the packaged Volcengine voice records as a list of dicts.
 
-    Each record has voice_id, name, gender, age, voice_type, category,
+    Each record has voice_id, name, gender, age, category,
     description, tags, language, bilingual, resource_id. Cached.
     """
     data = json.loads(_VOICE_CATALOG.read_text(encoding="utf-8"))

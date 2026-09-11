@@ -70,10 +70,14 @@ def test_openai_tts_name_is_provider_name():
 def test_openai_tts_lists_builtin_voices():
     tts = _tts()
     voices = tts.list_voices()
-    voice_ids = [v.voice_id for v in voices]
-    assert "alloy" in voice_ids
-    assert "nova" in voice_ids
-    assert "shimmer" in voice_ids
+    by_id = {v.voice_id: v for v in voices}
+    assert "alloy" in by_id
+    assert "nova" in by_id
+    assert "shimmer" in by_id
+    assert by_id["alloy"].gender is None
+    assert by_id["nova"].gender == "female"
+    assert by_id["onyx"].gender == "male"
+    assert all(not hasattr(v, "voice_type") for v in voices)
 
 
 def test_openai_tts_synthesize(tmp_path):

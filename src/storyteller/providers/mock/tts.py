@@ -12,7 +12,6 @@ MOCK_VOICES = [
     VoiceConfig(
         provider="mock",
         voice_id="narrator_01",
-        voice_type="narrator",
         language="zh-CN",
         name="少儿故事",
         gender="female",
@@ -23,7 +22,6 @@ MOCK_VOICES = [
     VoiceConfig(
         provider="mock",
         voice_id="male_01",
-        voice_type="male",
         language="zh-CN",
         name="青年男声",
         gender="male",
@@ -34,7 +32,6 @@ MOCK_VOICES = [
     VoiceConfig(
         provider="mock",
         voice_id="female_01",
-        voice_type="female",
         language="zh-CN",
         name="温柔妈妈",
         gender="female",
@@ -45,7 +42,6 @@ MOCK_VOICES = [
     VoiceConfig(
         provider="mock",
         voice_id="child_01",
-        voice_type="child",
         language="zh-CN",
         name="稚嫩童声",
         gender="male",
@@ -82,6 +78,14 @@ class MockTTSProvider(BaseProvider, TTSProvider):
     @property
     def name(self):
         return "mock"
+
+    @property
+    def display_name(self):
+        return "Mock（测试）"
+
+    @property
+    def display_description(self):
+        return "测试用桩 provider，合成结果为静音音频"
 
     def list_voices(self, **kwargs):
         return list(MOCK_VOICES)

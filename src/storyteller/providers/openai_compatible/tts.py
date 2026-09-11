@@ -11,9 +11,9 @@ from ..base import BaseProvider
 
 
 _BUILTIN_VOICES = [
-    ("alloy", "neutral"),
-    ("echo", "neutral"),
-    ("fable", "neutral"),
+    ("alloy", None),
+    ("echo", None),
+    ("fable", None),
     ("onyx", "male"),
     ("nova", "female"),
     ("shimmer", "female"),
@@ -55,15 +55,23 @@ class OpenAICompatibleTTS(BaseProvider, TTSProvider):
     def name(self):
         return self.provider_name
 
+    @property
+    def display_name(self):
+        return self.provider_name
+
+    @property
+    def display_description(self):
+        return "OpenAI 兼容 TTS 服务（{}）".format(self.model)
+
     def list_voices(self, **kwargs):
         return [
             VoiceConfig(
                 provider=self.provider_name,
                 voice_id=voice_id,
-                voice_type=voice_type,
+                gender=gender,
                 language="zh-CN",
             )
-            for voice_id, voice_type in _BUILTIN_VOICES
+            for voice_id, gender in _BUILTIN_VOICES
         ]
 
     def synthesize(self, text, voice_config, output_path, **kwargs):

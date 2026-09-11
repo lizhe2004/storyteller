@@ -173,7 +173,7 @@ def test_volcengine_tts_maps_speed_pitch_volume(tmp_path):
     voice = VoiceConfig(
         provider="volcengine",
         voice_id="zh_female_vv_uranus_bigtts",
-        voice_type="female",
+        gender="female",
         speed=1.5,
         pitch=1.5,
         volume=1.5,
@@ -192,7 +192,7 @@ def test_volcengine_tts_omits_pitch_at_default(tmp_path):
     voice = VoiceConfig(
         provider="volcengine",
         voice_id="zh_female_vv_uranus_bigtts",
-        voice_type="female",
+        gender="female",
     )
     tts.synthesize("你好", voice, tmp_path / "out.mp3")
     req = tts._session.calls[0]["json"]["req_params"]
@@ -205,7 +205,7 @@ def test_volcengine_tts_ogg_uses_48k(tmp_path):
     voice = VoiceConfig(
         provider="volcengine",
         voice_id="zh_female_vv_uranus_bigtts",
-        voice_type="female",
+        gender="female",
     )
     tts.synthesize("你好", voice, tmp_path / "out.ogg")
     audio_params = tts._session.calls[0]["json"]["req_params"]["audio_params"]
@@ -219,7 +219,7 @@ def test_volcengine_tts_passes_directives_and_context(tmp_path):
     voice = VoiceConfig(
         provider="volcengine",
         voice_id="zh_female_vv_uranus_bigtts",
-        voice_type="female",
+        gender="female",
     )
     tts.synthesize(
         "能一起撑伞不？",
@@ -243,7 +243,7 @@ def test_volcengine_tts_omits_context_texts_when_empty(tmp_path):
     voice = VoiceConfig(
         provider="volcengine",
         voice_id="zh_female_vv_uranus_bigtts",
-        voice_type="female",
+        gender="female",
     )
     tts.synthesize("你好", voice, tmp_path / "out.mp3")
     additions = json.loads(
@@ -261,7 +261,7 @@ def test_volcengine_tts_uses_catalog_resource_id(tmp_path):
     voice = VoiceConfig(
         provider="volcengine",
         voice_id=record["voice_id"],
-        voice_type=record["voice_type"],
+        gender=record["gender"],
     )
     tts.synthesize("你好", voice, tmp_path / "out.mp3")
     assert (
