@@ -97,7 +97,7 @@ def test_full_flow_list_voices():
 
     result = runner.invoke(cli, ["list-voices"], env=env)
     assert result.exit_code == 0, result.output
-    assert "mock" in result.output
+    assert "Mock（测试）" in result.output
 
 
 def test_full_flow_with_length_and_complexity(tmp_path):

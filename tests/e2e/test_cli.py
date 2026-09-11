@@ -1,3 +1,5 @@
+import json
+
 from click.testing import CliRunner
 
 from storyteller.cli.main import cli
@@ -22,8 +24,32 @@ def test_list_voices_shows_mock():
             env=_MOCK_ENV,
         )
         assert result.exit_code == 0, result.output
-        assert "mock" in result.output
+        assert "Mock（测试）" in result.output
         assert "narrator_01" in result.output
+        assert "男" in result.output and "女" in result.output
+        assert "有声阅读" in result.output
+        # Table headers present, and the old confusing 类型 column is gone.
+        for header in ("名称", "音色ID", "性别", "年龄段", "场景"):
+            assert header in result.output
+        assert "类型" not in result.output
+
+
+def test_list_voices_json():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["list-voices", "--tts-providers", "mock", "--format", "json"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert isinstance(data, list) and data
+        row = next(v for v in data if v["voice_id"] == "female_01")
+        assert row["gender"] == "female"
+        assert row["age"] == "middle_aged"
+        assert row["category"] == "通用场景"
+        assert all("voice_type" not in v for v in data)
 
 
 def test_generate_with_mock_succeeds():
