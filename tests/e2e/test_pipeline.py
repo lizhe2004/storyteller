@@ -191,10 +191,12 @@ def test_narration_uses_narrator_voice_when_llm_omits_it(tmp_path):
 
     pipeline.run("无旁白角色")
 
+    from storyteller.core.voice_matcher import is_narration_voice
+
     narration_call = next(c for c in tts.synth_calls if c["text"] == "天亮了。")
-    assert narration_call["voice_config"].voice_type == "narrator"
+    assert is_narration_voice(narration_call["voice_config"])
     dialogue_call = next(c for c in tts.synth_calls if c["text"] == "早安！")
-    assert dialogue_call["voice_config"].voice_type != "narrator"
+    assert dialogue_call["voice_config"].voice_id != narration_call["voice_config"].voice_id
 
 
 def test_draft_script_saves_json_without_audio(tmp_path):

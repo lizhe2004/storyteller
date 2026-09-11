@@ -25,7 +25,8 @@ class FakeTTS(BaseProvider, TTSProvider):
             VoiceConfig(
                 provider="fake",
                 voice_id="v1",
-                voice_type="narrator",
+                gender="female",
+                category="有声阅读",
             )
         ]
 

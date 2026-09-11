@@ -8,6 +8,7 @@ from pathlib import Path
 from .exceptions import LLMError, TTSError
 from .project import ProjectManager, _script_to_dict
 from .story_generator import StoryGenerator
+from .voice_matcher import is_narration_voice
 
 # Script SoundEffect.type -> SoundLibrary kind.
 _KIND_FOR_TYPE = {"effect": "sfx", "ambient": "ambient", "music": "music"}
@@ -242,10 +243,10 @@ class Pipeline:
                 voice = char_voice_map.get(char.id)
                 if voice:
                     return voice
-        # Fallback: prefer a narrator-typed voice so narration is not read in
-        # the first dialogue character's timbre; only then use any voice.
+        # Fallback: prefer a reading/narration-suited voice so narration is
+        # not read in the first dialogue character's timbre; then any voice.
         for voice in char_voice_map.values():
-            if voice and voice.voice_type == "narrator":
+            if voice and is_narration_voice(voice):
                 return voice
         for voice in char_voice_map.values():
             return voice
