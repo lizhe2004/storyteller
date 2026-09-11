@@ -18,6 +18,10 @@ class TTSError(ProviderError):
     """TTS provider errors."""
 
 
+class SoundGenerationError(ProviderError):
+    """A generated sound was unusable (e.g. near-silent failed output)."""
+
+
 class AudioProcessingError(StorytellerError):
     """Audio processing errors."""
 

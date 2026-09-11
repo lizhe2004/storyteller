@@ -46,6 +46,11 @@ class SoundEffect:
     duration: Optional[float] = None
     fade_in: float = 0.0
     fade_out: float = 0.0
+    # Generation hints: prompt drives the text-to-audio model; description
+    # and tags describe the sound for catalog search and reuse.
+    prompt: Optional[str] = None
+    description: Optional[str] = None
+    tags: list = field(default_factory=list)
 
 
 # ========== Voice ==========
@@ -59,6 +64,11 @@ class VoiceConfig:
     speed: float = 1.0
     pitch: float = 1.0
     volume: float = 1.0
+    # Descriptive hints used by semantic (LLM) voice matching.
+    name: Optional[str] = None
+    age: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
 
 
 # ========== Character ==========

@@ -27,6 +27,9 @@ storyteller = "storyteller.cli.main:cli"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"storyteller.providers.volcengine" = ["voices.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

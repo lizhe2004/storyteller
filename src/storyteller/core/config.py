@@ -15,6 +15,7 @@ class Config:
         "output_format": "mp3",
         "progress_level": "simple",
         "strict_mode": False,
+        "voice_matcher": "llm",
         "llm": {
             "providers": [],
             "default_provider": None,
@@ -23,6 +24,11 @@ class Config:
         "tts": {
             "providers": [],
             "default_provider": None,
+            "provider_config": {},
+        },
+        "sound": {
+            "enabled": False,
+            "dir": "./sounds",
             "provider_config": {},
         },
     }
@@ -61,12 +67,42 @@ class Config:
         config.set(
             "project_dir", os.getenv("STORYTELLER_PROJECT_DIR", "./projects")
         )
+        config.set(
+            "voice_matcher",
+            os.getenv("STORYTELLER_VOICE_MATCHER", "llm"),
+        )
 
         cls._load_provider_group(config, "llm")
         cls._load_provider_group(config, "tts")
         cls._load_openai_compatible_tts(config)
+        cls._load_sound(config)
 
         return config
+
+    @staticmethod
+    def _load_sound(config):
+        enabled = os.getenv("STORYTELLER_SOUND_ENABLED", "").strip().lower()
+        if enabled in ("1", "true", "yes", "on"):
+            config.set("sound.enabled", True)
+        sound_dir = os.getenv("STORYTELLER_SOUND_DIR")
+        if sound_dir:
+            config.set("sound.dir", sound_dir)
+
+        # Dedicated seed-audio credentials; falls back to the TTS key at use
+        # time when left empty.
+        sfx_config = {}
+        for env_suffix, key in (
+            ("API_KEY", "api_key"),
+            ("ENDPOINT", "endpoint"),
+            ("MODEL", "model"),
+        ):
+            value = os.getenv(
+                "STORYTELLER_SFX_VOLCENGINE_{}".format(env_suffix)
+            )
+            if value:
+                sfx_config[key] = value
+        if sfx_config:
+            config.set("sound.provider_config.volcengine", sfx_config)
 
     @staticmethod
     def _load_provider_group(config, kind):
@@ -85,7 +121,14 @@ class Config:
         for provider in providers:
             prefix = "STORYTELLER_{}_{}_".format(kind.upper(), provider.upper())
             provider_config = {}
-            for key in ("type", "api_key", "model", "endpoint", "base_url"):
+            for key in (
+                "type",
+                "api_key",
+                "model",
+                "endpoint",
+                "base_url",
+                "resource_id",
+            ):
                 value = os.getenv(prefix + key.upper())
                 if value:
                     provider_config[key] = value

@@ -24,6 +24,7 @@ htmlcov/
 # Outputs
 outputs/
 projects/
+sounds/
 
 # OS
 .DS_Store

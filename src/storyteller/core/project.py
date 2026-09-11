@@ -134,6 +134,10 @@ def _voice_to_dict(vc):
         "speed": vc.speed,
         "pitch": vc.pitch,
         "volume": vc.volume,
+        "name": vc.name,
+        "age": vc.age,
+        "category": vc.category,
+        "description": vc.description,
     }
 
 
@@ -149,6 +153,10 @@ def _voice_from_dict(data):
         speed=data.get("speed", 1.0),
         pitch=data.get("pitch", 1.0),
         volume=data.get("volume", 1.0),
+        name=data.get("name"),
+        age=data.get("age"),
+        category=data.get("category"),
+        description=data.get("description"),
     )
 
 
@@ -166,6 +174,9 @@ def _sound_to_dict(sfx):
         "duration": sfx.duration,
         "fade_in": sfx.fade_in,
         "fade_out": sfx.fade_out,
+        "prompt": sfx.prompt,
+        "description": sfx.description,
+        "tags": list(sfx.tags or []),
     }
 
 
@@ -183,6 +194,9 @@ def _sound_from_dict(data):
         duration=data.get("duration"),
         fade_in=data.get("fade_in", 0.0),
         fade_out=data.get("fade_out", 0.0),
+        prompt=data.get("prompt"),
+        description=data.get("description"),
+        tags=list(data.get("tags", []) or []),
     )
 
 

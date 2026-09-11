@@ -52,12 +52,23 @@ class MockLLMProvider(BaseProvider, LLMProvider):
     def __init__(self, config):
         super().__init__(config)
         self._response = json.dumps(DEFAULT_SCRIPT, ensure_ascii=False)
+        self._responses = None
         self._error = None
         self.calls = []
 
     def set_response(self, response):
         """Configure the text that subsequent chat() calls return."""
         self._response = response
+        self._responses = None
+
+    def set_responses(self, responses):
+        """Configure a queue of responses returned in call order.
+
+        Once exhausted, the last response is repeated. Used when one
+        operation makes several LLM calls (e.g. classify then pick).
+        """
+        self._responses = list(responses)
+        self._response = self._responses[-1] if responses else None
 
     def set_error(self, error):
         """Configure an error that subsequent chat() calls raise."""
@@ -74,6 +85,9 @@ class MockLLMProvider(BaseProvider, LLMProvider):
         )
         if self._error is not None:
             raise self._error
+        if self._responses is not None:
+            # Pop the next queued response; keep (repeat) the last one.
+            return self._responses.pop(0) if len(self._responses) > 1 else self._responses[0]
         return self._response
 
     def complete(self, prompt, temperature=0.7, max_tokens=None, **kwargs):

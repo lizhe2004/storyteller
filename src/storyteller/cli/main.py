@@ -62,6 +62,12 @@ def _apply_options(config, **kwargs):
         config.set("strict_mode", True)
     if kwargs.get("output_format"):
         config.set("output_format", kwargs["output_format"])
+    if kwargs.get("voice_matcher"):
+        config.set("voice_matcher", kwargs["voice_matcher"])
+    if kwargs.get("with_sfx"):
+        config.set("sound.enabled", True)
+    if kwargs.get("sound_dir"):
+        config.set("sound.dir", kwargs["sound_dir"])
     return config
 
 
@@ -96,6 +102,18 @@ def _build_pipeline(**options):
 @click.option("--log-level", default=None)
 @click.option("--progress", type=click.Choice(["quiet", "simple", "detailed"]), default=None)
 @click.option("--strict-mode", is_flag=True)
+@click.option(
+    "--voice-matcher",
+    type=click.Choice(["llm", "rule"]),
+    default=None,
+    help="音色匹配方式：llm 语义匹配（默认）或 rule 规则匹配",
+)
+@click.option(
+    "--with-sfx",
+    is_flag=True,
+    help="生成音效与背景音乐并自动混音（seed-audio，结果缓存到音效库）",
+)
+@click.option("--sound-dir", default=None, help="全局音效库目录（默认 ./sounds）")
 def generate(
     topic,
     length,
@@ -123,8 +141,11 @@ def generate(
         kwargs["voice_ids"] = {v.strip() for v in voice_ids.split(",") if v.strip()}
 
     if dry_run:
-        script = _dry_run_script(pipeline, topic, length, complexity)
+        script, script_path = pipeline.draft_script(
+            topic, length=length, complexity=complexity
+        )
         click.echo("Dry-run 剧本生成完成：{}".format(script.title))
+        click.echo("剧本已保存：{}".format(script_path))
         return
 
     try:
@@ -140,14 +161,6 @@ def generate(
     click.echo("Done! Output: {}".format(output_path))
 
 
-def _dry_run_script(pipeline, topic, length, complexity):
-    from ..core.story_generator import StoryGenerator
-
-    llm = pipeline._get_default_llm()
-    generator = StoryGenerator(llm)
-    return generator.generate_script(topic, length, complexity)
-
-
 # ========== continue ==========
 @cli.command(name="continue")
 @click.argument("project_id")
@@ -157,6 +170,18 @@ def _dry_run_script(pipeline, topic, length, complexity):
 @click.option("--output-dir", "-o", default=None)
 @click.option("--project-dir", default=None)
 @click.option("--strict-mode", is_flag=True)
+@click.option(
+    "--voice-matcher",
+    type=click.Choice(["llm", "rule"]),
+    default=None,
+    help="音色匹配方式：llm 语义匹配（默认）或 rule 规则匹配",
+)
+@click.option(
+    "--with-sfx",
+    is_flag=True,
+    help="生成音效与背景音乐并自动混音（seed-audio，结果缓存到音效库）",
+)
+@click.option("--sound-dir", default=None, help="全局音效库目录（默认 ./sounds）")
 def continue_(project_id, **options):
     """从断点继续一个项目。"""
     pipeline = _build_pipeline(**options)
@@ -225,6 +250,84 @@ def list_voices(tts_providers):
 
 
 # Note: The continue command is registered with name="continue" above.
+
+
+# ========== make-sound ==========
+@cli.command(name="make-sound")
+@click.argument("prompt")
+@click.option("--name", default=None, help="音效名称（默认取提示词开头）")
+@click.option(
+    "--kind",
+    type=click.Choice(["sfx", "ambient", "music"]),
+    default="sfx",
+    help="类型：sfx 短促音效 / ambient 环境声 / music 音乐",
+)
+@click.option("--description", default="", help="这条音效的描述（便于检索复用）")
+@click.option("--tags", default="", help="逗号分隔的标签")
+@click.option("--format", "audio_format", default="mp3", help="输出格式 mp3/wav")
+@click.option("--sound-dir", default=None, help="全局音效库目录（默认 ./sounds）")
+def make_sound(prompt, name, kind, description, tags, audio_format, sound_dir):
+    """用文字提示生成/复用一个音效，写入全局音效库。"""
+    config = Config.from_env()
+    if sound_dir:
+        config.set("sound.dir", sound_dir)
+
+    from ..core.sound_library import SoundLibrary
+    from ..providers.volcengine.sfx import VolcengineSoundProvider
+
+    library = SoundLibrary(config.get("sound.dir") or "./sounds")
+    try:
+        provider = VolcengineSoundProvider(config)
+        path, record, created = library.get_or_create(
+            provider,
+            prompt=prompt,
+            name=name or prompt[:12],
+            kind=kind,
+            description=description,
+            tags=[t.strip() for t in tags.split(",") if t.strip()],
+            audio_format=audio_format,
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc))
+
+    if created:
+        click.echo("Generated: {}".format(path))
+    else:
+        click.echo("Cache hit (no API call): {}".format(path))
+    click.echo("Name: {}  kind: {}".format(record["name"], record["kind"]))
+
+
+# ========== list-sounds ==========
+@cli.command(name="list-sounds")
+@click.argument("query", required=False, default=None)
+@click.option(
+    "--kind",
+    type=click.Choice(["sfx", "ambient", "music"]),
+    default=None,
+    help="只列出指定类型",
+)
+@click.option("--sound-dir", default=None, help="全局音效库目录（默认 ./sounds）")
+def list_sounds(query, kind, sound_dir):
+    """列出音效库中的音效，可按关键字检索。"""
+    from ..core.sound_library import SoundLibrary
+
+    config = Config.from_env()
+    root = sound_dir or config.get("sound.dir") or "./sounds"
+    library = SoundLibrary(root)
+    records = library.search(query, kind=kind) if (query or kind) else library.all()
+    if not records:
+        click.echo("音效库为空或没有匹配项：{}".format(root))
+        return
+    for record in records:
+        click.echo(
+            "{}  [{}]  {}  —  {}".format(
+                record.get("id"),
+                record.get("kind"),
+                record.get("name"),
+                record.get("description") or record.get("prompt", ""),
+            )
+        )
+        click.echo("    {}".format(library.path_for(record)))
 
 
 if __name__ == "__main__":

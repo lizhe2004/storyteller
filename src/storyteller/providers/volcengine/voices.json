@@ -1,0 +1,3523 @@
+{
+  "default_resource_id": "seed-tts-2.0",
+  "count": 249,
+  "voices": [
+    {
+      "voice_id": "zh_female_shaoergushi_uranus_bigtts",
+      "name": "少儿故事",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "语调活泼、声线亲切，适配儿童故事的治愈女声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_xiaoxue_uranus_bigtts",
+      "name": "儿童绘本",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "清甜讲述者，充满童趣与耐心，为孩子编织美好梦境",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_xiaohe_uranus_bigtts",
+      "name": "小何",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "声线甜美有活力的妹妹，活泼开朗，笑容明媚。",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_xinlingjitang_uranus_bigtts",
+      "name": "心灵鸡汤",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "语调温暖、语气治愈，充满正能量的女声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_m191_uranus_bigtts",
+      "name": "云舟",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "声音磁性的男生，成熟理性，做事有条理，让人信赖。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_ruyagongzi_tob",
+      "name": "儒雅公子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "风度翩翩的温文公子，性格坚定又沉稳",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_ruyaqingnian_uranus_bigtts",
+      "name": "儒雅青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "语调温润、咬字文雅，书卷气十足的知性男声",
+      "tags": [
+        "番茄小说同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_neiliancaijun_tob",
+      "name": "内敛才俊",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "细心又贴心的少年，性格温暖又内敛",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_kuailexiaodong_uranus_bigtts",
+      "name": "快乐小东",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "语调明快、声线阳光，元气满满的青年男声",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_youyoujunzi_uranus_bigtts",
+      "name": "悠悠君子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "语调温润、声线清雅，书卷气十足的君子音",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_shenyeboke_uranus_bigtts",
+      "name": "深夜播客",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "语调舒缓、情感细腻，适配深夜陪伴的多情感男声，氛围感拉满",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_gaolengchenwen_uranus_bigtts",
+      "name": "高冷沉稳",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "声线清冷、语调平缓，冷静克制的成熟男声",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_wennuanshaonian_tob",
+      "name": "温暖少年",
+      "gender": "male",
+      "age": "teen",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "温柔清澈的体贴少年，待人谦和有礼",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_xuanyijieshuo_uranus_bigtts",
+      "name": "悬疑解说",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "语调低沉、语气神秘，自带悬疑氛围感的男声",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_qingcang_uranus_bigtts",
+      "name": "擎苍",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "声线雄浑厚重、气势磅礴，充满力量感的霸气男声",
+      "tags": [
+        "番茄小说同款",
+        "豆包同款",
+        "抖音同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_baqiqingshu_uranus_bigtts",
+      "name": "霸气青叔",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "narrator",
+      "category": "有声阅读",
+      "description": "声线浑厚成熟、气场强大，阅历感十足的叔音",
+      "tags": [
+        "番茄小说同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_peiqi_uranus_bigtts",
+      "name": "佩奇猪",
+      "gender": "female",
+      "age": "child",
+      "voice_type": "child",
+      "category": "视频配音",
+      "description": "活泼童趣，天真烂漫，可爱治愈",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_yuanqitianmei_tob",
+      "name": "元气甜妹",
+      "gender": "female",
+      "age": "child",
+      "voice_type": "child",
+      "category": "通用场景",
+      "description": "可爱的元气甜妹，性格活泼，举动讨喜。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_mengyatou_uranus_bigtts",
+      "name": "萌丫头",
+      "gender": "female",
+      "age": "child",
+      "voice_type": "child",
+      "category": "通用场景",
+      "description": "声线软萌稚嫩、语气娇俏，元气满满的萝莉音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_liangsangmengzai_uranus_bigtts",
+      "name": "亮嗓萌仔",
+      "gender": "male",
+      "age": "child",
+      "voice_type": "child",
+      "category": "通用场景",
+      "description": "声线清亮稚嫩、元气满满，活泼开朗的童声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_tiancaitongsheng_uranus_bigtts",
+      "name": "天才童声",
+      "gender": "male",
+      "age": "child",
+      "voice_type": "child",
+      "category": "通用场景",
+      "description": "声线清亮稚嫩、天赋感拉满，灵动清澈的童声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_lanyinmianbao_uranus_bigtts",
+      "name": "懒音绵宝",
+      "gender": "male",
+      "age": "child",
+      "voice_type": "child",
+      "category": "通用场景",
+      "description": "语调慵懒软糯、声线软绵，自带慵懒感的儿童音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_tvbnv_uranus_bigtts",
+      "name": "TVB女声",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "视频配音",
+      "description": "港风韵味十足，咬字利落、语调干练，自带经典港剧旁白质感的御姐音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_yingyujiaoxue_uranus_bigtts",
+      "name": "Tina老师",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "教学场景",
+      "description": "磁性知性的青年讲师，温柔耐心，专业靠谱",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_vv_uranus_bigtts",
+      "name": "Vivi",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调平稳、咬字柔和、自带治愈安抚力的女声音色",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_qinqienv_uranus_bigtts",
+      "name": "亲切女声",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调温柔、语气亲切，像家人般暖心的治愈女声",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_qiaopinv_uranus_bigtts",
+      "name": "俏皮女声",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调灵动跳脱、元气满满，古灵精怪的少女音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_aojiaonvyou_tob",
+      "name": "傲娇女友",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "傲娇小姐姐，敏感爱任性，高冷外表下藏柔软",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_chuliannvyou_tob",
+      "name": "初恋女友",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "元气明亮的女生，邻家妹妹般灵动甜美，惹人喜欢。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_gufengshaoyu_uranus_bigtts",
+      "name": "古风少御",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "视频配音",
+      "description": "语调婉转、声线清冷，自带古典韵味的声音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_wumeikeren_tob",
+      "name": "妩媚可人",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "性感妩媚的姐姐，性格邪魅成熟，充满女人味。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_wumeiyujie_tob",
+      "name": "妩媚御姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "妩媚美人，风情万种超迷人，性格妩媚却谦和",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_jiaochuannv_uranus_bigtts",
+      "name": "娇喘女声",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调软糯、语气娇柔，自带氛围感的甜妹音",
+      "tags": [
+        "抖音同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_jiaohannvwang_tob",
+      "name": "娇憨女王",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "腹黑性感女王，又是傲娇任性的笨蛋美人，很有反差感",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_kailangjiejie_uranus_bigtts",
+      "name": "开朗姐姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调明快、声线爽朗，阳光开朗的大姐姐音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_xingganyujie_tob",
+      "name": "性感御姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "性感御姐，魅惑优雅，成熟独立有魅力",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_xingganmeihuo_tob",
+      "name": "性感魅惑",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "性感的魅惑姐姐，明艳动人，待人热情",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_ganmaodianyin_uranus_bigtts",
+      "name": "感冒电音姐姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线沙哑慵懒、自带电音，风格独特的御姐音",
+      "tags": [
+        "抖音同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_chengshujiejie_tob",
+      "name": "成熟姐姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "御姐型女强人，知性干练又坚定，为人靠谱",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_chengshuwenrou_tob",
+      "name": "成熟温柔",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线温润成熟的陪伴者，温柔有魅力。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_sajiaoxuemei_uranus_bigtts",
+      "name": "撒娇学妹",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "嗲甜软萌的可爱妹妹，灵动娇气，活泼讨喜",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_wenjingmaomao_uranus_bigtts",
+      "name": "文静毛毛",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调轻柔、声线软萌，安静乖巧的萝莉音",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_chunribu_uranus_bigtts",
+      "name": "春日部姐姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线元气、语气活泼，古灵精怪的大姐姐音",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_nuanxinxuejie_tob",
+      "name": "暖心学姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "温暖明亮的知性学姐，阳光热情，坦诚直率",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_linxiao_uranus_bigtts",
+      "name": "林潇",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线清冷干净、语调沉稳，气质清冷的青年女声",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_roumeinvyou_uranus_bigtts",
+      "name": "柔美女友",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调软糯、语气娇柔，像女友般贴心的治愈女声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_rouguhunshi_tob",
+      "name": "柔骨魂师",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "柔骨铮铮的魂师，专情柔韧，只对你不设防。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_liuchangnv_uranus_bigtts",
+      "name": "流畅女声",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "视频配音",
+      "description": "温暖爽朗的小妹，阳光热情，性格直爽好相处",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_qinglenggaoya_tob",
+      "name": "清冷高雅",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "清冷高雅的隐士，淡泊疏离。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_qingxinnvsheng_uranus_bigtts",
+      "name": "清新女声",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "气质出众的旗袍美人兼职场精英，明媚大方，魅力十足",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_qingchezizi_uranus_bigtts",
+      "name": "清澈梓梓",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "声线清澈干净、语调温柔，气质纯净的少年音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_wenrounvshen_tob",
+      "name": "温柔女神",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "声线知性温柔的女神，气质温婉动人，温暖知性。",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_wenrouxiaoya_uranus_bigtts",
+      "name": "温柔小雅",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调轻柔、咬字温婉，气质娴静的淑女音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_wenrouwenya_tob",
+      "name": "温柔文雅",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "儒雅古风大小姐，温婉柔和，举手投足尽显典雅。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_wenroushunv_uranus_bigtts",
+      "name": "温柔淑女",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调轻柔、咬字温婉，气质娴静的淑女音，自带大家闺秀的温婉感",
+      "tags": [
+        "番茄小说同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_wenroubaiyueguang_tob",
+      "name": "温柔白月光",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "成熟温柔的邻家大姐姐，平易近人，性格坦率真诚。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_shuangkuaisisi_uranus_bigtts",
+      "name": "爽快思思",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "温暖直爽的邻家小妹，阳光热情，相处轻松自在",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_lingling_uranus_bigtts",
+      "name": "玲玲姐姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "语调温柔、语气亲切，像邻家姐姐般暖心的治愈女声",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_tianmeijiaoqiao_tob",
+      "name": "甜美娇俏",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线甜美娇俏的少女，灵动直率。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_tianmeixiaoyuan_uranus_bigtts",
+      "name": "甜美小源",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "声线明亮甜美的专业客服，亲切耐心，服务细致周到",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_tianmeiyueyue_uranus_bigtts",
+      "name": "甜美悦悦",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "声线甜美软糯、语气娇俏，元气满满的甜妹音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_tianmeitaozi_uranus_bigtts",
+      "name": "甜美桃子",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "俏皮元气女生，开朗外向，自带活跃气氛的感染力",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_tianmeihuopo_tob",
+      "name": "甜美活泼",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线清甜灵动的少女，活泼乐观，充满治愈。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_bingjiaojiejie_tob",
+      "name": "病娇姐姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "病弱的姐姐，懦弱深情，极具破碎感，让人心疼",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_zhishuaiyingzi_uranus_bigtts",
+      "name": "直率英子",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线爽朗、语气直白，性格飒爽不扭捏的直球女声",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_zhixinjiejie_tob",
+      "name": "知心姐姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "优雅的知心姐姐，温柔治愈、善解人意。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_zhixingnv_uranus_bigtts",
+      "name": "知性女声",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调沉稳、咬字清晰，气质知性的成熟女声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_zhixingwenwan_tob",
+      "name": "知性温婉",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "秀外慧中的美女姐姐，性格恬静淡然，心思细腻真挚。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_cancan_uranus_bigtts",
+      "name": "知性灿灿",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "语气温柔舒缓，软糯但有善解人意的治愈系少女音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_jinglingxiangdao_tob",
+      "name": "精灵向导",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "元气带夹子音的少女，性格甜美可爱，活泼又开朗。",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_chunchenvsheng_tob",
+      "name": "纯澈女生",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "声线温柔成熟的女生，性格治愈，待人温和又亲切。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_chunzhenshaonv_tob",
+      "name": "纯真少女",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "清冷稳重的纯真少女，自带治愈感，气质干净纯粹。",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_chanmeinv_uranus_bigtts",
+      "name": "谄媚女声",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调软糯、语气讨好，自带逢迎感的女声",
+      "tags": [
+        "抖音同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_tiexinnvyou_tob",
+      "name": "贴心女友",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "暖心温柔的明眸皓齿小姐姐，对人温柔体贴，心思细腻。",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_tiexinnvsheng_uranus_bigtts",
+      "name": "贴心女声",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调温柔、语气亲切，像闺蜜般贴心的治愈女声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_tiexinmeimei_tob",
+      "name": "贴心妹妹",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "声线甜美有活力的妹妹，活泼开朗，笑容明媚。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_tiexinguimi_tob",
+      "name": "贴心闺蜜",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "温暖治愈的女生，是贴心的闺蜜，永远站在你身边。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_xiemeiyujie_tob",
+      "name": "邪魅御姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "性感优雅且风情万种的御姐，嚣张自信，成熟妩媚。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_linjianvhai_uranus_bigtts",
+      "name": "邻家女孩",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "软糯温柔的邻家女孩，低调内敛，耐心亲和",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_gujie_uranus_bigtts",
+      "name": "顾姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线干练、气场强大，飒爽独立的大女主音",
+      "tags": [
+        "抖音同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_gaolengyujie_uranus_bigtts",
+      "name": "高冷御姐",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "声线清冷疏离、气场强大，冷静干练的御姐音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_meilinvyou_uranus_bigtts",
+      "name": "魅力女友",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "性感妩媚的御姐，成熟有魅力，风情十足",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_sophie_uranus_bigtts",
+      "name": "魅力苏菲",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "高冷御姐，外表疏离难亲近，内心却细腻柔软",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_jitangnv_uranus_bigtts",
+      "name": "鸡汤女",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "视频配音",
+      "description": "声音治愈的知心姐姐，温柔体贴，擅长倾听与理解",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_jitangmei_uranus_bigtts",
+      "name": "鸡汤妹妹",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调温暖、语气治愈，充满正能量的甜妹音",
+      "tags": [
+        "抖音同款",
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_mizai_uranus_bigtts",
+      "name": "黑猫侦探社咪仔",
+      "gender": "female",
+      "age": "young_adult",
+      "voice_type": "female",
+      "category": "视频配音",
+      "description": "声线稳重优雅的知心姐姐，温暖亲和，善于陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_qingxinshaonv_tob",
+      "name": "倾心少女",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "视频配音",
+      "description": "说话软乎乎的乖巧女孩，天真呆萌很讨喜",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_jiaxiaozi_tob",
+      "name": "假小子",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "直率果敢的校园假小子，豪爽大胆超有范儿",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_aomanjiaosheng_tob",
+      "name": "傲慢娇声",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "腹黑傲娇的大小姐，娇气自满，自带优越感",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_keainvsheng_tob",
+      "name": "可爱女生",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "甜美的漫画少女，天真活泼，满是热情",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_jiaoruoluoli_tob",
+      "name": "娇弱萝莉",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "呆萌羞怯的小女孩，双马尾发型，娇小玲珑，懵懂胆小",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_yingtaowanzi_uranus_bigtts",
+      "name": "樱桃丸子",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线稚嫩灵动、语气娇俏，古灵精怪的萝莉音，完美还原动画角色的元气感",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_huopodiaoman_tob",
+      "name": "活泼刁蛮",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "傲娇酷拽的小公主，明眸皓齿，天真灵动",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_huoponvhai_tob",
+      "name": "活泼女孩",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "明亮天真的甜美女友，阳光活泼，满是活力",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_bingjiaomengmei_tob",
+      "name": "病娇萌妹",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "破碎感美人，偏执但纯真呆萌，惹人怜惜",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_bingruoshaonv_tob",
+      "name": "病弱少女",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "稚气可爱的妹妹，懦弱谦虚，语气轻柔，让人充满保护欲",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_tiaopigongzhu_tob",
+      "name": "调皮公主",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "娇俏公主，古灵精怪，偶尔娇气带点小自大",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_xiemeinvwang_tob",
+      "name": "邪魅女王",
+      "gender": "female",
+      "age": "teen",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "邪魅残酷的病娇女孩，气质魅惑，行事带着几分残忍",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_nvleishen_uranus_bigtts",
+      "name": "女雷神",
+      "gender": "female",
+      "age": "middle_aged",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线雄浑、气场拉满，充满力量感的御姐音",
+      "tags": [
+        "剪映同款",
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_wuzetian_uranus_bigtts",
+      "name": "武则天",
+      "gender": "female",
+      "age": "middle_aged",
+      "voice_type": "female",
+      "category": "角色扮演",
+      "description": "声线威严、气场拉满，自带帝王霸气的御姐音",
+      "tags": [
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_wenroumama_uranus_bigtts",
+      "name": "温柔妈妈",
+      "gender": "female",
+      "age": "middle_aged",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调舒缓、咬字温润，自带母性柔光的治愈女声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_linjuayi_tob",
+      "name": "邻居阿姨",
+      "gender": "female",
+      "age": "middle_aged",
+      "voice_type": "female",
+      "category": "视频配音",
+      "description": "温暖成熟的中年阿姨，兼具知性气质，待人耐心和善",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_female_heainainai_tob",
+      "name": "和蔼奶奶",
+      "gender": "female",
+      "age": "senior",
+      "voice_type": "female",
+      "category": "视频配音",
+      "description": "慈祥的老奶奶，耐心亲切，散发着岁月沉淀的温柔",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_female_popo_uranus_bigtts",
+      "name": "婆婆",
+      "gender": "female",
+      "age": "senior",
+      "voice_type": "female",
+      "category": "通用场景",
+      "description": "语调舒缓、声线慈祥，自带岁月感的长辈女声",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_bujiqingnian_tob",
+      "name": "不羁青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "干净阳光的乐观青年，性格阳光积极，行事潇洒自在",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_dongfanghaoran_uranus_bigtts",
+      "name": "东方浩然",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "",
+      "description": "声线雄浑、气场强大，正气凛然的成熟男声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_zhongerqingnian_tob",
+      "name": "中二青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "张扬清亮的自信青年，性格自信傲慢，行事格外张扬",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_qinqieqingnian_tob",
+      "name": "亲切青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "干净清亮的男友，善解人意，温暖斯文又亲切",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_zhangjianxiake_tob",
+      "name": "仗剑侠客",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清亮坚决的侠客，乐于助人，行事果敢，面对困境不动摇",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_zhangjianjunzi_tob",
+      "name": "仗剑君子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声音低沉的热心公子，果敢直爽，沉稳坚定",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_yourougongzi_tob",
+      "name": "优柔公子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "低沉带气泡感的温润小哥，难掩如玉气质",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_youroubangzhu_tob",
+      "name": "优柔帮主",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "气泡音少帮主，性格优柔寡断，难下决定",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_dichenqianquan_tob",
+      "name": "低沉缱绻",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声线低沉缱绻的恋人，深情专注，温柔眷恋。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_diyinchenyu_tob",
+      "name": "低音沉郁",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "高冷沉稳又成熟的霸道总裁，气质酷拽，思考与行事理性",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_junyigongzi_tob",
+      "name": "俊逸公子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "风度翩翩的公子，为人潇洒直率，举手投足尽显优雅",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_aojiaogongzi_tob",
+      "name": "傲娇公子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑果决的傲娇公子，音色清亮干脆，直爽潇洒",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_aojiaojingying_tob",
+      "name": "傲娇精英",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "高冷沉稳的傲娇男，身为精英却口是心非，性格内敛",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_aomanshaoye_tob",
+      "name": "傲慢少爷",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "残暴自私的傲慢青年，说话做事都比较强势",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_aomanqingnian_tob",
+      "name": "傲慢青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "明亮张扬的富家公子哥，性格傲慢嚣张，自带优越感",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_aoqilingren_tob",
+      "name": "傲气凌人",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑酷拽的男三号，倨傲无礼，行事残暴",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_ruyajunzi_tob",
+      "name": "儒雅君子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "儒雅温柔的温文青年，性格温柔细心，为人内敛谦和",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_ruyazongcai_tob",
+      "name": "儒雅总裁",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "浑厚磁性的儒雅上司，性格耐心温柔，做事坚定可靠",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_ruyayichen_uranus_bigtts",
+      "name": "儒雅逸辰",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "视频配音",
+      "description": "低沉优雅的稳重青年，温柔成熟，儒雅得体",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_yuanqishaonian_tob",
+      "name": "元气少年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "极具少年感阳光男大，声音清澈，性格直爽乐观",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lengaozongcai_tob",
+      "name": "冷傲总裁",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "高冷毒蛇总裁，性格孤傲，冷酷理性",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lengjunshangsi_tob",
+      "name": "冷峻上司",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "高冷稳重的霸道总裁，理性又果断",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lengjungaozhi_tob",
+      "name": "冷峻高智",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "张扬直爽的高冷侦探，性格耐心温柔，做事乐观积极",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lengdanshuli_tob",
+      "name": "冷淡疏离",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "高冷的冰山青年，孤傲淡漠，自带疏离感，生人勿近",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lengmoxiongzhang_tob",
+      "name": "冷漠兄长",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "低沉稳重的高冷青年，作为冷漠兄长，性格高冷却细心",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lengmonanyou_tob",
+      "name": "冷漠男友",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "浑厚磁性的冷漠男，酷拽高冷，处事格外内敛",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lenglianxiongzhang_tob",
+      "name": "冷脸兄长",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "低沉稳重的冷脸兄长，性格高冷却很细心",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lenglianxueba_tob",
+      "name": "冷脸学霸",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "沉稳低沉的高冷侦探，性格从容包容，做事理性有条理",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lengkugege_tob",
+      "name": "冷酷哥哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "腹黑又傲娇的青年，看似高冷，实则嘴硬心软。",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lingyunqingnian_tob",
+      "name": "凌云青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "低沉浑厚的冷酷总裁，性格高冷理性，做事坚定有魄力",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_liufei_uranus_bigtts",
+      "name": "刘飞",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "逻辑清晰、理性稳重的男性",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_fanjuanqingnian_uranus_bigtts",
+      "name": "反卷青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "语气松弛随性、语调慵懒，佛系通透的青年音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_paoxiaoxiaoge_tob",
+      "name": "咆哮小哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "视频配音",
+      "description": "凶冷低沉的咆哮青年，性格冷酷带侵略性",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_xiaozhangxiaoge_tob",
+      "name": "嚣张小哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "张扬跋扈的小哥，嚣张自信，性格有些傲慢。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_guzhibingjiao_tob",
+      "name": "固执病娇",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑的病娇男主，偏执乖戾，占有欲强",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_dayi_uranus_bigtts",
+      "name": "大壹",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "视频配音",
+      "description": "历经世事的沉稳大叔，果敢可靠，让人安心信赖",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_tiancaitongzhuo_tob",
+      "name": "天才同桌",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清冷干净的学霸，内敛理性且稳重，嘴硬心软",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_naiqixiaosheng_tob",
+      "name": "奶气小生",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "少年感阳光奶狗高中生，阳光直率，充满活力。",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_guaogongzi_tob",
+      "name": "孤傲公子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "充满少年感的高冷青年，性格孤傲高冷，却很自信。",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_gugaogongzi_tob",
+      "name": "孤高公子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑果决的傲娇公子，直爽潇洒，做事果敢坚定",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_xuebatongzhuo_tob",
+      "name": "学霸同桌",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "低沉浑厚的暖心学霸，性格乐观积极，做事积极向上",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_chanruoshaoye_tob",
+      "name": "孱弱少爷",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "有清澈少年感与温润气质的 “病怏怏公子”，温柔体贴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_guayanxiaoge_tob",
+      "name": "寡言小哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "寡言少语但温柔贴心的男生。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_xiaohouye_tob",
+      "name": "小侯爷",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "充满少年感的小公子，丰神俊朗，阳光潇洒又直率",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_taocheng_uranus_bigtts",
+      "name": "小天",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "眉目清朗男大，清澈温润有朝气，开朗真诚。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_shaonianzixin_uranus_bigtts",
+      "name": "少年梓辛",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "少年感十足的清爽男生，温柔亲切，阳光开朗",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_ganjingshaonian_tob",
+      "name": "干净少年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声音沉稳的阳光青年，稳重乐观，为人开朗通透",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_youmoshushu_tob",
+      "name": "幽默叔叔",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "帅气大叔，诙谐幽默，为人慷慨热情",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_guanggaojieshuo_uranus_bigtts",
+      "name": "广告解说",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "语调明快、感染力拉满，专业感十足的解说音",
+      "tags": [
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_zhuangzhou_uranus_bigtts",
+      "name": "庄周",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "语调慵懒、声线空灵，自带仙气的清冷男声",
+      "tags": [
+        "抖音同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_kailangxuezhang_uranus_bigtts",
+      "name": "开朗学长",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "声线阳光、语气爽朗，阳光开朗的学长音",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_kailangdidi_uranus_bigtts",
+      "name": "开朗弟弟",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "声线阳光、语气活泼，元气满满的少年音，像邻家弟弟般亲切治愈",
+      "tags": [
+        "抖音同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_kailangqingkuai_tob",
+      "name": "开朗轻快",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "充满活力的新时代打工人，开朗乐观，豁达通透。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_kailangqingnian_tob",
+      "name": "开朗青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "低沉活泼的贴心男友，性格开朗阳光，做事细心周到",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_yiqishaonian_tob",
+      "name": "意气少年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "直率带少年感的有志青年，性格坚定积极，待人温柔",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_hanhoudunshi_tob",
+      "name": "憨厚敦实",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "呆萌喜感的憨厚大哥，质朴又善良，有亲和力",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_mengdongqingnian_tob",
+      "name": "懵懂青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "极具少年感的小奶狗，贴心温柔又细致",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_sajiaonanyou_tob",
+      "name": "撒娇男友",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "干净清澈的撒娇奶狗，敏感粘人又热情，格外依赖人",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_sajiaonansheng_tob",
+      "name": "撒娇男生",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "奶狗型男生，干净爱撒娇，敏感粘人，容易惹人心疼",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_sajiaonianren_tob",
+      "name": "撒娇粘人",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "温柔羞怯的小奶狗，天真细腻，会默默照顾人",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_siwenqingnian_tob",
+      "name": "斯文青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑果决的温文青年，性格温柔细心，待人耐心又周到",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_nuanxintitie_tob",
+      "name": "暖心体贴",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "温柔的帅气男生，细腻体贴，待人真挚。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_jilingxiaohuo_tob",
+      "name": "机灵小伙",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "音色成熟磁性的腹黑青年，心思缜密，善于思考。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_jijiazhineng_tob",
+      "name": "机甲智能",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "机械低沉的机甲智能，执行指令精准高效，毫无偏差",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_zhenbiandiyu_tob",
+      "name": "枕边低语",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "温暖深沉的帅气青年，温柔细心又沉稳可靠",
+      "tags": [
+        "抖音同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_zhengzhiqingnian_tob",
+      "name": "正直青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "性格稳重的理想主义青年，天真刚正，很有原则",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_chenwenyouya_tob",
+      "name": "沉稳优雅",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "睿智稳重、醇厚从容的优雅绅士。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_satuoqingnian_tob",
+      "name": "洒脱青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清亮阳光的元气青年，性格积极向上，为人乐观活泼",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_huolixiaoge_uranus_bigtts",
+      "name": "活力小哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "语速明快、声线阳光，元气满满的青年男声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_huoliqingnian_tob",
+      "name": "活力青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "俏皮活泼的年下男，嘴甜会撩，开朗乐观又热情",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_huoposhuanglang_tob",
+      "name": "活泼爽朗",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "阳光帅气的男生，性格热情豁达，做事直率真诚有担当。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_huoponanyou_tob",
+      "name": "活泼男友",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "活泼开朗的活力青年，乐观热情，浑身是劲儿",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_qinglengjingui_tob",
+      "name": "清冷矜贵",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清冷矜贵的智者，通透淡然，不迎合也不将就。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_qinglangwenrun_tob",
+      "name": "清朗温润",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "为人温暖亲切、气质清澈的男生。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_qingshuangshaonian_tob",
+      "name": "清爽少年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清爽少年感的清爽少年，性格乐观阳光，气质干净澄澈",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_qingshuangnanda_uranus_bigtts",
+      "name": "清爽男大",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "声线干净清爽、语气阳光，元气满满的大学生音",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_qingyisugan_tob",
+      "name": "清逸苏感",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清润苏感的陪伴者，温柔松弛，能抚平所有疲惫。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_yuanboxiaoshu_uranus_bigtts",
+      "name": "渊博小叔",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "声线沉稳、语调平缓，阅历感十足的叔音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_wennuanahu_uranus_bigtts",
+      "name": "温暖阿虎",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "声线阳光温暖、语气亲切，活力满满的少年音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_wenrouneilian_tob",
+      "name": "温柔内敛",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "柔和细腻的守护者，懂你的欲言又止。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_wenrouxuezhang_tob",
+      "name": "温柔学长",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "斯文帅气的邻家哥哥兼温柔学长，温柔暖心又包容",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_wenrouxiaoge_uranus_bigtts",
+      "name": "温柔小哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "语调温柔、声线干净，气质谦和的青年男声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_wenrounanyou_tob",
+      "name": "温柔男友",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "低沉儒雅的引导型年上男，坚定温柔，做事贴心周到",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_wenrunxuezhe_tob",
+      "name": "温润学者",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "专业的纪录片解说员，沉稳从容，声音浑厚",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_xiaosasuixing_tob",
+      "name": "潇洒随性",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "爽朗通透的自由派，洒脱豁达，陪你冲破束缚。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_rexueshaonian_tob",
+      "name": "热血少年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "带少年感且清澈的阳光青年，性格开朗自信，做事直率",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_shuanglangshaonian_tob",
+      "name": "爽朗少年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "沉稳阳光的运动型男，性格自信热情，做事直率爽快",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_sunwukong_uranus_bigtts",
+      "name": "猴哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "视频配音",
+      "description": "傲娇不羁的猴哥，声线经典灵动，一秒梦回西游",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_shuaizhenxiaohuo_tob",
+      "name": "率真小伙",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "暴躁心软的男生，率真坦诚，为人仗义，充满活力。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_tianxinanyou_tob",
+      "name": "甜系男友",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "低沉温暖的贴心男友，暖心温柔，心思细腻周到",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_bingjiaogege_tob",
+      "name": "病娇哥哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑傲娇的病娇哥哥，偏执敏感，多疑又易碎",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_bingjiaoshaonian_tob",
+      "name": "病娇少年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑的病娇男，性格偏执，情绪容易极端",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_bingjiaodidi_tob",
+      "name": "病娇弟弟",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑残暴的绿茶弟弟，缺爱且占有欲极强",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_bingjiaonanyou_tob",
+      "name": "病娇男友",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑低沉的病娇男友，偏执疯癫，占有欲极强",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_bingjiaobailian_tob",
+      "name": "病娇白莲",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "有点偏执的白月光男生，高颜值腹黑帅哥",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_bingruogongzi_tob",
+      "name": "病弱公子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "带少年感的病怏怏公子，沉稳温柔，自带易碎感",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_bingruoshaonian_tob",
+      "name": "病弱少年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "腹黑低沉的病娇男，体质较弱，性格偏执",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_zhishuaiqingnian_tob",
+      "name": "直率青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清澈干练的直爽青年，性格理性坚定，做事包容有分寸",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_cixingnansang_tob",
+      "name": "磁性男嗓",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "磁性浑厚的贴心男友，性格酷拽沉稳，做事理性可靠",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_cixingjieshuonan_uranus_bigtts",
+      "name": "磁性解说男声",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "声线磁性浑厚、语调沉稳，专业感拉满的解说男声",
+      "tags": [
+        "抖音同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_nianrennanyou_tob",
+      "name": "粘人男友",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "干净清澈的撒娇奶狗，敏感粘人超热情，相处甜蜜",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_jingyingqingnian_tob",
+      "name": "精英青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "稳重磁性的高冷总裁，性格坚定理性，做事沉稳果决",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_chunzhenxuedi_tob",
+      "name": "纯真学弟",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "温暖帅气的稚气学弟，赤诚热忱，待人真诚",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lvchaxiaoge_tob",
+      "name": "绿茶小哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "温柔呆萌的绿茶男，表面无害内心深沉，善于伪装",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_pianpiangongzi_tob",
+      "name": "翩翩公子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清亮酷拽的孤傲公子，性格高冷理性，做事坚定有主见",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_fuheigongzi_tob",
+      "name": "腹黑公子",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "高冷腹黑的俊朗公子，为人老成，城府极深",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_zixinqingnian_tob",
+      "name": "自信青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "稳重成熟的自信青年，性格温柔体贴，为人孤傲冷漠",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_zifuqingnian_tob",
+      "name": "自负青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "张扬明亮的富家公子哥，性格傲慢嚣张，自带强势气场",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_lanyincaohunshi_tob",
+      "name": "蓝银草魂师",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "忠诚坚韧，默默为你遮风挡雨的蓝银草魂师。",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_jieshuoxiaoming_uranus_bigtts",
+      "name": "解说小明",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "视频配音",
+      "description": "语速明快、中气十足，充满激情与感染力的解说男声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_yizhipiannan_uranus_bigtts",
+      "name": "译制片男",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "视频配音",
+      "description": "声线浑厚、语调沉稳，自带经典译制腔的磁性男声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_tiexinnanyou_tob",
+      "name": "贴心男友",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "邻家小哥哥，骑士男二型，超会照顾人",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_linjiananhai_uranus_bigtts",
+      "name": "邻家男孩",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "声线干净清爽、语气亲切，阳光开朗的少年音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_chunhoudiyin_tob",
+      "name": "醇厚低音",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "视频配音",
+      "description": "儒雅青年，性格耐心温柔，待人谦和有书卷气",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_cujingnanyou_tob",
+      "name": "醋精男友",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "有少年感、气质干净的 “爱吃醋撒娇年下男”。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_cujingnansheng_tob",
+      "name": "醋精男生",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清亮干净的年下男，醋意十足爱撒娇，性格带点傲娇任性",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_menyoupingxiaoge_tob",
+      "name": "闷油瓶小哥",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "沉稳成熟的学长，性格内敛理性，做事可靠有担当。",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_yangguangqingnian_uranus_bigtts",
+      "name": "阳光青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "声线阳光、语气开朗，充满活力的青年男声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_badaoshaoye_tob",
+      "name": "霸道少爷",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "嗓音浑厚的高冷总裁型少爷，做事理性，风格霸道",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_badaozongcai_tob",
+      "name": "霸道总裁",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "沉稳冷静的霸道总裁，性格魅惑成熟，气场强大。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_qingsexiaosheng_tob",
+      "name": "青涩小生",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "稚气未脱少年郎，赤诚热忱，温暖明亮",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_qingseqingnian_tob",
+      "name": "青涩青年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "冷酷低沉的青涩小奶狗，性格理性霸道，却很直爽",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_fengfashaonian_tob",
+      "name": "风发少年",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "充满少年感的意气风发青年，乐观积极，充满朝气",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_gaolengzongcai_tob",
+      "name": "高冷总裁",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "酷拽又成熟的霸道总裁，思考与行事理性。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_anrenqinzhu_tob",
+      "name": "黯刃秦主",
+      "gender": "male",
+      "age": "young_adult",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "低沉帅气的林霸主，性格坚定深情，行事理性稳重。",
+      "tags": [
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_naiqimengwa_uranus_bigtts",
+      "name": "奶气萌娃",
+      "gender": "male",
+      "age": "teen",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "声线软萌稚嫩、奶气十足，软糯可爱的幼童音",
+      "tags": [
+        "剪映同款",
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_xuebanantongzhuo_tob",
+      "name": "学霸男同桌",
+      "gender": "male",
+      "age": "teen",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "清爽男高兼学霸同桌，木讷内敛，却很靠谱",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_shaonianjiangjun_tob",
+      "name": "少年将军",
+      "gender": "male",
+      "age": "teen",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "沉稳冷静的少年将军，英姿飒爽有气场",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_wenrounantongzhuo_tob",
+      "name": "温柔男同桌",
+      "gender": "male",
+      "age": "teen",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "温暖帅气的翩翩少年，性格温柔善良，超治愈",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_wenshunshaonian_tob",
+      "name": "温顺少年",
+      "gender": "male",
+      "age": "teen",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "带少年感且温暖的乖巧少年，温顺斯文，让人省心",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_yangyang_tob",
+      "name": "炀炀",
+      "gender": "male",
+      "age": "teen",
+      "voice_type": "male",
+      "category": "通用场景",
+      "description": "阳光爽朗的元气小哥，语气明快有活力，自带温暖感染力。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_xionger_uranus_bigtts",
+      "name": "熊二",
+      "gender": "male",
+      "age": "teen",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声线憨厚软糯、语气呆萌，自带东北口音的可爱男声",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_lubanqihao_uranus_bigtts",
+      "name": "鲁班七号",
+      "gender": "male",
+      "age": "teen",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声线灵动跳脱、语气搞怪，完美还原游戏角色的俏皮童音",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_aojiaobazong_uranus_bigtts",
+      "name": "傲娇霸总",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "视频配音",
+      "description": "声线低沉磁性、语气强势，自带压迫感的霸总男声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_ruyacaijun_tob",
+      "name": "儒雅才俊",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "稳重儒雅大叔，温润谦虚，待人平和有礼",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_tangseng_uranus_bigtts",
+      "name": "唐僧",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "语调平缓、声线慈悲，自带禅意的高僧音",
+      "tags": [
+        "抖音同款",
+        "豆包同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_silang_uranus_bigtts",
+      "name": "四郎",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声线低沉威严、气场拉满，自带帝王霸气的成熟男声",
+      "tags": [
+        "抖音同款",
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_chengshuzongcai_tob",
+      "name": "成熟总裁",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声音苍老浑厚的董事长，沉稳可靠，自带长者威严",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_younidashu_tob",
+      "name": "油腻大叔",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "沧桑的大叔，性格张扬，十分自信爱吹牛。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_shenchenzongcai_tob",
+      "name": "深沉总裁",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声音浑厚的神秘大叔，高冷霸气，让人敬畏",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "zh_male_zhubajie_uranus_bigtts",
+      "name": "猪八戒",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声线憨厚、语气诙谐，自带喜感的男声，完美还原动画角色的憨态",
+      "tags": [
+        "豆包同款",
+        "剪映同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": true,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_shenmifashi_tob",
+      "name": "神秘法师",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "声音低沉浑厚的大叔，满是慈爱，让人信赖",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_huzishushu_tob",
+      "name": "胡子叔叔",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "历经风雨后变得沉稳的大叔，做事果敢，让人信赖。",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_guiyishenmi_tob",
+      "name": "诡异神秘",
+      "gender": "male",
+      "age": "middle_aged",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "诡异神秘的大叔，气质沧桑，自带压迫感",
+      "tags": [
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    },
+    {
+      "voice_id": "ICL_uranus_zh_male_youmodaye_tob",
+      "name": "幽默大爷",
+      "gender": "male",
+      "age": "senior",
+      "voice_type": "male",
+      "category": "角色扮演",
+      "description": "矍铄沧桑的乐观爷爷，通透豁达又从容",
+      "tags": [
+        "豆包同款",
+        "猫箱同款"
+      ],
+      "language": "zh-CN",
+      "bilingual": false,
+      "resource_id": "seed-tts-2.0"
+    }
+  ]
+}

@@ -102,3 +102,112 @@ def test_concatenate_preserves_order(tmp_path):
     combined = AudioSegment.from_wav(str(out))
     # Order: a then b -> 400 + 400 ms
     assert 790 <= len(combined) <= 810
+
+
+def _tone(path, duration_ms, freq=440, rate=16000):
+    from pydub.generators import Sine
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Sine(freq).to_audio_segment(duration=duration_ms).set_frame_rate(
+        rate
+    ).export(str(path), format="wav")
+
+
+def test_mix_background_output_matches_main_duration(tmp_path):
+    from pydub import AudioSegment
+
+    main = tmp_path / "main.wav"
+    bed = tmp_path / "bed.wav"
+    out = tmp_path / "mixed.wav"
+    _tone(main, 2000)
+    _tone(bed, 300)
+
+    processor = PydubAudioProcessor()
+    result = processor.mix_background(main, bed, out)
+
+    assert result == out
+    assert out.exists()
+    mixed = AudioSegment.from_wav(str(out))
+    # Background is looped and trimmed to the main clip length.
+    assert 1980 <= len(mixed) <= 2020
+
+
+def test_add_effects_overlays_at_offsets(tmp_path):
+    from pydub import AudioSegment
+    from storyteller.core.models import SoundEffect
+
+    main = tmp_path / "main.wav"
+    whoosh = tmp_path / "whoosh.wav"
+    out = tmp_path / "with_effects.wav"
+    _tone(main, 2000)
+    _tone(whoosh, 200, freq=880)
+
+    effect = SoundEffect(
+        effect_id="e1",
+        name="风声",
+        type="effect",
+        source_path=str(whoosh),
+        start_time=1.0,
+    )
+    processor = PydubAudioProcessor()
+    result = processor.add_effects(main, [effect], out)
+
+    assert result == out
+    assert out.exists()
+    combined = AudioSegment.from_wav(str(out))
+    assert 1980 <= len(combined) <= 2020
+
+
+def test_add_effects_skips_cues_without_source(tmp_path):
+    from storyteller.core.models import SoundEffect
+
+    main = tmp_path / "main.wav"
+    out = tmp_path / "out.wav"
+    _tone(main, 500)
+    effect = SoundEffect(
+        effect_id="e1", name="x", type="effect", source_path=None
+    )
+    processor = PydubAudioProcessor()
+    processor.add_effects(main, [effect], out)
+    assert out.exists()
+
+
+def test_add_effects_skips_near_silent_generated_clip(tmp_path):
+    from pydub import AudioSegment
+    from pydub.generators import Sine
+    from storyteller.core.models import SoundEffect
+
+    main = tmp_path / "main.wav"
+    quiet = tmp_path / "quiet.wav"
+    out = tmp_path / "out.wav"
+    _tone(main, 1000)
+    # Force the effect far below the silence threshold (~-67 dBFS).
+    Sine(880).to_audio_segment(duration=300).apply_gain(-60).export(
+        str(quiet), format="wav"
+    )
+    effect = SoundEffect(
+        effect_id="e1", name="silent", type="effect",
+        source_path=str(quiet), start_time=0.1,
+    )
+    processor = PydubAudioProcessor()
+    processor.add_effects(main, [effect], out)
+    # Output is essentially the untouched main (clip was skipped).
+    main_seg = AudioSegment.from_wav(str(main))
+    out_seg = AudioSegment.from_wav(str(out))
+    assert abs(len(out_seg) - len(main_seg)) <= 5
+
+
+def test_mix_background_normalizes_quiet_bed_to_audible_level(tmp_path):
+    from pydub import AudioSegment
+
+    main = tmp_path / "main.wav"
+    bed = tmp_path / "bed.wav"
+    out = tmp_path / "mixed.wav"
+    _tone(main, 1500)
+    _tone(bed, 250, freq=220)
+
+    processor = PydubAudioProcessor()
+    processor.mix_background(main, bed, out, bed_target_dbfs=-27)
+    mixed = AudioSegment.from_wav(str(out))
+    # Bed normalized toward -27 dBFS: present well above silence floor.
+    assert mixed.dBFS > -40
