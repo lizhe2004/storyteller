@@ -215,6 +215,7 @@ def test_generate_script_parses_inline_sound_effects():
                         "name": "雷",
                         "type": "effect",
                         "prompt": "一声闷雷",
+                        "anchor": "下雨了",
                     },
                 ],
             },
@@ -228,7 +229,38 @@ def test_generate_script_parses_inline_sound_effects():
     assert effects[0].prompt == "舒缓的下雨声，无人声"
     assert effects[0].tags == ["天气"]
     assert effects[0].source_path is None
+    assert effects[0].anchor is None  # ambient beds carry no anchor
     assert effects[1].name == "雷"
+    assert effects[1].anchor == "下雨了"
+
+
+def test_effect_anchor_not_in_text_is_dropped():
+    payload = {
+        "title": "测试",
+        "characters": [
+            {"id": "narrator", "name": "旁白", "description": "旁白"}
+        ],
+        "lines": [
+            {
+                "line_id": "1",
+                "line_type": "narration",
+                "text": "天黑了下来。",
+                "sound_effects": [
+                    {
+                        "name": "雷",
+                        "type": "effect",
+                        "prompt": "一声闷雷，无人声",
+                        # Paraphrase, not a verbatim substring of the text.
+                        "anchor": "天空中打雷",
+                    },
+                ],
+            },
+        ],
+    }
+    generator, _ = _make_generator(json.dumps(payload, ensure_ascii=False))
+    script = generator.generate_script(topic="测试")
+    cue = script.lines[0].sound_effects[0]
+    assert cue.anchor is None
 
 
 def test_sound_cue_without_prompt_is_dropped():

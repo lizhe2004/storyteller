@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +11,14 @@ from .story_generator import StoryGenerator
 
 # Script SoundEffect.type -> SoundLibrary kind.
 _KIND_FOR_TYPE = {"effect": "sfx", "ambient": "ambient", "music": "music"}
+
+# Punctuation/whitespace ignored when estimating an anchor's spoken position.
+_PUNCT_RE = re.compile(r"[\s，。！？；：、,…,.\!?;:\-—“”\"'（）()…]")
+
+
+def _count_spoken(text):
+    """Count spoken characters (exclude punctuation/whitespace) for timing."""
+    return len(_PUNCT_RE.sub("", text or ""))
 
 
 class Pipeline:
@@ -378,57 +387,105 @@ class Pipeline:
         from .audio import PydubAudioProcessor
 
         processor = PydubAudioProcessor()
-        offsets = self._line_offsets(state, output_path.suffix.lstrip("."))
+        timing = self._line_timing(
+            state, output_path.suffix.lstrip(".")
+        )
 
-        # Position every line-scoped cue at the start of its line.
-        effects = []
+        # One cue group per line. Punctual effects with an anchor phrase are
+        # offset to where that phrase is spoken inside the line; ambience and
+        # unanchored cues start at the head. Every cue is still cut at the
+        # line's end so a long bed cannot continue into the next line.
+        groups = []
         for line in script.lines:
-            offset = offsets.get(line.line_id, 0.0)
-            for cue in line.sound_effects:
-                if cue.source_path:
-                    cue.start_time = offset
-                    effects.append(cue)
-            if line.background_music is not None and line.background_music.source_path:
-                line.background_music.start_time = offset
-                effects.append(line.background_music)
-        effects.extend(c for c in script.sound_effects if c.source_path)
+            start, duration = timing.get(line.line_id, (0.0, 0.0))
+            cues = list(line.sound_effects)
+            if line.background_music is not None:
+                cues.append(line.background_music)
+            cues = [c for c in cues if c.source_path]
+            if cues:
+                entries = [
+                    (c, self._anchor_offset(line, c, duration)) for c in cues
+                ]
+                groups.append((start, duration, entries))
+        # Script-scoped cues have no owning line: play from the start without
+        # a line-end trim.
+        top_cues = [c for c in script.sound_effects if c.source_path]
+        if top_cues:
+            groups.append((0.0, None, [(c, 0.0) for c in top_cues]))
 
         working_path = output_path
-        if script.background_music is not None and script.background_music.source_path:
-            working_path = output_path.with_name(
-                "{}.bgm{}".format(output_path.stem, output_path.suffix)
-            )
-            processor.mix_background(
-                output_path, script.background_music.source_path, working_path
-            )
+        # 临时关闭：背景音乐不混入最终文件（仅保留音效叠加），需要时恢复。
+        # if script.background_music is not None and script.background_music.source_path:
+        #     working_path = output_path.with_name(
+        #         "{}.bgm{}".format(output_path.stem, output_path.suffix)
+        #     )
+        #     processor.mix_background(
+        #         output_path, script.background_music.source_path, working_path
+        #     )
 
-        if effects:
-            processor.add_effects(working_path, effects, output_path)
+        if groups:
+            processor.add_effect_groups(
+                working_path, groups, output_path
+            )
             if working_path != output_path and working_path.exists():
                 working_path.unlink()
         elif working_path != output_path:
             working_path.replace(output_path)
 
-    def _line_offsets(self, state, output_format):
-        """Map line_id -> start offset (seconds) in the concatenated audio."""
+    @staticmethod
+    def _anchor_offset(line, cue, line_duration):
+        """Estimate where inside its line a punctual effect should fire.
+
+        TTS returns no word timestamps, so locate the cue's verbatim anchor in
+        the spoken text and scale its character position by the line's real
+        audio duration. Character counts exclude punctuation, which folds
+        pause time into the proportional estimate proportionally; per-line
+        self-calibration tolerates varying speech rates. Returns 0 for beds
+        and when the anchor is absent.
+        """
+        if not line_duration or cue.type != "effect" or not cue.anchor:
+            return 0.0
+        text, anchor = line.text or "", cue.anchor
+        idx = text.find(anchor)
+        if idx < 0:
+            return 0.0
+        before = _count_spoken(text[:idx])
+        total = _count_spoken(text)
+        if total <= 0:
+            return 0.0
+        return min(line_duration, line_duration * before / total)
+
+    def _line_timing(self, state, output_format):
+        """Map line_id -> (start_sec, duration_sec) in the concatenated audio.
+
+        Duration is the spoken segment's own length; it bounds how long the
+        line's sound effects may play before being cut at the next line.
+        """
         from pydub import AudioSegment
 
-        offsets = {}
+        timing = {}
         elapsed_ms = 0
         for line in state.script.lines:
-            offsets[line.line_id] = elapsed_ms / 1000.0
             path = self._audio_path(
                 state.project_id, line.line_id, output_format
             )
             source = path if path.exists() else (
                 Path(line.audio_path) if line.audio_path else None
             )
+            duration_ms = 0
             if source is not None and Path(source).exists():
                 try:
-                    elapsed_ms += len(AudioSegment.from_file(str(source)))
+                    duration_ms = len(
+                        AudioSegment.from_file(str(source))
+                    )
                 except Exception:
-                    pass
-        return offsets
+                    duration_ms = 0
+            timing[line.line_id] = (
+                elapsed_ms / 1000.0,
+                duration_ms / 1000.0,
+            )
+            elapsed_ms += duration_ms
+        return timing
 
     def _log_progress(self, msg):
         level = self.config.get("progress_level") or "simple"

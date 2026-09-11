@@ -177,6 +177,7 @@ def _sound_to_dict(sfx):
         "prompt": sfx.prompt,
         "description": sfx.description,
         "tags": list(sfx.tags or []),
+        "anchor": sfx.anchor,
     }
 
 
@@ -197,6 +198,7 @@ def _sound_from_dict(data):
         prompt=data.get("prompt"),
         description=data.get("description"),
         tags=list(data.get("tags", []) or []),
+        anchor=data.get("anchor"),
     )
 
 

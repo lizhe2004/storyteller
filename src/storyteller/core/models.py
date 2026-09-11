@@ -51,6 +51,10 @@ class SoundEffect:
     prompt: Optional[str] = None
     description: Optional[str] = None
     tags: list = field(default_factory=list)
+    # Verbatim phrase from the owning line at which a punctual effect should
+    # fire (ambient beds omit it and start at the line head). Used to estimate
+    # an intra-line offset because TTS gives no word-level timestamps.
+    anchor: Optional[str] = None
 
 
 # ========== Voice ==========

@@ -61,20 +61,34 @@ _SOUND_PROMPT = (
     "\"description\":\"这是什么音乐\",\"prompt\":\"给声音生成模型的描述\"}。\n"
     "14. 可以在某一行（必须是有 text 的旁白或对话行）里给 sound_effects 数组，元素格式 "
     "{\"name\":\"名称\",\"type\":\"effect 或 ambient\","
-    "\"description\":\"这是什么声音\",\"prompt\":\"给声音生成模型的描述\"}。"
-    "effect 是短促音效（如敲门、打雷），ambient 是持续环境声（如树林鸟鸣、集市嘈杂）。"
+    "\"description\":\"这是什么声音\",\"prompt\":\"给声音生成模型的描述\","
+    "\"anchor\":\"触发该声音的、本行里逐字出现的短语\"}。"
+    "effect 是短促音效（如敲门、打雷、肚子叫），ambient 是持续环境声（如树林鸟鸣、集市嘈杂）。"
     "音效就写在触发它的那一（几）行上；严禁创建只有音效、没有 text 的独立行，"
     "line_type 只能是 narration 或 dialogue。\n"
     "15. prompt 只描述声音或音乐本身（乐器、节奏、情绪、环境），"
     "严禁包含任何人声、台词、说话或歌词；要自包含、简短具体。\n"
-    "16. 背景音乐描述整体情绪基调；没有合适的声音就直接省略对应字段，"
+    "16. 写 prompt 必须让人一听就知道声源：写清「什么东西/谁」+「在做什么动作」+"
+    "「声音质感与节奏、响几声」+（需要时）远近/空间，不要用不相干的声音打比方。\n"
+    "17. anchor 仅 effect 必填、ambient 不填：必须是本行 text 里**逐字出现**的短句，"
+    "正是这个声音发生的地方（如 text 里的“肚子咕咕叫了起来”）。"
+    "一行有先后两个音效时，各自锚定对应的短语，不要都写句首。\n"
+    "18. 背景音乐描述整体情绪基调；没有合适的声音就直接省略对应字段，"
     "不要硬加。\n"
+    "prompt 正反例：\n"
+    "  肚子叫 ✔“人肚子饿时咕咕叫的声音，低沉冒泡，两三声，近景，无人声”；"
+    "✘“咕噜咕噜的水声”（错：那是水声不是肚子叫）\n"
+    "  脚步 ✔“沉稳的成年男人脚步声，布鞋踩在泥地上，一步一步走近，五六步，无人声”\n"
+    "  卷帘门 ✔“金属卷帘门被拉下的哗啦声，持续两三秒后哐当到底，无人声”\n"
+    "  水桶入水 ✔“木桶探入溪水再提起的泼溅水声，两三次，无人声”；"
+    "✘“水花溅起声”（太笼统）\n"
     "示例片段：\n"
     '  顶层："background_music": {"name":"冒险主题曲","type":"music",'
     '"description":"轻快温馨的管弦乐","prompt":"轻快温暖的管弦乐，'
     '木管与拨弦，适合儿童冒险，无人声"}\n'
-    '  行内："sound_effects": [{"name":"雨声","type":"ambient",'
-    '"description":"窗外持续的雨声","prompt":"舒缓的下雨声，室内听感，无人声"}]\n'
+    '  行内："sound_effects": [{"name":"肚子咕噜","type":"effect",'
+    '"description":"肚子饿的咕咕声","prompt":"人肚子饿时咕咕叫的声音，'
+    '低沉冒泡，两三声，近景，无人声","anchor":"肚子咕咕叫了起来"}]\n'
 )
 
 
@@ -159,6 +173,8 @@ def _sound_from_llm(raw, fallback_type):
         sound_type = fallback_type
     name = str(raw.get("name") or prompt[:12]).strip()
     description = str(raw.get("description") or "").strip()
+    anchor_raw = str(raw.get("anchor") or "").strip()
+    anchor = anchor_raw or None
     tags_raw = raw.get("tags") or []
     tags = [str(t).strip() for t in tags_raw if str(t).strip()] if isinstance(tags_raw, list) else []
     return SoundEffect(
@@ -170,6 +186,7 @@ def _sound_from_llm(raw, fallback_type):
         prompt=prompt,
         description=description,
         tags=tags,
+        anchor=anchor,
     )
 
 
@@ -257,6 +274,12 @@ def _script_from_json(data, topic):
         line_type = "dialogue" if raw_type == "dialogue" else "narration"
         cues = pending_sounds + own_sounds
         pending_sounds = []
+        # Only punctual effects use an anchor, and it must occur verbatim in
+        # the spoken text; a wrong/paraphrased anchor is dropped (cue then
+        # starts at the line head). Ambient beds always start at the head.
+        for cue in cues:
+            if cue.type != "effect" or not cue.anchor or cue.anchor not in text:
+                cue.anchor = None
         lines.append(
             ScriptLine(
                 line_id=str(raw_line.get("line_id") or generate_id("l_")),
