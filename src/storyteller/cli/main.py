@@ -481,9 +481,13 @@ def make_sound(prompt, name, kind, description, tags, audio_format,
             )
             return
 
-        from ..core.sound_library import safe_sound_name, unique_path
+        from ..core.sound_library import (
+            extension_for,
+            safe_sound_name,
+            unique_path,
+        )
 
-        ext = "wav" if audio_format == "wav" else "mp3"
+        ext = extension_for(audio_format)
         stem = safe_sound_name(name or prompt[:12], fallback="sound")
         raw_path = unique_path(Path(sound_root) / "raw", stem, ext)
         raw_path.parent.mkdir(parents=True, exist_ok=True)

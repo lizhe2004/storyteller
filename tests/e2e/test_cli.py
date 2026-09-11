@@ -311,3 +311,29 @@ def test_make_sound_keeps_raw_clip_when_gate_fails(monkeypatch):
         assert len(raw_files) == 1
         assert raw_files[0].name == "细微的落叶声.mp3"
         assert "raw" in result.output
+
+
+def test_make_sound_wav_format_stages_and_admits_wav():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            [
+                "make-sound",
+                "清脆的风铃",
+                "--sound-provider",
+                "mock",
+                "--format",
+                "wav",
+            ],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code == 0, result.output
+        # Admitted library clip honors the requested wav format.
+        library_wavs = list(Path(".storyteller/sounds").glob("snd_*.wav"))
+        assert len(library_wavs) == 1
+        # No mp3 was admitted instead.
+        assert list(Path(".storyteller/sounds").glob("snd_*.mp3")) == []
+        # Raw staging copy is removed on success.
+        raw_dir = Path(".storyteller/sounds/raw")
+        assert not raw_dir.exists() or list(raw_dir.glob("*")) == []

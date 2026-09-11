@@ -1,6 +1,10 @@
 import pytest
 
-from storyteller.core.sound_library import safe_sound_name, unique_path
+from storyteller.core.sound_library import (
+    extension_for,
+    safe_sound_name,
+    unique_path,
+)
 
 
 def test_safe_sound_name_strips_illegal_characters():
@@ -35,3 +39,24 @@ def test_unique_path_creates_no_files(tmp_path):
     path = unique_path(tmp_path / "sounds", "雷声", "mp3")
     assert not path.exists()
     assert path.parent == tmp_path / "sounds"
+
+
+def test_safe_sound_name_truncates_long_stem():
+    name = "猴子捞月" * 40  # 160 CJK chars
+    out = safe_sound_name(name)
+    assert len(out) == 60
+
+
+def test_safe_sound_name_long_illegal_only_name_falls_back_then_truncates():
+    # A long fallback is bounded as well.
+    out = safe_sound_name("///", fallback="x" * 100)
+    assert len(out) == 60
+
+
+def test_extension_for_aliases():
+    assert extension_for("mp3") == "mp3"
+    assert extension_for("wav") == "wav"
+    assert extension_for("ogg") == "ogg"
+    assert extension_for("ogg_opus") == "ogg"
+    assert extension_for(None) == "mp3"
+    assert extension_for("flac") == "mp3"  # unknown -> safe default

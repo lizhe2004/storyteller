@@ -36,12 +36,25 @@ def fingerprint_for(model, prompt, audio_format):
 
 _UNSAFE_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
+# Filenames are bounded to 60 chars (<=180 UTF-8 bytes worst case for CJK),
+# safely under the 255-byte per-component filesystem limit.
+_MAX_STEM_LEN = 60
+
 
 def safe_sound_name(name, fallback="sound"):
     """Turn a cue name into a cross-platform filename stem (no extension)."""
     text = re.sub(r"\s+", " ", str(name or "")).strip(" .")
     text = _UNSAFE_NAME_RE.sub("_", text)
-    return text or fallback
+    # Names that contained only unsafe characters collapse to underscores;
+    # treat those as empty so the fallback is used instead of "___".
+    if not text.strip("_ "):
+        text = ""
+    return (text or fallback)[:_MAX_STEM_LEN]
+
+
+def extension_for(audio_format):
+    """File extension for an audio format alias (ogg_opus -> ogg)."""
+    return _EXTENSIONS.get((audio_format or "mp3").lower(), "mp3")
 
 
 def unique_path(directory, stem, ext):

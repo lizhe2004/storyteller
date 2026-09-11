@@ -206,8 +206,6 @@ class Pipeline:
             if line.audio_path and Path(line.audio_path).exists():
                 # Segment recorded under an older layout: relocate it into the
                 # per-project audio dir so offsets and later resumes find it.
-                import shutil
-
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(line.audio_path, out_path)
                 line.audio_path = str(out_path)
