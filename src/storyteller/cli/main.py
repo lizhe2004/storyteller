@@ -238,7 +238,20 @@ def list_projects(data_dir):
 # ========== list-voices ==========
 @cli.command()
 @click.option("--tts-providers", default=None, help="要查询的provider，逗号分隔")
-def list_voices(tts_providers):
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["table", "json"]),
+    default="table",
+    help="输出格式：table 表格（默认）或 json",
+)
+@click.option(
+    "--kind",
+    type=click.Choice(["all", "narrator", "character"]),
+    default="all",
+    help="筛选音色类型：all（全部）、narrator（旁白）、character（角色）",
+)
+def list_voices(tts_providers, output_format, kind):
     """列出所有可用的TTS音色。"""
     pipeline = _build_pipeline()
     providers = None
@@ -254,14 +267,90 @@ def list_voices(tts_providers):
         click.echo("没有可用的音色。请检查配置。")
         return
 
+    if kind == "narrator":
+        voices = [v for v in voices if v.voice_type == "narrator"]
+    elif kind == "character":
+        voices = [v for v in voices if v.voice_type != "narrator"]
+
+    if output_format == "json":
+        import json
+        data = [
+            {
+                "provider": v.provider,
+                "voice_id": v.voice_id,
+                "name": v.name,
+                "voice_type": v.voice_type,
+                "gender": v.gender,
+                "age": v.age,
+                "category": v.category,
+                "description": v.description,
+                "language": v.language,
+            }
+            for v in voices
+        ]
+        click.echo(json.dumps(data, ensure_ascii=False, indent=2))
+        return
+
+    _print_voice_table(voices)
+
+
+def _print_voice_table(voices):
     by_provider = {}
     for voice in voices:
         by_provider.setdefault(voice.provider, []).append(voice)
 
     for provider, pv in by_provider.items():
-        click.echo("[{}]".format(provider))
-        for voice in pv:
-            click.echo("  {}  ({})".format(voice.voice_id, voice.voice_type))
+        click.echo("[{}]  共 {} 个音色".format(provider, len(pv)))
+        # Columns: name | voice_id | role | gender | age | category
+        headers = ["名称", "音色ID", "类型", "性别", "年龄段", "场景"]
+        rows = []
+        for v in pv:
+            role = "旁白" if v.voice_type == "narrator" else "角色"
+            gender = {"male": "男", "female": "女"}.get(v.gender or "", v.gender or "-")
+            age = {
+                "child": "儿童",
+                "teen": "少年",
+                "young_adult": "青年",
+                "middle_aged": "中年",
+                "senior": "老年",
+            }.get(v.age or "", v.age or "-")
+            rows.append([
+                v.name or "-",
+                v.voice_id,
+                role,
+                gender,
+                age,
+                v.category or "-",
+            ])
+        _print_table(headers, rows)
+        # Print descriptions as footnotes
+        has_desc = any(v.description for v in pv)
+        if has_desc:
+            click.echo()
+            for v in pv:
+                if v.description:
+                    click.echo("  · {}：{}".format(v.name or v.voice_id, v.description))
+        click.echo()
+
+
+def _print_table(headers, rows):
+    """Simple ASCII table renderer (no external deps)."""
+    if not rows:
+        return
+    cols = len(headers)
+    widths = [len(h) for h in headers]
+    for row in rows:
+        for i in range(cols):
+            widths[i] = max(widths[i], len(str(row[i])))
+    sep = "+" + "+".join("-" * (w + 2) for w in widths) + "+"
+    head = "|" + "|".join(" {} ".format(headers[i].ljust(widths[i])) for i in range(cols)) + "|"
+    click.echo(sep)
+    click.echo(head)
+    click.echo(sep)
+    for row in rows:
+        line = "|" + "|".join(" {} ".format(str(row[i]).ljust(widths[i])) for i in range(cols)) + "|"
+        click.echo(line)
+    click.echo(sep)
 
 
 # Note: The continue command is registered with name="continue" above.

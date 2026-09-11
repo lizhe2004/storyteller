@@ -70,6 +70,7 @@ class VoiceConfig:
     volume: float = 1.0
     # Descriptive hints used by semantic (LLM) voice matching.
     name: Optional[str] = None
+    gender: Optional[str] = None
     age: Optional[str] = None
     category: Optional[str] = None
     description: Optional[str] = None

@@ -21,6 +21,12 @@ def _count_spoken(text):
     return len(_PUNCT_RE.sub("", text or ""))
 
 
+def _snippet(text, n):
+    """Shorten text for progress display, appending an ellipsis when cut."""
+    text = (text or "").strip()
+    return text if len(text) <= n else text[:n] + "…"
+
+
 class Pipeline:
     """Orchestrates the full story-to-audio workflow.
 
@@ -153,6 +159,7 @@ class Pipeline:
             if c.voice_config
         }
         narrator_voice = self._find_narrator_voice(state.script, char_voice_map)
+        char_names = {c.id: c.name for c in state.script.characters}
 
         for idx, line in enumerate(state.script.lines, start=1):
             # Voice precedence: line-level override > character voice > narrator
@@ -167,9 +174,18 @@ class Pipeline:
 
             out_path = self._audio_path(state.project_id, line.line_id, output_format)
             if out_path.exists():
+                self._log_detail(
+                    "  line %s cached, skipped" % line.line_id
+                )
                 lines_audio_paths.append(str(out_path))
                 continue
             self._log_progress(progress_step % (idx, total))
+            speaker = char_names.get(line.character_id, "") or line.line_type
+            self._log_detail(
+                "  line %s [%s]: %s" % (
+                    line.line_id, speaker, _snippet(line.text, 20)
+                )
+            )
             if line.audio_path and Path(line.audio_path).exists():
                 # Segment recorded under an older layout: relocate it into the
                 # per-project audio dir so offsets and later resumes find it.
@@ -365,7 +381,7 @@ class Pipeline:
         library = self._get_sound_library()
         for cue in pending:
             try:
-                path, record, _ = library.get_or_create(
+                path, record, created = library.get_or_create(
                     provider,
                     prompt=cue.prompt,
                     name=cue.name,
@@ -381,6 +397,12 @@ class Pipeline:
             cue.source_type = "local"
             if cue.duration is None:
                 cue.duration = record.get("duration")
+            self._log_detail(
+                "  sound %s -> %s (%.1fs%s)" % (
+                    cue.name, Path(path).name, record.get("duration") or 0,
+                    "" if created else ", cached"
+                )
+            )
         self.projects.save_project(state)
         self._export_script(state)
 
@@ -492,6 +514,11 @@ class Pipeline:
         if level == "quiet":
             return
         print(msg)
+
+    def _log_detail(self, msg):
+        """Per-line / per-cue detail, only shown with --progress detailed."""
+        if (self.config.get("progress_level") or "simple") == "detailed":
+            print(msg)
 
     def _log_error(self, line_id, exc):
         mode = self.config.get("strict_mode") or False

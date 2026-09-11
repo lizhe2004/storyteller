@@ -69,6 +69,7 @@ class VolcengineTTS(BaseProvider, TTSProvider):
                 voice_type=record["voice_type"],
                 language=record.get("language", "zh-CN"),
                 name=record.get("name"),
+                gender=record.get("gender"),
                 age=record.get("age"),
                 category=record.get("category"),
                 description=record.get("description"),

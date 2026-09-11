@@ -46,6 +46,14 @@ cp .env.example .env
 
 ## 使用
 
+### 交互式向导（默认入口）
+
+不带子命令直接运行 `storyteller`，会进入交互式向导，依次提示输入**主题、长度、复杂度、输出格式**（直接回车用默认值）：
+
+```bash
+storyteller
+```
+
 ### 参数模式
 
 ```bash
@@ -54,11 +62,11 @@ storyteller generate "一只小猫的冒险"
 
 # 常用选项
 storyteller generate "数字积木的故事" \
-  --length short \          # short | medium | long
-  --complexity simple \     # simple | medium | rich
-  --output-format mp3 \     # mp3 | wav | ogg
-  --voice-matcher llm \     # llm（默认）| rule
-  --with-sfx                # 生成音效/背景音乐并自动混音（默认关闭）
+  --length medium \
+  --complexity rich \
+  --output-format mp3 \
+  --voice-matcher llm \
+  --with-sfx
 ```
 
 只生成剧本、不合成音频（剧本会保存为 JSON）：
@@ -68,25 +76,132 @@ storyteller generate "月亮婆婆" --dry-run
 # → .storyteller/stories/<project_id>/story.script.json
 ```
 
-### 交互式向导
-
-```bash
-storyteller
-```
-
-按提示依次输入主题、长度、复杂度、输出格式。
-
-### 其它命令
-
-```bash
-storyteller continue <project_id>   # 从断点继续
-storyteller list-projects           # 列出所有项目及状态
-storyteller list-voices             # 列出可用音色
-```
-
-通用选项：`--data-dir`（生成物根目录，默认 `./.storyteller`）、`--progress quiet|simple|detailed`、`--strict-mode`、`--log-level`。
-
 > 生成过程是网络密集型：剧本 + 音色分类/精选各有一次 LLM 调用，随后逐句 TTS。一个短篇通常需要几十秒到几分钟，期间无逐字输出属正常现象，可用 `--progress simple` 查看进度。
+
+### 命令参考
+
+#### `storyteller generate <topic>` — 生成音频故事
+
+| 参数 | 含义 | 是否必填 | 默认值 | 可选值 |
+|------|------|:---:|--------|--------|
+| `topic` | 故事主题（一句话描述） | ✅ 必填 | — | 任意文本 |
+| `--length`, `-l` | 故事篇幅，决定台词行数多少 | 否 | `medium` | `short` / `medium` / `long` |
+| `--complexity`, `-c` | 剧本复杂度（角色数量、情节层次） | 否 | `simple` | `simple` / `medium` / `rich` |
+| `--output-format`, `-f` | 最终音频格式 | 否 | `mp3` | `mp3` / `wav` / `ogg` |
+| `--tts-providers` | 参与合成的 TTS provider，逗号分隔 | 否 | 环境变量 `STORYTELLER_TTS_PROVIDERS` | 如 `volcengine,my-tts` |
+| `--voice-ids` | 限制使用的音色 ID，逗号分隔 | 否 | 全部可用音色 | 任意音色 ID |
+| `--default-llm-provider` | 覆盖默认 LLM provider | 否 | 环境变量配置 | provider 名 |
+| `--default-tts-provider` | 覆盖默认 TTS provider | 否 | 环境变量配置 | provider 名 |
+| `--voice-matcher` | 音色匹配方式 | 否 | `llm` | `llm`（大模型语义匹配） / `rule`（关键字规则） |
+| `--with-sfx` | 生成音效/背景音乐并自动混音（seed-audio，结果进全局音效库缓存） | 否 | 关 | 标志（开关） |
+| `--sound-dir` | 音效库目录 | 否 | `<data-dir>/sounds` | 任意目录 |
+| `--dry-run` | 只生成剧本、不合成音频 | 否 | 关 | 标志（开关） |
+| `--data-dir` | 生成物根目录 | 否 | `./.storyteller` | 任意目录 |
+| `--log-level` | 日志级别 | 否 | `info` | `debug` / `info` / `warn` / `error` |
+| `--progress` | 进度显示级别 | 否 | `simple` | `quiet` / `simple` / `detailed` |
+| `--strict-mode` | 严格模式：任一步出错立即停止 | 否 | 关 | 标志（开关） |
+
+说明：`--dry-run` 只写剧本、不生成音频，与合成类参数无关；`--tts-providers`、`--voice-ids`、`--with-sfx` 等也适用于 `continue`（见下）。
+
+#### `--progress` 进度显示级别
+
+`generate` 支持 `--progress` 控制终端输出详细程度，可选三档（默认 `simple`）：
+
+| 值 | 含义 | 适用场景 |
+|------|------|------|
+| `quiet` | 不输出任何过程信息，只在结束时打印最终输出路径 | 脚本化 / 无人值守，只关心产物 |
+| `simple` | 每个大步骤一行：剧本生成、音色配置、逐句合成进度（`1/20` … `20/20`）、拼接、最终路径 | 默认，日常使用 |
+| `detailed` | 在 `simple` 基础上，额外打印每句的**行号 `[角色]` 台词片段**，以及每条音效/背景音乐的**生成或缓存命中详情** | 排查某句配音或某个音效问题时 |
+
+`simple` 的典型输出：
+
+```text
+Script generated: 逃离地球：深空巨兽
+Voices configured
+Generating audio 1/20
+Generating audio 2/20
+...
+Generating audio 20/20
+Concatenating audio...
+Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
+```
+
+`detailed` 会在此之上增加逐句与逐音效明细（示例）：
+
+```text
+Script generated: 逃离地球：深空巨兽
+Voices configured
+Generating audio 1/20
+  line 1 [旁白]: 公元 2177 年，地球已经……
+  line 2 [李教授]: 数据不会说谎，我们……
+Generating audio 2/20
+  line 3 [旁白]: 舱门缓缓开启……
+...
+Concatenating audio...
+  sound 警报声 -> snd_ab12cd34ef56.mp3 (3.2s)
+  sound 引擎轰鸣 -> snd_12ab34cd56ef.mp3 (2.8s, cached)
+Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
+```
+
+说明：`detailed` 里 `cached, skipped` 表示该句台词已在本地缓存（断点续作）、不再调用 TTS；音效一行的 `, cached` 表示该音效命中全局音效库、未重复调用 seed-audio。
+
+#### `storyteller continue <project_id>` — 从断点继续
+
+沿用项目已保存的 length/complexity 与已合成的分段音频，跳过已完成步骤。可选参数（含义与 `generate` 相同）：`--output-format/-f`、`--tts-providers`、`--voice-ids`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--data-dir`、`--strict-mode`。
+
+#### `storyteller list-projects` — 列出所有项目
+
+| 参数 | 含义 | 默认值 |
+|------|------|--------|
+| `--data-dir` | 生成物根目录 | `./.storyteller` |
+
+输出 `项目ID [状态] 主题`。
+
+#### `storyteller list-voices` — 列出可用音色
+
+| 参数 | 含义 | 默认值 |
+|------|------|--------|
+| `--tts-providers` | 限定查询的 provider，逗号分隔 | 全部已配置 provider |
+
+按 provider 分组列出音色，每行展示**中文名、音色 ID、类型/年龄段/场景**，有描述时在下一行缩进显示：
+
+```text
+[volcengine]
+  少儿故事  (zh_female_shaoergushi_uranus_bigtts)  narrator/young_adult/有声阅读
+    语调活泼、声线亲切，适配儿童故事的治愈女声
+  青年男声  (zh_male_... )  male/young_adult/通用场景
+    阳光清亮的青年男声
+```
+
+说明：`类型` 为 `narrator`（旁白）/`male`/`female`/`child`，用于音色匹配；`年龄段` 为 `child/teen/young_adult/middle_aged/senior` 等；`场景` 与描述来自内置音色库清单，供人工挑选参考。
+
+#### `storyteller make-sound "<prompt>"` — 生成/复用一个音效
+
+| 参数 | 含义 | 是否必填 | 默认值 | 可选值 |
+|------|------|:---:|--------|--------|
+| `prompt` | 声音描述（写清发声体+动作+质感+节奏） | ✅ 必填 | — | 任意文本 |
+| `--name` | 音效名称 | 否 | 提示词前 12 字 | 任意文本 |
+| `--kind` | 类型 | 否 | `sfx` | `sfx`（短促音效） / `ambient`（环境声） / `music`（音乐） |
+| `--description` | 描述（便于检索复用） | 否 | 空 | 任意文本 |
+| `--tags` | 逗号分隔的标签 | 否 | 空 | 如 `天气,夜晚` |
+| `--format` | 输出格式 | 否 | `mp3` | `mp3` / `wav` |
+| `--sound-dir` | 音效库目录 | 否 | `<data-dir>/sounds` | 任意目录 |
+
+相同 `prompt` 命中缓存时打印 `Cache hit (no API call)`，不产生网络调用。
+
+#### `storyteller list-sounds [query]` — 列出/检索音效库
+
+| 参数 | 含义 | 默认值 | 可选值 |
+|------|------|--------|--------|
+| `query`（位置参数） | 关键字过滤（匹配名称/描述/标签） | 无 | 任意文本 |
+| `--kind` | 只列出指定类型 | 全部 | `sfx` / `ambient` / `music` |
+| `--sound-dir` | 音效库目录 | `<data-dir>/sounds` | 任意目录 |
+
+### 通用说明
+
+- 带 `--data-dir` / `--sound-dir` 的选项也可用环境变量 `STORYTELLER_DATA_DIR` / `STORYTELLER_SOUND_DIR` 指定，优先级：命令行 > 环境变量 > 默认值（完整环境变量表见上文[配置](#配置)）。
+- `generate` 与 `continue` 共用：`--tts-providers`、`--voice-ids`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--data-dir`、`--strict-mode`、`--output-format`。
+- `--length` / `--complexity` 原样传给 LLM 作为"故事长度 / 剧本复杂度"约束，最终台词行数由模型决定。
 
 ## 产物
 
