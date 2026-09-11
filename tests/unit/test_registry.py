@@ -2,6 +2,7 @@ import pytest
 
 from storyteller.core.config import Config
 from storyteller.core.llm import LLMProvider
+from storyteller.core.sfx import SoundEffectProvider
 from storyteller.core.tts import TTSProvider
 from storyteller.core.models import VoiceConfig
 from storyteller.providers.base import BaseProvider
@@ -131,3 +132,48 @@ def test_registry_list_registered_names():
     registry.register_tts("fake", FakeTTS)
     assert "fake" in registry.list_llm_names()
     assert "fake" in registry.list_tts_names()
+
+
+# ========== ProviderRegistry Sound ==========
+class FakeSound(BaseProvider, SoundEffectProvider):
+    @property
+    def name(self):
+        return "fake-sound"
+
+    def generate(
+        self, prompt, output_path, *,
+        audio_format="mp3", sample_rate=None, references=None,
+    ):
+        return output_path, None
+
+
+def test_registry_register_and_get_sound():
+    config = Config()
+    registry = ProviderRegistry(config)
+    registry.register_sound("fake", FakeSound)
+    sound = registry.get_sound("fake")
+    assert isinstance(sound, FakeSound)
+    assert sound.name == "fake-sound"
+
+
+def test_registry_sound_instances_are_cached():
+    config = Config()
+    registry = ProviderRegistry(config)
+    registry.register_sound("fake", FakeSound)
+    assert registry.get_sound("fake") is registry.get_sound("fake")
+
+
+def test_registry_get_unknown_sound_raises():
+    config = Config()
+    registry = ProviderRegistry(config)
+    with pytest.raises(ProviderError):
+        registry.get_sound("nonexistent")
+
+
+def test_registry_default_sound_and_names():
+    config = Config()
+    registry = ProviderRegistry(config)
+    registry.register_sound("fake", FakeSound)
+    registry.set_default_sound("fake")
+    assert registry.get_default_sound() is not None
+    assert registry.list_sound_names() == ["fake"]
