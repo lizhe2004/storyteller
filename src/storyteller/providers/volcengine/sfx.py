@@ -115,13 +115,23 @@ class VolcengineSoundProvider(BaseProvider, SoundEffectProvider):
         return output_path, duration
 
     def _download(self, url):
+        resp = None
         try:
             resp = self._session.get(url, timeout=300)
             resp.raise_for_status()
             return resp.content
         except requests.RequestException as exc:
+            # Never echo str(exc) here: requests' HTTP/connection errors
+            # embed the signed audio URL, a short-lived credential, and
+            # this text flows into pipeline error logs. The chained
+            # traceback (from exc) stays local for debugging.
+            status_code = getattr(resp, "status_code", None)
+            if status_code is not None:
+                detail = "HTTP {}".format(status_code)
+            else:
+                detail = "network error ({})".format(type(exc).__name__)
             raise TTSError(
-                "Failed to download generated sound: {}".format(exc)
+                "Failed to download generated sound: {}".format(detail)
             ) from exc
 
 
