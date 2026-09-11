@@ -330,6 +330,18 @@ def test_run_with_sound_mixes_and_backfills_paths(tmp_path):
     )
     assert data["background_music"]["source_path"]
     assert data["lines"][0]["sound_effects"][0]["source_path"]
+
+    # Every cue has a Chinese-named raw clip INSIDE the project dir...
+    project_sounds = result_path.parent / "sounds"
+    raw_names = sorted(p.name for p in project_sounds.glob("*.mp3"))
+    assert raw_names == ["宁静夜曲.mp3", "雨声.mp3"]
+    bgm_path = Path(data["background_music"]["source_path"])
+    cue_path = Path(data["lines"][0]["sound_effects"][0]["source_path"])
+    assert bgm_path.parent == project_sounds
+    assert cue_path.parent == project_sounds
+    # ...and an admitted snd_ copy in the global library.
+    assert len(list((tmp_path / "sounds").glob("snd_*.mp3"))) == 2
+
     # No stray temp bed left behind.
     assert list(result_path.parent.glob("*.bgm.mp3")) == []
 
@@ -352,6 +364,16 @@ def test_run_with_sound_reuses_cache_on_second_story(tmp_path):
 
     # Two distinct sounds, requested twice -> still only two API generations.
     assert len(provider.calls) == 2
+
+    # Both projects are self-contained: cache hits are COPIED into each
+    # project dir under the cue name, never regenerated.
+    project_dirs = sorted(
+        p.parent for p in tmp_path.rglob("story.mp3")
+    )
+    assert len(project_dirs) == 2
+    for project_dir in project_dirs:
+        names = sorted(p.name for p in (project_dir / "sounds").glob("*.mp3"))
+        assert names == ["宁静夜曲.mp3", "雨声.mp3"]
 
 
 def test_sound_disabled_by_default_ignores_cues(tmp_path):
@@ -376,6 +398,66 @@ def test_sound_disabled_by_default_ignores_cues(tmp_path):
     assert Path(result_path).exists()
     assert provider.calls == []
     assert not (tmp_path / "sounds").exists()
+
+
+class _NearSilentSoundProvider:
+    """Sound stub that writes an effectively silent clip (~-70 dBFS)."""
+
+    name = "mock"
+    model = "mock-sound"
+
+    def generate(self, prompt, output_path, *, audio_format="mp3", **kwargs):
+        from pydub.generators import Sine
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        Sine(440).to_audio_segment(duration=300).apply_gain(-70).export(
+            str(output_path), format="wav"
+        )
+        return output_path, 0.3
+
+
+def test_failed_sound_clip_is_kept_in_project_but_not_mixed(tmp_path):
+    from storyteller.core.sound_library import SoundLibrary
+
+    config = Config()
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
+    config.set("sound.enabled", True)
+    config.set("sound.dir", str(tmp_path / "sounds"))
+    config.set("llm.default_provider", "mock")
+    config.set("tts.default_provider", "mock")
+
+    llm = MockLLMProvider(config)
+    llm.set_response(_sound_script())
+    library = SoundLibrary(tmp_path / "sounds")
+    pipeline = Pipeline(
+        config,
+        sound_provider=_NearSilentSoundProvider(),
+        sound_library=library,
+    )
+    pipeline.registry.register_llm("mock", lambda c: llm)
+    pipeline.registry.register_tts("mock", MockTTSProvider)
+
+    result_path = Path(pipeline.run("雨夜"))
+    assert result_path.exists()
+
+    # Both clips failed the gate: raw files kept with cue names...
+    project_sounds = result_path.parent / "sounds"
+    assert sorted(p.name for p in project_sounds.glob("*.mp3")) == [
+        "宁静夜曲.mp3",
+        "雨声.mp3",
+    ]
+    # ...nothing admitted to the global library...
+    assert library.all() == []
+    assert list((tmp_path / "sounds").glob("snd_*.mp3")) == []
+    # ...and the failed cues carry no source_path, so nothing is mixed.
+    import json as _json
+
+    data = _json.loads(
+        (result_path.parent / "story.script.json").read_text(encoding="utf-8")
+    )
+    assert data["background_music"]["source_path"] is None
+    assert data["lines"][0]["sound_effects"][0]["source_path"] is None
 
 
 def _make_registry_sound_pipeline(tmp_path, llm, library):
