@@ -48,6 +48,20 @@ def test_list_voices_shows_mock():
         ]
         widths = {_w(line) for line in table_lines}
         assert len(widths) == 1, widths
+        # Descriptions are inlined under their own voice row: the old
+        # post-table footnote block is gone.
+        assert "阳光清亮的青年男声" in result.output
+        assert "  · " not in result.output
+        # On description rows the name column (first cell) stays blank,
+        # the text starts at the voice-ID column.
+        desc_lines = [
+            line for line in result.output.splitlines()
+            if "青年男声" in line and "|" in line and "male_01" not in line
+        ]
+        assert desc_lines
+        for line in desc_lines:
+            first_cell = line.split("|", 2)[1]
+            assert first_cell.strip() == ""
 
 
 def test_list_voices_json():

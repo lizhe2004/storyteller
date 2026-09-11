@@ -164,7 +164,7 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 | `--tts-providers` | 限定查询的 provider，逗号分隔 | 全部已配置 provider | provider 名 |
 | `--format` | 输出格式 | `table` | `table` / `json` |
 
-按 provider 分组，先显示 provider 名称、说明与音色数，再用表格列出每个音色的**名称、音色 ID、性别、年龄段、场景**；表格下方用 `· 名称：特质` 逐条给出音色描述。
+按 provider 分组，先显示 provider 名称、说明与音色数，再用表格列出每个音色的**名称、音色 ID、性别、年龄段、场景**；有描述的音色，描述紧跟在该音色所在行的下一行（名称列留白、后四列合并展示，过长自动折行）。
 
 ```text
 【火山引擎】  seed-tts 2.0 语音合成（火山方舟）（249 个音色）
@@ -172,10 +172,9 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 | 名称           | 音色ID                                     | 性别 | 年龄段 | 场景     |
 +----------------+--------------------------------------------+------+--------+----------+
 | 少儿故事       | zh_female_shaoergushi_...                  | 女   | 青年   | 有声阅读 |
+|                | 语调活泼、声线亲切，适配儿童故事的治愈女声                            |
 | ...            | ...                                        | ...  | ...    | ...      |
 +----------------+--------------------------------------------+------+--------+----------+
-
-· 少儿故事：语调活泼、声线亲切，适配儿童故事的治愈女声
 ```
 
 `--format json` 输出数组，每条含 `provider/voice_id/name/gender/age/category/description/language`，便于脚本处理。性别只有 `male`/`female`（OpenAI 兼容的中性音色为 `null`）；年龄段为 `child/teen/young_adult/middle_aged/senior`。

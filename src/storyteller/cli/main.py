@@ -298,11 +298,6 @@ def list_voices(tts_providers, output_format):
         click.echo("【{}】{}（{} 个音色）".format(
             header, "  " + desc if desc else "", len(pv)))
         _print_voice_table(pv)
-        footnotes = [v for v in pv if v.description]
-        if footnotes:
-            click.echo()
-            for v in footnotes:
-                click.echo("  · {}：{}".format(v.name or v.voice_id, v.description))
         click.echo()
 
 
@@ -319,21 +314,46 @@ def _voice_row(v):
     }
 
 
+def _wrap_by_width(text, width):
+    """Greedy wrap by terminal display width (CJK chars count as 2)."""
+    lines = []
+    current = ""
+    current_w = 0
+    for ch in str(text):
+        ch_w = _display_width(ch)
+        if current_w + ch_w > width:
+            lines.append(current)
+            current, current_w = ch, ch_w
+        else:
+            current += ch
+            current_w += ch_w
+    lines.append(current)
+    # Avoid orphan runs (<=2 display cols, e.g. one CJK char) on the last line.
+    if len(lines) > 1 and _display_width(lines[-1]) <= 2:
+        tail = lines[-2][-2:]
+        lines[-2] = lines[-2][:-2]
+        lines[-1] = tail + lines[-1]
+    return lines
+
+
 def _print_voice_table(voices):
     headers = ["名称", "音色ID", "性别", "年龄段", "场景"]
     rows = [
-        [
-            v.name or "-",
-            v.voice_id,
-            _GENDER_CN.get(v.gender, "中性"),
-            _AGE_CN.get(v.age, "-"),
-            v.category or "-",
-        ]
+        (
+            [
+                v.name or "-",
+                v.voice_id,
+                _GENDER_CN.get(v.gender, "中性"),
+                _AGE_CN.get(v.age, "-"),
+                v.category or "-",
+            ],
+            v.description or "",
+        )
         for v in voices
     ]
     widths = [_display_width(h) for h in headers]
-    for row in rows:
-        for i, cell in enumerate(row):
+    for cells, _ in rows:
+        for i, cell in enumerate(cells):
             widths[i] = max(widths[i], _display_width(cell))
 
     def border():
@@ -345,12 +365,28 @@ def _print_voice_table(voices):
             for i in range(len(cells))
         ) + "|"
 
+    # Description rows leave the name cell blank and merge the remaining
+    # four columns into one text area.
+    desc_width = sum(widths[1:]) + 2 * len(widths[1:]) + 3 - 2
+
+    def fmt_desc(text):
+        return (
+            "|"
+            + " " * (widths[0] + 2)
+            + "| "
+            + text + " " * (desc_width - _display_width(text))
+            + " |"
+        )
+
     click.echo(border())
     click.echo(fmt(headers))
     click.echo(border())
-    for row in rows:
-        click.echo(fmt(row))
-    click.echo(border())
+    for cells, description in rows:
+        click.echo(fmt(cells))
+        if description:
+            for line in _wrap_by_width(description, desc_width):
+                click.echo(fmt_desc(line))
+        click.echo(border())
 
 
 # Note: The continue command is registered with name="continue" above.
