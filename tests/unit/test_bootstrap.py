@@ -110,3 +110,47 @@ def test_register_skips_unknown_defaults():
 
     # Default that isn't registered is ignored; no exception raised.
     assert registry.get_default_llm() is None
+
+
+def test_register_mock_sound_provider():
+    config = Config()
+    config.set("sound.providers", ["mock"])
+    config.set("sound.default_provider", "mock")
+    config.set("sound.provider_config.mock", {"type": "mock"})
+
+    registry = ProviderRegistry(config)
+    register_providers_from_config(config, registry)
+
+    assert registry.list_sound_names() == ["mock"]
+    assert registry.get_sound("mock").name == "mock"
+    assert registry.get_default_sound() is not None
+
+
+def test_register_volcengine_sound_provider_lazily():
+    config = Config()
+    config.set("sound.providers", ["volcengine"])
+    config.set(
+        "sound.provider_config.volcengine",
+        {"api_key": "sound-key"},
+    )
+
+    registry = ProviderRegistry(config)
+    register_providers_from_config(config, registry)
+
+    # Factory registered without instantiation (missing key would raise at
+    # construction time; here the key exists, but listing must stay lazy).
+    assert registry.list_sound_names() == ["volcengine"]
+
+
+def test_unsupported_sound_type_is_skipped():
+    config = Config()
+    config.set("sound.providers", ["aliyun"])
+    config.set(
+        "sound.provider_config.aliyun",
+        {"type": "aliyun", "api_key": "k"},
+    )
+
+    registry = ProviderRegistry(config)
+    register_providers_from_config(config, registry)
+
+    assert registry.list_sound_names() == []
