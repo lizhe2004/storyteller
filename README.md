@@ -159,21 +159,26 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 
 #### `storyteller list-voices` — 列出可用音色
 
-| 参数 | 含义 | 默认值 |
-|------|------|--------|
-| `--tts-providers` | 限定查询的 provider，逗号分隔 | 全部已配置 provider |
+| 参数 | 含义 | 默认值 | 可选值 |
+|------|------|--------|--------|
+| `--tts-providers` | 限定查询的 provider，逗号分隔 | 全部已配置 provider | provider 名 |
+| `--format` | 输出格式 | `table` | `table` / `json` |
 
-按 provider 分组列出音色，每行展示**中文名、音色 ID、类型/年龄段/场景**，有描述时在下一行缩进显示：
+按 provider 分组，先显示 provider 名称、说明与音色数，再用表格列出每个音色的**名称、音色 ID、性别、年龄段、场景**；表格下方用 `· 名称：特质` 逐条给出音色描述。
 
 ```text
-[volcengine]
-  少儿故事  (zh_female_shaoergushi_uranus_bigtts)  narrator/young_adult/有声阅读
-    语调活泼、声线亲切，适配儿童故事的治愈女声
-  青年男声  (zh_male_... )  male/young_adult/通用场景
-    阳光清亮的青年男声
+【火山引擎】  seed-tts 2.0 语音合成（火山方舟）（249 个音色）
++----------------+--------------------------------------------+------+--------+----------+
+| 名称           | 音色ID                                     | 性别 | 年龄段 | 场景     |
++----------------+--------------------------------------------+------+--------+----------+
+| 少儿故事       | zh_female_shaoergushi_...                  | 女   | 青年   | 有声阅读 |
+| ...            | ...                                        | ...  | ...    | ...      |
++----------------+--------------------------------------------+------+--------+----------+
+
+· 少儿故事：语调活泼、声线亲切，适配儿童故事的治愈女声
 ```
 
-说明：`类型` 为 `narrator`（旁白）/`male`/`female`/`child`，用于音色匹配；`年龄段` 为 `child/teen/young_adult/middle_aged/senior` 等；`场景` 与描述来自内置音色库清单，供人工挑选参考。
+`--format json` 输出数组，每条含 `provider/voice_id/name/gender/age/category/description/language`，便于脚本处理。性别只有 `male`/`female`（OpenAI 兼容的中性音色为 `null`）；年龄段为 `child/teen/young_adult/middle_aged/senior`。
 
 #### `storyteller make-sound "<prompt>"` — 生成/复用一个音效
 
@@ -235,7 +240,7 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
       "voice_config": {
         "provider": "volcengine",
         "voice_id": "zh_male_liangsangmengzai_uranus_bigtts",
-        "voice_type": "child", "age": "child", "name": "亮嗓萌仔"
+        "gender": "male", "age": "child", "name": "亮嗓萌仔"
       }
     }
   ],
@@ -250,12 +255,14 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 
 ## 音色匹配
 
-默认 `llm` 模式分两步，把「关键词硬猜」降级为兜底：
+音色只用两个正交维度描述：**性别**（male/female，中性音色为 null）与**年龄段**（child/teen/young_adult/middle_aged/senior），另有来自官方分类的**场景**标签（有声阅读、通用场景、角色扮演等）。系统不再给音色贴「旁白/角色」的固定类型——儿童音色、温暖年轻女声同样可以念旁白。
 
-1. **角色分类（LLM 调用一）**：根据角色名 + 描述判定性别（male/female）与年龄段（child/teen/young_adult/middle_aged/senior）。旁白角色按 id/名称确定性识别。
-2. **音色精选（LLM 调用二）**：按分类结果把内置音色库过滤成候选池，再让模型结合每个音色的名称、分类、描述挑选最贴切的一个（例如「慈祥老婆婆」会选中老年温和女声，而不是年轻御姐音）。
+默认 `llm` 模式分两步：
 
-任一步调用失败或返回非法结果，对应角色自动回退到关键字规则匹配，不影响出音频。可用 `--voice-matcher rule` 或 `STORYTELLER_VOICE_MATCHER=rule` 完全走规则（不产生额外 LLM 调用）。
+1. **角色分类（LLM 调用一）**：根据角色名 + 描述判定性别与年龄段。旁白角色按 id/名称确定性识别（旁白/narrator/说书/叙述），不参与分类。
+2. **音色精选（LLM 调用二）**：把全部候选音色（有声阅读类排在最前）连同性别/年龄/场景/描述交给模型挑选。对话角色严格遵守性别、年龄与气质贴合；旁白角色无性别限制，优先有声阅读类，也可按故事气质选儿童或温暖音色。
+
+任一步失败或返回非法结果，对应角色回退到确定性规则匹配：对话角色在同性别音色池里按年龄距离挑选（同性别池为空时退到中性音色），有声阅读类作为对话的最后备选；旁白角色在全库中优先有声阅读类。可用 `--voice-matcher rule` 或 `STORYTELLER_VOICE_MATCHER=rule` 完全走规则（不产生额外 LLM 调用）。
 
 内置火山音色库约 249 个（仅 seed-tts-2.0，含中英文混读音色），由 `scripts/build_voice_catalog.py` 从 `data/` 下的官方清单整理生成，打包在 `src/storyteller/providers/volcengine/voices.json`。
 
