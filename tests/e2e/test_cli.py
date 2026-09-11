@@ -1,8 +1,17 @@
 import json
+import unicodedata
 
 from click.testing import CliRunner
 
 from storyteller.cli.main import cli
+
+
+def _w(line):
+    """Display width of a line: CJK wide/fullwidth chars count as 2 columns."""
+    return sum(
+        2 if unicodedata.east_asian_width(ch) in ("F", "W") else 1
+        for ch in line
+    )
 
 
 _MOCK_ENV = {
@@ -32,6 +41,13 @@ def test_list_voices_shows_mock():
         for header in ("名称", "音色ID", "性别", "年龄段", "场景"):
             assert header in result.output
         assert "类型" not in result.output
+        # CJK alignment regression: every table line must share one display width.
+        table_lines = [
+            line for line in result.output.splitlines()
+            if line.startswith(("+", "|"))
+        ]
+        widths = {_w(line) for line in table_lines}
+        assert len(widths) == 1, widths
 
 
 def test_list_voices_json():

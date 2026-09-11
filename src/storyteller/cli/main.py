@@ -331,7 +331,7 @@ def _print_voice_table(voices):
         ]
         for v in voices
     ]
-    widths = [len(h) for h in headers]
+    widths = [_display_width(h) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
             widths[i] = max(widths[i], _display_width(cell))
