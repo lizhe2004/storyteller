@@ -45,7 +45,10 @@ cp .env.example .env
 | `STORYTELLER_VOICE_MATCHER` | `llm`（默认，语义匹配）或 `rule`（仅关键字规则） |
 | `STORYTELLER_SOUND_ENABLED` | `true/false`，是否生成音效/背景音乐（默认关） |
 | `STORYTELLER_SOUND_DIR` | 全局共享音效库目录，默认 `<DATA_DIR>/sounds` |
-| `STORYTELLER_SFX_VOLCENGINE_API_KEY` | 音效 Key（seed-audio），留空则复用 TTS Key |
+| `STORYTELLER_SOUND_VOLCENGINE_API_KEY` | 音效 Key（seed-audio），独立配置、不复用 TTS Key；启用音效必填 |
+| `STORYTELLER_SOUND_PROVIDERS` / `STORYTELLER_SOUND_DEFAULT_PROVIDER` | 可选的音效 provider 启用名单/默认（同 LLM/TTS 规则，配了 key 即可被 `--sound-provider` 选用） |
+
+> `*_PROVIDERS` 均为可选项，只决定默认启用与排序；只要配了某 provider 的 per-provider 变量（如 `STORYTELLER_TTS_ALIYUN_API_KEY`），就能直接用命令行参数选用，不必改名单。
 
 ## 使用
 
@@ -97,6 +100,7 @@ storyteller generate "月亮婆婆" --dry-run
 | `--default-tts-provider` | 覆盖默认 TTS provider | 否 | 环境变量配置 | provider 名 |
 | `--voice-matcher` | 音色匹配方式 | 否 | `llm` | `llm`（大模型语义匹配） / `rule`（关键字规则） |
 | `--with-sfx` | 生成音效/背景音乐并自动混音（seed-audio，结果进全局音效库缓存） | 否 | 关 | 标志（开关） |
+| `--sound-provider` | 本次使用的音效 provider（需配合 `--with-sfx`） | 否 | 环境默认 | provider 名，如 `volcengine` |
 | `--sound-dir` | 音效库目录 | 否 | `<data-dir>/sounds` | 任意目录 |
 | `--dry-run` | 只生成剧本、不合成音频 | 否 | 关 | 标志（开关） |
 | `--data-dir` | 生成物根目录 | 否 | `./.storyteller` | 任意目录 |
@@ -150,7 +154,7 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 
 #### `storyteller continue <project_id>` — 从断点继续
 
-沿用项目已保存的 length/complexity 与已合成的分段音频，跳过已完成步骤。可选参数（含义与 `generate` 相同）：`--output-format/-f`、`--tts-providers`、`--voice-ids`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--data-dir`、`--strict-mode`。
+沿用项目已保存的 length/complexity 与已合成的分段音频，跳过已完成步骤。可选参数（含义与 `generate` 相同）：`--output-format/-f`、`--tts-providers`、`--voice-ids`、`--default-llm-provider`、`--default-tts-provider`、`--voice-matcher`、`--with-sfx`、`--sound-provider`、`--sound-dir`、`--data-dir`、`--strict-mode`。
 
 #### `storyteller list-projects` — 列出所有项目
 
@@ -193,6 +197,7 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 | `--tags` | 逗号分隔的标签 | 否 | 空 | 如 `天气,夜晚` |
 | `--format` | 输出格式 | 否 | `mp3` | `mp3` / `wav` |
 | `--sound-dir` | 音效库目录 | 否 | `<data-dir>/sounds` | 任意目录 |
+| `--sound-provider` | 使用的音效 provider | 否 | `STORYTELLER_SOUND_DEFAULT_PROVIDER` 或首个已配置 provider | provider 名 |
 
 相同 `prompt` 命中缓存时打印 `Cache hit (no API call)`，不产生网络调用。
 
@@ -207,7 +212,7 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 ### 通用说明
 
 - 带 `--data-dir` / `--sound-dir` 的选项也可用环境变量 `STORYTELLER_DATA_DIR` / `STORYTELLER_SOUND_DIR` 指定，优先级：命令行 > 环境变量 > 默认值（完整环境变量表见上文[配置](#配置)）。
-- `generate` 与 `continue` 共用：`--tts-providers`、`--voice-ids`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--data-dir`、`--strict-mode`、`--output-format`。
+- `generate` 与 `continue` 共用：`--tts-providers`、`--voice-ids`、`--default-llm-provider`、`--default-tts-provider`、`--voice-matcher`、`--with-sfx`、`--sound-provider`、`--sound-dir`、`--data-dir`、`--strict-mode`、`--output-format`。
 - `--length` / `--complexity` 原样传给 LLM 作为"故事长度 / 剧本复杂度"约束，最终台词行数由模型决定。
 
 ## 产物
@@ -282,7 +287,8 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 除火山外可启用阿里云 Qwen-Audio-TTS（非实时 SpeechSynthesizer 接口，北京地域）。在 `.env` 中：
 
 ```bash
-STORYTELLER_TTS_PROVIDERS=volcengine,aliyun
+# 配了 TYPE + API_KEY 即自动注册，可直接 --tts-providers aliyun 选用；
+# 不必再把 aliyun 加进 STORYTELLER_TTS_PROVIDERS（该名单只控制默认启用/排序）
 STORYTELLER_TTS_ALIYUN_TYPE=aliyun
 STORYTELLER_TTS_ALIYUN_API_KEY=your_dashscope_key
 # 可选：业务空间专属域名（替换 WorkspaceId），不填走通用域名
@@ -294,6 +300,8 @@ STORYTELLER_TTS_ALIYUN_API_KEY=your_dashscope_key
 ## 音效与背景音乐
 
 `--with-sfx`（或 `STORYTELLER_SOUND_ENABLED=true`）开启后：
+
+> 音效是与 LLM/TTS 同构的独立 provider 分组：用 `STORYTELLER_SOUND_VOLCENGINE_API_KEY` 配置独立 Key（**不复用、不回退 TTS Key**），可用 `--sound-provider NAME`（generate/continue/make-sound）或 `STORYTELLER_SOUND_DEFAULT_PROVIDER` 选择。旧变量 `STORYTELLER_SFX_VOLCENGINE_*` 已移除。
 
 1. 写剧本的 LLM 会额外产出**可选**的声音提示——顶层一条贯穿全剧的 `background_music`，以及个别台词行的 `sound_effects`（`effect` 短促音效 / `ambient` 持续环境声）。提示遵循「宁缺毋滥、只描述声音本身、不含任何人声台词」，并要写清发声体+动作+声音质感与节奏（例如肚子叫要写「人肚子饿时咕咕叫、低沉冒泡、两三声」，而不是含糊的「咕噜水声」）。每个短促 `effect` 还要给一个本行里**逐字出现**的 `anchor` 短语，标明声音在这句台词里发生的位置。
 2. 每条提示交给火山 **seed-audio**（非流式 `POST /api/v3/tts/create`）生成音频。
