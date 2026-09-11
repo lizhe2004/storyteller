@@ -14,10 +14,11 @@ _AUDIO_URL = "http://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/x/out.wav?s
 
 
 class _FakeResponse:
-    def __init__(self, status_code=200, payload=None, content=b""):
+    def __init__(self, status_code=200, payload=None, content=b"", error_url=None):
         self.status_code = status_code
         self._payload = payload if payload is not None else {}
         self.content = content
+        self._error_url = error_url
 
     def json(self):
         return self._payload
@@ -30,6 +31,14 @@ class _FakeResponse:
         if self.status_code >= 400:
             import requests
 
+            if self._error_url:
+                # Mimics requests' real message shape, which embeds the
+                # request URL: "404 Client Error: ... for url: <url>".
+                raise requests.HTTPError(
+                    "{} Client Error for url: {}".format(
+                        self.status_code, self._error_url
+                    )
+                )
             raise requests.HTTPError("status {}".format(self.status_code))
 
 
@@ -118,6 +127,7 @@ def test_synthesize_posts_then_downloads_audio_url(tmp_path):
     post_call = tts._session.calls[0]
     assert post_call["method"] == "POST"
     assert post_call["url"] == _ENDPOINT + _PATH
+    assert post_call["timeout"] == 120
     assert post_call["headers"]["Authorization"] == "Bearer test-key"
     assert post_call["headers"]["Content-Type"] == "application/json"
 
@@ -133,6 +143,7 @@ def test_synthesize_posts_then_downloads_audio_url(tmp_path):
     get_call = tts._session.calls[1]
     assert get_call["method"] == "GET"
     assert get_call["url"] == _AUDIO_URL
+    assert get_call["timeout"] == 60
 
 
 def test_model_comes_from_the_voices_catalog_record(tmp_path):
@@ -295,6 +306,20 @@ def test_synthesize_raises_when_download_fails(tmp_path):
     tts._session = _FakeSession(_synth_ok(), _FakeResponse(403))
     with pytest.raises(TTSError):
         tts.synthesize("你好", _voice(), tmp_path / "out.mp3")
+
+
+def test_download_failure_does_not_leak_signed_url(tmp_path):
+    signed_url = "https://audio.example.com/x.mp3?sig=SECRETSIG123"
+    tts = AliyunTTS(_config())
+    tts._session = _FakeSession(
+        _synth_ok(audio_url=signed_url),
+        _FakeResponse(404, error_url=signed_url),
+    )
+    with pytest.raises(TTSError) as exc_info:
+        tts.synthesize("你好", _voice(), tmp_path / "out.mp3")
+    message = str(exc_info.value)
+    assert "SECRETSIG123" not in message
+    assert "audio.example.com" not in message
 
 
 def test_constructor_raises_on_missing_key():

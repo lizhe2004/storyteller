@@ -150,15 +150,23 @@ class AliyunTTS(BaseProvider, TTSProvider):
         if not audio_url:
             raise TTSError("Aliyun TTS returned no audio URL")
 
+        download = None
         try:
             download = self._session.get(audio_url, timeout=60)
             download.raise_for_status()
             audio_bytes = download.content
         except requests.RequestException as exc:
+            # Never echo str(exc) here: requests' HTTP/connection errors
+            # embed the signed audio URL, a 24h credential, and this text
+            # flows into pipeline error logs. The chained traceback
+            # (from exc) stays local and keeps the detail for debugging.
+            status_code = getattr(download, "status_code", None)
+            if status_code is not None:
+                detail = "HTTP {}".format(status_code)
+            else:
+                detail = "network error ({})".format(type(exc).__name__)
             raise TTSError(
-                "Aliyun TTS audio download failed: {}".format(
-                    _error_detail(exc, None)
-                )
+                "Aliyun TTS audio download failed: {}".format(detail)
             ) from exc
 
         if not audio_bytes:
