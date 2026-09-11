@@ -61,9 +61,9 @@ _AGE = {
     "中年": "middle_aged",
     "老年": "senior",
 }
-_TYPE_ORDER = {"narrator": 0, "child": 1, "female": 2, "male": 3}
-_AGE_ORDER = {"child": 0, "young_adult": 0, "teen": 1,
-              "middle_aged": 2, "senior": 3}
+_GENDER_ORDER = {"female": 0, "male": 1}
+_AGE_ORDER = {"child": 0, "teen": 1, "young_adult": 2,
+              "middle_aged": 3, "senior": 4}
 
 
 def _categories(speaker):
@@ -106,21 +106,19 @@ def _primary_category(categories):
     return None
 
 
-def _voice_type(age, gender, primary):
-    if age == "child":
-        return "child"
-    if primary in NARRATOR_CATEGORIES:
-        return "narrator"
-    return gender
-
-
-def _narrator_rank(record):
-    """Lower sorts first: the kids' story voice is the default narrator."""
-    if "少儿故事" in record["name"]:
-        return 0
-    if record["category"] == "有声阅读":
-        return 1
-    return 2
+def _sort_key(v):
+    if "少儿故事" in v["name"]:
+        narration_rank = 0
+    elif v["category"] in NARRATOR_CATEGORIES:
+        narration_rank = 1
+    else:
+        narration_rank = 2
+    return (
+        narration_rank,
+        _GENDER_ORDER.get(v["gender"], 9),
+        _AGE_ORDER.get(v["age"], 9),
+        v["name"],
+    )
 
 
 def _load_speakers(path):
@@ -159,7 +157,6 @@ def main():
                 "name": _clean_name(s.get("Name")),
                 "gender": gender,
                 "age": age,
-                "voice_type": _voice_type(age, gender, primary),
                 "category": primary,
                 "description": (s.get("Description") or "").strip(),
                 "tags": [t for t in (s.get("SpecialLabels") or []) if t],
@@ -170,18 +167,7 @@ def main():
             seen.add(voice_id)
             voices.append(record)
 
-    voices.sort(
-        key=lambda v: (
-            _TYPE_ORDER.get(v["voice_type"], 9),
-            # Only narrators are deliberately ordered (kids' story first);
-            # for character voices this is a constant so their natural
-            # age/name order is undisturbed.
-            _narrator_rank(v) if v["voice_type"] == "narrator" else 0,
-            v["gender"],
-            _AGE_ORDER.get(v["age"], 9),
-            v["name"],
-        )
-    )
+    voices.sort(key=_sort_key)
 
     payload = {
         "default_resource_id": "seed-tts-2.0",
@@ -194,14 +180,14 @@ def main():
         encoding="utf-8",
     )
 
-    counts = {}
+    genders = {}
     for v in voices:
-        counts[v["voice_type"]] = counts.get(v["voice_type"], 0) + 1
+        genders[v["gender"]] = genders.get(v["gender"], 0) + 1
     resources = {}
     for v in voices:
         resources[v["resource_id"]] = resources.get(v["resource_id"], 0) + 1
     print("Wrote {} voices to {}".format(len(voices), OUT))
-    print("By voice_type:", counts)
+    print("By gender:", genders)
     print("By resource:", resources)
     print("Bilingual:", sum(1 for v in voices if v["bilingual"]))
     print("Skipped:", skipped)

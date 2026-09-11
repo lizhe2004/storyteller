@@ -2,9 +2,10 @@ import pytest
 
 from storyteller.providers.volcengine.tts import load_voice_catalog
 
-VALID_TYPES = {"male", "female", "child", "narrator"}
+VALID_GENDERS = {"male", "female"}
 VALID_AGES = {"child", "teen", "young_adult", "middle_aged", "senior"}
 VALID_RESOURCES = {"seed-tts-2.0"}
+NARRATION_CATEGORY = "有声阅读"
 
 
 @pytest.fixture(autouse=True)
@@ -15,16 +16,15 @@ def _clear_cache():
 
 
 def test_catalog_loads_and_is_nonempty():
-    voices = load_voice_catalog()
-    assert len(voices) > 200
+    assert len(load_voice_catalog()) > 200
 
 
 def test_catalog_records_have_required_fields():
     for v in load_voice_catalog():
         assert v["voice_id"]
         assert v["name"]
-        assert v["voice_type"] in VALID_TYPES
-        assert v["gender"] in ("male", "female")
+        assert "voice_type" not in v
+        assert v["gender"] in VALID_GENDERS
         assert v["age"] in VALID_AGES
         assert v["language"] == "zh-CN"
         assert v["resource_id"] in VALID_RESOURCES
@@ -44,15 +44,24 @@ def test_catalog_excludes_service_and_accent_voices():
         assert "口音" not in v["category"]
 
 
-def test_catalog_has_narrator_and_child_voices():
+def test_catalog_has_narration_and_child_voices():
     voices = load_voice_catalog()
-    assert any(v["voice_type"] == "narrator" for v in voices)
-    children = [v for v in voices if v["voice_type"] == "child"]
+    assert any(v["category"] == NARRATION_CATEGORY for v in voices)
+    children = [v for v in voices if v["age"] == "child"]
     assert len(children) >= 5
+
+
+def test_catalog_narration_voices_sort_first():
+    voices = load_voice_catalog()
+    first_non_narration = next(
+        i for i, v in enumerate(voices) if v["category"] != NARRATION_CATEGORY
+    )
+    assert all(
+        v["category"] == NARRATION_CATEGORY for v in voices[:first_non_narration]
+    )
 
 
 def test_catalog_is_2_0_only_and_has_bilingual():
     voices = load_voice_catalog()
-    resources = {v["resource_id"] for v in voices}
-    assert resources == VALID_RESOURCES
+    assert {v["resource_id"] for v in voices} == VALID_RESOURCES
     assert any(v["bilingual"] for v in voices)
