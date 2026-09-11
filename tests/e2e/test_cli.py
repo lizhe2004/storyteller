@@ -1,5 +1,6 @@
 import json
 import unicodedata
+from pathlib import Path
 
 from click.testing import CliRunner
 
@@ -265,3 +266,48 @@ def test_wizard_chooses_between_multiple_sound_providers():
         result = runner.invoke(cli, [], input=user_input, env=env)
         assert result.exit_code == 0, result.output
         assert "音效 provider" in result.output
+
+
+def test_make_sound_removes_raw_staging_on_success():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["make-sound", "舒缓的雨声", "--sound-provider", "mock"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code == 0, result.output
+        assert "Generated" in result.output
+        # The raw staging clip is removed once admitted to the library.
+        assert not (Path(".storyteller/sounds/raw")).exists() or \
+            list(Path(".storyteller/sounds/raw").glob("*")) == []
+
+
+def test_make_sound_keeps_raw_clip_when_gate_fails(monkeypatch):
+    from pydub.generators import Sine
+    from storyteller.providers.mock import sfx as mock_sfx
+
+    def silent_generate(self, prompt, output_path, *, audio_format="mp3",
+                        **kwargs):
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        Sine(440).to_audio_segment(duration=300).apply_gain(-70).export(
+            str(output_path), format="wav"
+        )
+        return output_path, 0.3
+
+    monkeypatch.setattr(mock_sfx.MockSoundProvider, "generate", silent_generate)
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["make-sound", "细微的落叶声", "--sound-provider", "mock"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code != 0
+        # Failed clip is kept under sounds/raw and its path is reported.
+        raw_files = list(Path(".storyteller/sounds/raw").glob("*.mp3"))
+        assert len(raw_files) == 1
+        assert raw_files[0].name == "细微的落叶声.mp3"
+        assert "raw" in result.output
