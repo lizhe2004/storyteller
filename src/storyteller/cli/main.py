@@ -35,8 +35,11 @@ def wizard():
 
 # ========== 通用选项 ==========
 _common_options = [
-    click.option("--output-dir", "-o", default=None, help="输出目录"),
-    click.option("--project-dir", default=None, help="项目保存目录"),
+    click.option(
+        "--data-dir",
+        default=None,
+        help="生成物根目录（默认 ./.storyteller，含 stories/ 与 sounds/）",
+    ),
     click.option("--log-level", default=None, help="日志级别 debug/info/warn/error"),
     click.option(
         "--progress",
@@ -50,10 +53,9 @@ _common_options = [
 
 def _apply_options(config, **kwargs):
     """Fold CLI options into the config object."""
-    if kwargs.get("output_dir"):
-        config.set("output_dir", kwargs["output_dir"])
-    if kwargs.get("project_dir"):
-        config.set("project_dir", kwargs["project_dir"])
+    if kwargs.get("data_dir"):
+        config.set("data_dir", kwargs["data_dir"])
+        config.resolve_paths()
     if kwargs.get("log_level"):
         config.set("log_level", kwargs["log_level"])
     if kwargs.get("progress"):
@@ -97,8 +99,11 @@ def _build_pipeline(**options):
 @click.option("--default-llm-provider", default=None, help="默认LLM provider")
 @click.option("--default-tts-provider", default=None, help="默认TTS provider")
 @click.option("--dry-run", is_flag=True, help="只生成剧本，不生成音频")
-@click.option("--output-dir", "-o", default=None)
-@click.option("--project-dir", default=None)
+@click.option(
+    "--data-dir",
+    default=None,
+    help="生成物根目录（默认 ./.storyteller，含 stories/ 与 sounds/）",
+)
 @click.option("--log-level", default=None)
 @click.option("--progress", type=click.Choice(["quiet", "simple", "detailed"]), default=None)
 @click.option("--strict-mode", is_flag=True)
@@ -113,7 +118,7 @@ def _build_pipeline(**options):
     is_flag=True,
     help="生成音效与背景音乐并自动混音（seed-audio，结果缓存到音效库）",
 )
-@click.option("--sound-dir", default=None, help="全局音效库目录（默认 ./sounds）")
+@click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
 def generate(
     topic,
     length,
@@ -167,8 +172,11 @@ def generate(
 @click.option("--output-format", "-f", default=None)
 @click.option("--tts-providers", default=None)
 @click.option("--voice-ids", default=None)
-@click.option("--output-dir", "-o", default=None)
-@click.option("--project-dir", default=None)
+@click.option(
+    "--data-dir",
+    default=None,
+    help="生成物根目录（默认 ./.storyteller，含 stories/ 与 sounds/）",
+)
 @click.option("--strict-mode", is_flag=True)
 @click.option(
     "--voice-matcher",
@@ -181,7 +189,7 @@ def generate(
     is_flag=True,
     help="生成音效与背景音乐并自动混音（seed-audio，结果缓存到音效库）",
 )
-@click.option("--sound-dir", default=None, help="全局音效库目录（默认 ./sounds）")
+@click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
 def continue_(project_id, **options):
     """从断点继续一个项目。"""
     pipeline = _build_pipeline(**options)
@@ -203,13 +211,20 @@ def continue_(project_id, **options):
 
 # ========== list-projects ==========
 @cli.command()
-@click.option("--project-dir", default=None)
-def list_projects(project_dir):
+@click.option(
+    "--data-dir",
+    default=None,
+    help="生成物根目录（默认 ./.storyteller）",
+)
+def list_projects(data_dir):
     """列出所有项目。"""
     from ..core.project import ProjectManager
 
     config = Config.from_env()
-    root = project_dir or config.get("project_dir") or "./projects"
+    if data_dir:
+        config.set("data_dir", data_dir)
+        config.resolve_paths()
+    root = config.get("project_dir")
     manager = ProjectManager(root)
     projects = manager.list_projects()
     if not projects:
@@ -265,7 +280,7 @@ def list_voices(tts_providers):
 @click.option("--description", default="", help="这条音效的描述（便于检索复用）")
 @click.option("--tags", default="", help="逗号分隔的标签")
 @click.option("--format", "audio_format", default="mp3", help="输出格式 mp3/wav")
-@click.option("--sound-dir", default=None, help="全局音效库目录（默认 ./sounds）")
+@click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
 def make_sound(prompt, name, kind, description, tags, audio_format, sound_dir):
     """用文字提示生成/复用一个音效，写入全局音效库。"""
     config = Config.from_env()
@@ -275,7 +290,7 @@ def make_sound(prompt, name, kind, description, tags, audio_format, sound_dir):
     from ..core.sound_library import SoundLibrary
     from ..providers.volcengine.sfx import VolcengineSoundProvider
 
-    library = SoundLibrary(config.get("sound.dir") or "./sounds")
+    library = SoundLibrary(config.get("sound.dir") or "./.storyteller/sounds")
     try:
         provider = VolcengineSoundProvider(config)
         path, record, created = library.get_or_create(
@@ -306,13 +321,13 @@ def make_sound(prompt, name, kind, description, tags, audio_format, sound_dir):
     default=None,
     help="只列出指定类型",
 )
-@click.option("--sound-dir", default=None, help="全局音效库目录（默认 ./sounds）")
+@click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
 def list_sounds(query, kind, sound_dir):
     """列出音效库中的音效，可按关键字检索。"""
     from ..core.sound_library import SoundLibrary
 
     config = Config.from_env()
-    root = sound_dir or config.get("sound.dir") or "./sounds"
+    root = sound_dir or config.get("sound.dir") or "./.storyteller/sounds"
     library = SoundLibrary(root)
     records = library.search(query, kind=kind) if (query or kind) else library.all()
     if not records:

@@ -10,8 +10,8 @@ from storyteller.providers.mock.tts import MockTTSProvider
 
 def _make_pipeline(tmp_path):
     config = Config()
-    config.set("output_dir", str(tmp_path / "outputs"))
-    config.set("project_dir", str(tmp_path / "projects"))
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
     config.set("llm.default_provider", "mock")
     config.set("tts.default_provider", "mock")
 
@@ -25,39 +25,37 @@ def test_run_generates_audio_file(tmp_path):
     pipeline = _make_pipeline(tmp_path)
     result_path = pipeline.run("太空冒险")
     assert Path(result_path).exists()
-    assert Path(result_path).suffix == ".mp3"
+    assert Path(result_path).name == "story.mp3"
+    assert Path(result_path).parent.parent.name == "stories"
 
 
 def test_run_saves_project_state(tmp_path):
     pipeline = _make_pipeline(tmp_path)
-    pipeline.run("测试故事")
+    result_path = Path(pipeline.run("测试故事"))
 
-    project_dir = tmp_path / "projects"
-    assert project_dir.exists()
-    projects = list(project_dir.iterdir())
-    assert len(projects) >= 1
-    json_files = [f for f in projects[0].iterdir() if f.suffix == ".json"]
-    assert len(json_files) >= 1
+    # State and audio share the per-project folder.
+    project_dir = result_path.parent
+    assert (project_dir / "project.json").exists()
+    assert project_dir.parent == tmp_path / ".storyteller" / "stories"
 
 
 def test_run_writes_script_and_audio(tmp_path):
     pipeline = _make_pipeline(tmp_path)
-    result_path = pipeline.run("小猫咪的故事")
+    result_path = Path(pipeline.run("小猫咪的故事"))
 
-    outputs = tmp_path / "outputs"
-    assert outputs.exists()
-    audio_files = list(outputs.rglob("*.mp3"))
-    assert len(audio_files) >= 1
+    project_dir = result_path.parent
+    assert result_path.exists()
+    assert (project_dir / "audio").is_dir()
+    assert list((project_dir / "audio").glob("*.mp3"))
 
 
 def test_run_exports_script_json(tmp_path):
     import json
 
     pipeline = _make_pipeline(tmp_path)
-    result_path = pipeline.run("小刺猬的故事")
-    project_id = Path(result_path).stem
+    result_path = Path(pipeline.run("小刺猬的故事"))
 
-    script_file = tmp_path / "outputs" / "{}.script.json".format(project_id)
+    script_file = result_path.parent / "story.script.json"
     assert script_file.exists()
 
     data = json.loads(script_file.read_text(encoding="utf-8"))
@@ -71,10 +69,9 @@ def test_run_exported_script_includes_matched_voices(tmp_path):
     import json
 
     pipeline = _make_pipeline(tmp_path)
-    result_path = pipeline.run("小狐狸的故事")
-    project_id = Path(result_path).stem
+    result_path = Path(pipeline.run("小狐狸的故事"))
 
-    script_file = tmp_path / "outputs" / "{}.script.json".format(project_id)
+    script_file = result_path.parent / "story.script.json"
     data = json.loads(script_file.read_text(encoding="utf-8"))
     # The standalone JSON is re-exported after voice matching, so every
     # character carries the TTS voice that will actually be used.
@@ -139,8 +136,8 @@ def test_run_passes_directive_and_context_to_tts(tmp_path):
         ],
     }
     config = Config()
-    config.set("output_dir", str(tmp_path / "outputs"))
-    config.set("project_dir", str(tmp_path / "projects"))
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
     config.set("llm.default_provider", "mock")
     config.set("tts.default_provider", "mock")
     pipeline = Pipeline(config)
@@ -181,8 +178,8 @@ def test_narration_uses_narrator_voice_when_llm_omits_it(tmp_path):
         ],
     }
     config = Config()
-    config.set("output_dir", str(tmp_path / "outputs"))
-    config.set("project_dir", str(tmp_path / "projects"))
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
     config.set("llm.default_provider", "mock")
     config.set("tts.default_provider", "mock")
     pipeline = Pipeline(config)
@@ -212,14 +209,15 @@ def test_draft_script_saves_json_without_audio(tmp_path):
     assert data["title"] == script.title
 
     # No audio segments or final mp3 should be produced.
-    assert list((tmp_path / "outputs").rglob("*.mp3")) == []
+    assert list((tmp_path / ".storyteller").rglob("*.mp3")) == []
 
 
 def test_resume_from_script_generated(tmp_path):
     from storyteller.core.project import ProjectManager
     from storyteller.core.models import Script, ScriptLine, Character
 
-    pm = ProjectManager(tmp_path / "projects")
+    stories_root = tmp_path / ".storyteller" / "stories"
+    pm = ProjectManager(stories_root)
     state = pm.create_project(topic="resume-test")
     script = Script(script_id="s1", title="已生成", topic="resume-test")
     script.characters.append(
@@ -239,9 +237,9 @@ def test_resume_from_script_generated(tmp_path):
 
 def test_resume_completed_returns_output(tmp_path):
     pipeline = _make_pipeline(tmp_path)
-    result_path = pipeline.run("故事")
+    result_path = Path(pipeline.run("故事"))
     # Resuming a completed project returns the same output path
-    project_id = Path(result_path).stem
+    project_id = result_path.parent.name
     resume_path = pipeline.resume(project_id)
     assert Path(resume_path).exists()
 
@@ -291,8 +289,8 @@ def _sound_script():
 
 def _make_sound_pipeline(tmp_path, llm, provider, library):
     config = Config()
-    config.set("output_dir", str(tmp_path / "outputs"))
-    config.set("project_dir", str(tmp_path / "projects"))
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
     config.set("sound.enabled", True)
     config.set("sound.dir", str(tmp_path / "sounds"))
     config.set("llm.default_provider", "mock")
@@ -317,23 +315,20 @@ def test_run_with_sound_mixes_and_backfills_paths(tmp_path):
     library = SoundLibrary(tmp_path / "sounds")
     pipeline = _make_sound_pipeline(tmp_path, llm, provider, library)
 
-    result_path = pipeline.run("雨夜")
-    assert Path(result_path).exists()
+    result_path = Path(pipeline.run("雨夜"))
+    assert result_path.exists()
 
     # Both the BGM and the inline ambient cue were generated exactly once.
     assert len(provider.calls) == 2
     assert len(library.all()) == 2
 
-    project_id = Path(result_path).stem
     data = _json.loads(
-        (tmp_path / "outputs" / "{}.script.json".format(project_id)).read_text(
-            encoding="utf-8"
-        )
+        (result_path.parent / "story.script.json").read_text(encoding="utf-8")
     )
     assert data["background_music"]["source_path"]
     assert data["lines"][0]["sound_effects"][0]["source_path"]
     # No stray temp bed left behind.
-    assert list((tmp_path / "outputs").glob("*.bgm.mp3")) == []
+    assert list(result_path.parent.glob("*.bgm.mp3")) == []
 
 
 def test_run_with_sound_reuses_cache_on_second_story(tmp_path):

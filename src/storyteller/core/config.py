@@ -10,8 +10,13 @@ class Config:
 
     DEFAULTS = {
         "log_level": "info",
-        "output_dir": "./outputs",
-        "project_dir": "./projects",
+        # Single root for every generated artifact. Per-story files live under
+        # <data_dir>/stories/<project_id>/; the shared sound library under
+        # <data_dir>/sounds/. The three specific dirs below override this
+        # individually when explicitly configured (env or CLI).
+        "data_dir": "./.storyteller",
+        "output_dir": None,
+        "project_dir": None,
         "output_format": "mp3",
         "progress_level": "simple",
         "strict_mode": False,
@@ -28,7 +33,7 @@ class Config:
         },
         "sound": {
             "enabled": False,
-            "dir": "./sounds",
+            "dir": None,
             "provider_config": {},
         },
     }
@@ -61,12 +66,18 @@ class Config:
 
         # Global settings
         config.set("log_level", os.getenv("STORYTELLER_LOG_LEVEL", "info"))
-        config.set(
-            "output_dir", os.getenv("STORYTELLER_OUTPUT_DIR", "./outputs")
-        )
-        config.set(
-            "project_dir", os.getenv("STORYTELLER_PROJECT_DIR", "./projects")
-        )
+        data_dir = os.getenv("STORYTELLER_DATA_DIR")
+        if data_dir:
+            config.set("data_dir", data_dir)
+        # Explicit per-location overrides win over the derived defaults.
+        if os.getenv("STORYTELLER_OUTPUT_DIR"):
+            config.set(
+                "output_dir", os.getenv("STORYTELLER_OUTPUT_DIR")
+            )
+        if os.getenv("STORYTELLER_PROJECT_DIR"):
+            config.set(
+                "project_dir", os.getenv("STORYTELLER_PROJECT_DIR")
+            )
         config.set(
             "voice_matcher",
             os.getenv("STORYTELLER_VOICE_MATCHER", "llm"),
@@ -77,7 +88,30 @@ class Config:
         cls._load_openai_compatible_tts(config)
         cls._load_sound(config)
 
+        # Artifact dirs are derived lazily in get() from data_dir, so an
+        # explicit --data-dir / STORYTELLER_DATA_DIR stays authoritative.
         return config
+
+    def resolve_paths(self):
+        """Materialize the artifact directories from the single data root.
+
+        Normally directories are derived lazily in :meth:`get`, so changing
+        ``data_dir`` later just works. This method exists for callers that
+        want the resolved values stored explicitly. Locations configured
+        explicitly (env/CLI) are never overwritten.
+        """
+        for key, parts in (
+            ("project_dir", ("stories",)),
+            ("output_dir", ("stories",)),
+            ("sound.dir", ("sounds",)),
+        ):
+            if not self._raw_get(key):
+                self.set(key, self._derive(*parts))
+
+    def _derive(self, *parts):
+        import os
+
+        return os.path.join(self.get("data_dir") or "./.storyteller", *parts)
 
     @staticmethod
     def _load_sound(config):
@@ -161,8 +195,24 @@ class Config:
                 "tts.provider_config.{}".format(provider_name), provider_config
             )
 
+    # Keys derived from data_dir when left unset (None). An explicitly set
+    # value always wins; None means "follow the data root".
+    _DERIVED_DIRS = {
+        "project_dir": ("stories",),
+        "output_dir": ("stories",),
+        "sound.dir": ("sounds",),
+    }
+
     def get(self, key, default=None):
-        """Get a value by dot-separated path; returns default if missing."""
+        """Get a value by dot-separated path; derives dirs from data_dir."""
+        if key in self._DERIVED_DIRS:
+            value = self._raw_get(key)
+            if value:
+                return value
+            return self._derive(*self._DERIVED_DIRS[key])
+        return self._raw_get(key, default)
+
+    def _raw_get(self, key, default=None):
         current = self._config
         for part in key.split("."):
             if isinstance(current, dict) and part in current:

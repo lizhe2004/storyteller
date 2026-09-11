@@ -21,7 +21,10 @@ htmlcov/
 # Environment
 .env
 
-# Outputs
+# Generated artifacts (single data root)
+.storyteller/
+
+# Legacy layout (kept ignored for existing checkouts)
 outputs/
 projects/
 sounds/

@@ -31,7 +31,7 @@ class Pipeline:
 
         self.registry = ProviderRegistry(config)
         self.projects = project_manager or ProjectManager(
-            config.get("project_dir") or "./projects"
+            config.get("project_dir") or "./.storyteller/stories"
         )
         # Injected (typically by tests); real ones are built lazily so that
         # with sound disabled, no key/provider is ever required.
@@ -53,9 +53,9 @@ class Pipeline:
         self._setup_logging()
         state = self.projects.load_project(project_id)
         if state.state == "completed":
-            outputs = self._find_outputs(project_id)
-            if outputs:
-                return str(outputs[0])
+            output = self._find_final_output(project_id)
+            if output:
+                return str(output)
             raise RuntimeError("No output found for completed project")
         return self._execute_pipeline(state, **kwargs)
 
@@ -129,8 +129,10 @@ class Pipeline:
             self._export_script(state)
             self._log_progress("Voices configured")
 
-        # Step 3: Generate audio per line
-        lines_audio_paths = self._collect_existing_audio(state) if state.state in ("generating_audio", "audio_generated", "post_processing") else []
+        # Step 3: Generate audio per line. The loop below is authoritative:
+        # it reuses the canonical per-line file when present and relocates any
+        # legacy absolute-path segment, so start empty even on resume.
+        lines_audio_paths = []
         output_format = kwargs.get("output_format") or self.config.get("output_format") or "mp3"
         total = len(state.script.lines)
         progress_step = kwargs.get("progress_step", "Generating audio %d/%d")
@@ -160,8 +162,14 @@ class Pipeline:
                 continue
             self._log_progress(progress_step % (idx, total))
             if line.audio_path and Path(line.audio_path).exists():
-                lines_audio_paths.append(line.audio_path)
+                # Segment recorded under an older layout: relocate it into the
+                # per-project audio dir so offsets and later resumes find it.
+                import shutil
+
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(line.audio_path, out_path)
                 line.audio_path = str(out_path)
+                lines_audio_paths.append(str(out_path))
                 continue
             try:
                 tts = self.registry.get_tts(voice.provider)
@@ -233,8 +241,11 @@ class Pipeline:
         raise LLMError("No LLM provider registered")
 
     def _audio_path(self, project_id, line_id, output_format):
-        base = Path(self.config.get("output_dir") or "./outputs")
-        return base / project_id / "audio" / "{}.{}".format(line_id, output_format)
+        return (
+            self._project_dir(project_id)
+            / "audio"
+            / "{}.{}".format(line_id, output_format)
+        )
 
     @staticmethod
     def _line_context(lines, idx, lookback=4):
@@ -260,12 +271,17 @@ class Pipeline:
         return directives, context
 
     def _final_output_path(self, project_id, output_format):
-        base = Path(self.config.get("output_dir") or "./outputs")
-        return base / "{}.{}".format(project_id, output_format)
+        return self._project_dir(project_id) / "story.{}".format(output_format)
 
     def _script_path(self, project_id):
-        base = Path(self.config.get("output_dir") or "./outputs")
-        return base / "{}.script.json".format(project_id)
+        return self._project_dir(project_id) / "story.script.json"
+
+    def _project_dir(self, project_id):
+        """All files for one story (state, segments, script, final audio)."""
+        root = self.config.get("project_dir") or self.config.get(
+            "output_dir"
+        ) or "./.storyteller/stories"
+        return Path(root) / project_id
 
     def _export_script(self, state):
         """Write the script to a standalone JSON file in the output dir."""
@@ -281,18 +297,18 @@ class Pipeline:
         )
         return path
 
-    def _find_outputs(self, project_id):
-        base = Path(self.config.get("output_dir") or "./outputs")
-        if not base.exists():
-            return []
-        return [p for p in base.iterdir() if p.is_file() and p.name.startswith(project_id)]
-
-    def _collect_existing_audio(self, state):
-        paths = []
-        for line in state.script.lines:
-            if line.audio_path and Path(line.audio_path).exists():
-                paths.append(line.audio_path)
-        return paths
+    def _find_final_output(self, project_id):
+        """Return the existing final audio (story.<ext>) for a project."""
+        project_dir = self._project_dir(project_id)
+        if not project_dir.exists():
+            return None
+        candidates = sorted(project_dir.glob("story.*"))
+        for candidate in candidates:
+            if candidate.suffix.lstrip(".") in (
+                "mp3", "wav", "ogg", "opus", "flac", "aac",
+            ):
+                return candidate
+        return candidates[0] if candidates else None
 
     def _concatenate(self, audio_paths, output_path):
         from .audio import PydubAudioProcessor
@@ -318,7 +334,7 @@ class Pipeline:
             return self._sound_library
         from .sound_library import SoundLibrary
 
-        sound_dir = self.config.get("sound.dir") or "./sounds"
+        sound_dir = self.config.get("sound.dir") or "./.storyteller/sounds"
         self._sound_library = SoundLibrary(sound_dir)
         return self._sound_library
 

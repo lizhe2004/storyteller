@@ -8,8 +8,11 @@ from storyteller.core.config import Config
 def test_config_defaults():
     config = Config()
     assert config.get("log_level") == "info"
-    assert config.get("output_dir") == "./outputs"
-    assert config.get("project_dir") == "./projects"
+    assert config.get("data_dir") == "./.storyteller"
+    # All artifact dirs are derived from the single data root.
+    assert config.get("project_dir") == "./.storyteller/stories"
+    assert config.get("output_dir") == "./.storyteller/stories"
+    assert config.get("sound.dir") == "./.storyteller/sounds"
 
 
 def test_config_get_nested():
