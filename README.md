@@ -303,6 +303,8 @@ STORYTELLER_TTS_ALIYUN_API_KEY=your_dashscope_key
 
 > 音效是与 LLM/TTS 同构的独立 provider 分组：用 `STORYTELLER_SOUND_VOLCENGINE_API_KEY` 配置独立 Key（**不复用、不回退 TTS Key**），可用 `--sound-provider NAME`（generate/continue/make-sound）或 `STORYTELLER_SOUND_DEFAULT_PROVIDER` 选择。旧变量 `STORYTELLER_SFX_VOLCENGINE_*` 已移除。
 
+> 生成的每条音效（含未通过响度闸门、被跳过混音的废片）都会以 cue 的中文名保存在项目目录 `stories/<项目>/sounds/` 下，永不自动删除，方便事后收听排查；通过闸门的素材另存一份到全局音效库（`snd_<id>.mp3`，供跨项目缓存复用）。`make-sound` 的新素材先暂存于 `sounds/raw/`，合格入库后清理，不合格则保留并以非零退出码报告路径。
+
 1. 写剧本的 LLM 会额外产出**可选**的声音提示——顶层一条贯穿全剧的 `background_music`，以及个别台词行的 `sound_effects`（`effect` 短促音效 / `ambient` 持续环境声）。提示遵循「宁缺毋滥、只描述声音本身、不含任何人声台词」，并要写清发声体+动作+声音质感与节奏（例如肚子叫要写「人肚子饿时咕咕叫、低沉冒泡、两三声」，而不是含糊的「咕噜水声」）。每个短促 `effect` 还要给一个本行里**逐字出现**的 `anchor` 短语，标明声音在这句台词里发生的位置。
 2. 每条提示交给火山 **seed-audio**（非流式 `POST /api/v3/tts/create`）生成音频。
 3. 用 pydub 混音：
