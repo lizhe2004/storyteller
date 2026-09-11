@@ -161,17 +161,15 @@ def test_missing_key_raises():
         VolcengineSoundProvider(config)
 
 
-def test_reuses_tts_key_when_sound_key_absent(tmp_path):
+def test_tts_key_is_not_used_as_fallback():
     config = Config()
     config.set(
         "tts.provider_config.volcengine",
         {"api_key": "tts-key", "endpoint": _ENDPOINT},
     )
-    session = _FakeSession(
-        _FakeResponse(
-            200, {"code": 0, "audio": base64.b64encode(b"x").decode()}
-        )
-    )
-    provider = VolcengineSoundProvider(config, session=session)
-    provider.generate("x", tmp_path / "s.mp3")
-    assert session.post_calls[0]["headers"]["X-Api-Key"] == "tts-key"
+    with pytest.raises(TTSError) as exc:
+        VolcengineSoundProvider(config)
+    message = str(exc.value)
+    assert "STORYTELLER_SOUND_VOLCENGINE_API_KEY" in message
+    # The unrelated TTS key must not appear in the error either.
+    assert "tts-key" not in message

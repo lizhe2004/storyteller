@@ -19,16 +19,15 @@ class VolcengineSoundProvider(BaseProvider, SoundEffectProvider):
 
     Non-streaming ``POST /api/v3/tts/create``: turns a natural-language
     ``text_prompt`` into a sound effect / ambient bed / music clip (no
-    dictated speech). Reuses the TTS api key unless a dedicated sound key is
-    configured.
+    dictated speech). Reads its dedicated key from STORYTELLER_SOUND_VOLCENGINE_API_KEY;
+    there is no fallback to the TTS key.
     """
 
     def __init__(self, config, session=None):
         super().__init__(config)
         sound_cfg = config.get("sound.provider_config.volcengine", {}) or {}
-        tts_cfg = config.get("tts.provider_config.volcengine", {}) or {}
 
-        self.api_key = sound_cfg.get("api_key") or tts_cfg.get("api_key")
+        self.api_key = sound_cfg.get("api_key")
         self.endpoint = (
             sound_cfg.get("endpoint") or _DEFAULT_ENDPOINT
         ).rstrip("/")
@@ -36,9 +35,8 @@ class VolcengineSoundProvider(BaseProvider, SoundEffectProvider):
 
         if not self.api_key:
             raise TTSError(
-                "Volcengine sound api_key is missing "
-                "(STORYTELLER_SFX_VOLCENGINE_API_KEY, or reuse "
-                "STORYTELLER_TTS_VOLCENGINE_API_KEY)"
+                "Volcengine sound api_key is missing: set "
+                "STORYTELLER_SOUND_VOLCENGINE_API_KEY"
             )
 
         self._session = session or requests.Session()
