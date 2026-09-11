@@ -1,0 +1,136 @@
+{
+  "voices": [
+    {
+      "voice_id": "longanlingxin",
+      "name": "龙安灵心",
+      "model": "qwen-audio-3.0-tts-plus",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "25岁知心温暖音，声线亲和治愈，旗舰女声",
+      "tags": ["旗舰音色"],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longanlufeng",
+      "name": "龙安鲁风",
+      "model": "qwen-audio-3.0-tts-plus",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "25岁明亮开朗音，阳光活力的旗舰男声",
+      "tags": ["旗舰音色"],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longanfengyue",
+      "name": "龙安风悦",
+      "model": "qwen-audio-3.0-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "30岁自然亲切音，语气温婉大方",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longanyuanfei",
+      "name": "龙安元妃",
+      "model": "qwen-audio-3.0-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "角色扮演",
+      "description": "30岁高傲妃子音，语气傲娇矜贵，适合古装角色",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longanlingxi",
+      "name": "龙安灵希",
+      "model": "qwen-audio-3.0-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "25岁可爱甜美音，声线灵动讨喜",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longanxiaoxin",
+      "name": "龙安小昕",
+      "model": "qwen-audio-3.0-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "22岁亲切活泼音，元气开朗的年轻女声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longanhuan_v3.6",
+      "name": "龙安欢",
+      "model": "qwen-audio-3.0-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "25岁自然亲切的年轻女声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longjielidou_v3.6",
+      "name": "龙杰力豆",
+      "model": "qwen-audio-3.0-tts-flash",
+      "gender": "male",
+      "age": "child",
+      "category": "儿童陪伴",
+      "description": "5岁天真男童，稚嫩活泼的小男孩声音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longpaopao_v3.6",
+      "name": "龙泡泡",
+      "model": "qwen-audio-3.0-tts-flash",
+      "gender": "female",
+      "age": "child",
+      "category": "儿童陪伴",
+      "description": "5岁软糯可爱音，软萌稚气的小女孩声音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longhuohuo_v3.6",
+      "name": "龙火火",
+      "model": "qwen-audio-3.0-tts-flash",
+      "gender": "male",
+      "age": "child",
+      "category": "角色扮演",
+      "description": "8岁顽皮少年音，机灵淘气的男孩声音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": true
+    },
+    {
+      "voice_id": "longchuanshu_v3.6",
+      "name": "龙川叔",
+      "model": "qwen-audio-3.0-tts-flash",
+      "gender": "male",
+      "age": "middle_aged",
+      "category": "角色扮演",
+      "description": "40岁川普大叔音，憨厚接地气的中年男声",
+      "tags": ["方言"],
+      "language": "zh-CN",
+      "bilingual": true
+    }
+  ]
+}

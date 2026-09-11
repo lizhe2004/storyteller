@@ -6,7 +6,7 @@
 - 大模型两阶段匹配音色：先判定角色性别/年龄，再在音色库里按音色描述精选
 - 每句台词自动生成演法指令（情绪/语气），并引用上文保持情感连贯
 - 可选音效与背景音乐：LLM 产出声音提示，seed-audio 生成并自动混音，结果进全局音效库缓存复用
-- 火山引擎 LLM + 语音合成（seed-tts 2.0），同时支持任意 OpenAI 兼容服务
+- 火山引擎 LLM + 语音合成（seed-tts 2.0），可选接入阿里云百炼 TTS（Qwen-Audio-TTS），同时支持任意 OpenAI 兼容服务
 - 项目状态持久化，支持断点续作
 - CLI 参数模式 + 交互式向导
 
@@ -37,6 +37,9 @@ cp .env.example .env
 | `STORYTELLER_TTS_VOLCENGINE_API_KEY` | 语音合成 Key（**与 LLM Key 不同**） |
 | `STORYTELLER_TTS_VOLCENGINE_RESOURCE_ID` | 默认 `seed-tts-2.0` |
 | `STORYTELLER_TTS_VOLCENGINE_ENDPOINT` | v3 单向流式接口 `/api/v3/tts/unidirectional` |
+| `STORYTELLER_TTS_ALIYUN_API_KEY` | 可选第二 TTS：阿里云百炼（DASHSCOPE）Key，需配 `STORYTELLER_TTS_ALIYUN_TYPE=aliyun` |
+| `STORYTELLER_TTS_ALIYUN_MODEL` | 默认 `qwen-audio-3.0-tts-flash`（目录音色自带模型归属） |
+| `STORYTELLER_TTS_ALIYUN_ENDPOINT` | 默认通用域名，可换 `{WorkspaceId}.cn-beijing.maas.aliyuncs.com` 专属域名 |
 | `STORYTELLER_DATA_DIR` | 生成物根目录，默认 `./.storyteller`（内含 `stories/`、`sounds/`） |
 | `STORYTELLER_OUTPUT_DIR` / `STORYTELLER_PROJECT_DIR` | 分别覆盖故事产物/状态目录，默认都在 `<DATA_DIR>/stories` |
 | `STORYTELLER_VOICE_MATCHER` | `llm`（默认，语义匹配）或 `rule`（仅关键字规则） |
@@ -263,7 +266,7 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 
 任一步失败或返回非法结果，对应角色回退到确定性规则匹配：对话角色在同性别音色池里按年龄距离挑选（同性别池为空时退到中性音色），有声阅读类作为对话的最后备选；旁白角色在全库中优先有声阅读类。可用 `--voice-matcher rule` 或 `STORYTELLER_VOICE_MATCHER=rule` 完全走规则（不产生额外 LLM 调用）。
 
-内置火山音色库约 249 个（仅 seed-tts-2.0，含中英文混读音色），由 `scripts/build_voice_catalog.py` 从 `data/` 下的官方清单整理生成，打包在 `src/storyteller/providers/volcengine/voices.json`。
+内置火山音色库约 249 个（仅 seed-tts-2.0，含中英文混读音色），由 `scripts/build_voice_catalog.py` 从 `data/` 下的官方清单整理生成，打包在 `src/storyteller/providers/volcengine/voices.json`。启用阿里云 provider 后另有 11 个 Qwen-Audio-TTS 系统音色（含 3 个童声），打包在 `src/storyteller/providers/aliyun/voices.json`，每个音色记录其专属模型（plus/flash 音色不可混用）。
 
 ## 演法指令与上文引用
 
@@ -271,6 +274,22 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 
 - 以 `#` 开头的演法指令：控制情绪/语气，**不会被朗读**；
 - 不带 `#` 的引用上文（最近一句旁白/对话）：不合成，仅让模型承接场景情绪。
+
+阿里云 provider 只有单个 `instruction` 参数：演法指令会拼接进 `instruction`，引用上文被丢弃（该接口无对应机制）。
+
+## 接入阿里云百炼 TTS
+
+除火山外可启用阿里云 Qwen-Audio-TTS（非实时 SpeechSynthesizer 接口，北京地域）。在 `.env` 中：
+
+```bash
+STORYTELLER_TTS_PROVIDERS=volcengine,aliyun
+STORYTELLER_TTS_ALIYUN_TYPE=aliyun
+STORYTELLER_TTS_ALIYUN_API_KEY=your_dashscope_key
+# 可选：业务空间专属域名（替换 WorkspaceId），不填走通用域名
+# STORYTELLER_TTS_ALIYUN_ENDPOINT=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com
+```
+
+非流式接口先返回 24 小时有效的音频 URL，程序会立即下载落盘。多 provider 时逐句按音色归属的 provider 路由，音色匹配在两家音色库中统一进行；想完全用阿里云，设 `STORYTELLER_TTS_DEFAULT_PROVIDER=aliyun` 并用 `--tts-providers aliyun` 限定候选池。
 
 ## 音效与背景音乐
 
@@ -351,6 +370,7 @@ src/storyteller/
 │   └── models.py           # Script / Character / ScriptLine / VoiceConfig
 ├── providers/
 │   ├── volcengine/         # 火山 LLM + v3 seed-tts 流式 TTS + voices.json
+│   ├── aliyun/             # 阿里云百炼 Qwen-Audio-TTS + voices.json
 │   ├── openai_compatible/  # 任意 OpenAI 兼容服务
 │   ├── mock/               # 测试用桩实现
 │   └── registry.py         # provider 注册与音色聚合

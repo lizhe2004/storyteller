@@ -17,6 +17,11 @@ except ImportError:  # pragma: no cover
     OpenAICompatibleTTS = None
 
 try:
+    from .aliyun.tts import AliyunTTS
+except ImportError:  # pragma: no cover
+    AliyunTTS = None
+
+try:
     from .mock.llm import MockLLMProvider
     from .mock.tts import MockTTSProvider
 except ImportError:  # pragma: no cover
@@ -71,6 +76,8 @@ def _register_tts(config, registry):
                 name,
                 lambda c, n=name: OpenAICompatibleTTS(c, n),
             )
+        elif provider_type == "aliyun" and AliyunTTS:
+            registry.register_tts(name, lambda c: AliyunTTS(c))
         elif provider_type == "mock" and MockTTSProvider:
             registry.register_tts(name, lambda c: MockTTSProvider(c))
         elif VolcengineTTS:

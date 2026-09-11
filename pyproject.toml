@@ -29,6 +29,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "storyteller.providers.volcengine" = ["voices.json"]
+"storyteller.providers.aliyun" = ["voices.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

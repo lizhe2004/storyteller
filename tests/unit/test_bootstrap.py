@@ -73,6 +73,29 @@ def test_register_openai_compatible_llm():
     assert llm.model == "llm-model"
 
 
+def test_register_aliyun_tts():
+    config = Config()
+    config.set("tts.providers", ["aliyun"])
+    config.set("tts.default_provider", "aliyun")
+    config.set(
+        "tts.provider_config.aliyun",
+        {
+            "type": "aliyun",
+            "api_key": "dashscope-key",
+            "model": "qwen-audio-3.0-tts-flash",
+        },
+    )
+
+    registry = ProviderRegistry(config)
+    register_providers_from_config(config, registry)
+
+    assert "aliyun" in registry.list_tts_names()
+    tts = registry.get_default_tts()
+    assert tts is not None
+    assert tts.name == "aliyun"
+    assert tts.model == "qwen-audio-3.0-tts-flash"
+
+
 def test_register_skips_unknown_defaults():
     config = Config()
     config.set("llm.providers", ["volcengine"])
