@@ -91,9 +91,21 @@ def _build_pipeline(**options):
         config.set("llm.default_provider", options["default_llm_provider"])
     if options.get("default_tts_provider"):
         config.set("tts.default_provider", options["default_tts_provider"])
+    if options.get("sound_provider"):
+        config.set("sound.default_provider", options["sound_provider"])
 
     pipeline = Pipeline(config)
     register_providers_from_config(config, pipeline.registry)
+
+    requested_sound = options.get("sound_provider")
+    if requested_sound is not None:
+        available = pipeline.registry.list_sound_names()
+        if requested_sound not in available:
+            raise click.ClickException(
+                "Unknown sound provider: {}. Configured sound providers: "
+                "{}. Set STORYTELLER_SOUND_<NAME>_API_KEY to configure one."
+                .format(requested_sound, ", ".join(available) or "(none)")
+            )
     return pipeline
 
 
@@ -128,6 +140,11 @@ def _build_pipeline(**options):
     help="生成音效与背景音乐并自动混音（seed-audio，结果缓存到音效库）",
 )
 @click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
+@click.option(
+    "--sound-provider",
+    default=None,
+    help="本次运行使用的音效 provider（覆盖环境默认）",
+)
 def generate(
     topic,
     length,
@@ -199,6 +216,13 @@ def generate(
     help="生成音效与背景音乐并自动混音（seed-audio，结果缓存到音效库）",
 )
 @click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
+@click.option("--default-llm-provider", default=None, help="默认LLM provider")
+@click.option("--default-tts-provider", default=None, help="默认TTS provider")
+@click.option(
+    "--sound-provider",
+    default=None,
+    help="本次运行使用的音效 provider（覆盖环境默认）",
+)
 def continue_(project_id, **options):
     """从断点继续一个项目。"""
     pipeline = _build_pipeline(**options)

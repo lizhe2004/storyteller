@@ -21,6 +21,8 @@ _MOCK_ENV = {
     "STORYTELLER_TTS_PROVIDERS": "mock",
     "STORYTELLER_TTS_MOCK_TYPE": "mock",
     "STORYTELLER_TTS_DEFAULT_PROVIDER": "mock",
+    "STORYTELLER_SOUND_PROVIDERS": "mock",
+    "STORYTELLER_SOUND_MOCK_TYPE": "mock",
 }
 
 
@@ -104,6 +106,49 @@ def test_generate_dry_run():
         )
         assert result.exit_code == 0, result.output
         assert "Dry-run" in result.output
+
+
+def test_generate_with_sound_provider_flag():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["generate", "测试故事", "--with-sfx", "--sound-provider", "mock"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code == 0, result.output
+
+
+def test_generate_unknown_sound_provider_fails_before_generation():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["generate", "测试故事", "--sound-provider", "nope"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code != 0
+        assert "Unknown sound provider" in result.output
+        assert "mock" in result.output
+
+
+def test_continue_accepts_provider_selection_flags():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        # Unknown project, but click must accept every flag first
+        # (regression: continue used to lack these options).
+        result = runner.invoke(
+            cli,
+            [
+                "continue", "proj_does_not_exist",
+                "--default-llm-provider", "mock",
+                "--default-tts-provider", "mock",
+                "--sound-provider", "mock",
+            ],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code != 0
+        assert "no such option" not in result.output.lower()
 
 
 def test_list_projects_empty():
