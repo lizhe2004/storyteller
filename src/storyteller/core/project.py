@@ -128,7 +128,6 @@ def _voice_to_dict(vc):
     return {
         "provider": vc.provider,
         "voice_id": vc.voice_id,
-        "voice_type": vc.voice_type,
         "language": vc.language,
         "style": vc.style,
         "speed": vc.speed,
@@ -148,7 +147,6 @@ def _voice_from_dict(data):
     return VoiceConfig(
         provider=data["provider"],
         voice_id=data["voice_id"],
-        voice_type=data["voice_type"],
         language=data.get("language", "zh-CN"),
         style=data.get("style"),
         speed=data.get("speed", 1.0),

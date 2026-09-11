@@ -62,13 +62,13 @@ class SoundEffect:
 class VoiceConfig:
     provider: str
     voice_id: str
-    voice_type: Literal["male", "female", "child", "narrator"]
     language: str = "zh-CN"
     style: Optional[str] = None
     speed: float = 1.0
     pitch: float = 1.0
     volume: float = 1.0
-    # Descriptive hints used by semantic (LLM) voice matching.
+    # Identity hints used by semantic (LLM) voice matching.
+    # gender is male/female, or None for gender-neutral voices.
     name: Optional[str] = None
     gender: Optional[str] = None
     age: Optional[str] = None

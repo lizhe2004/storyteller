@@ -18,16 +18,22 @@ def test_voice_config_creation():
     vc = VoiceConfig(
         provider="volcengine",
         voice_id="test_voice",
-        voice_type="narrator",
+        gender="female",
         language="zh-CN",
     )
     assert vc.provider == "volcengine"
     assert vc.voice_id == "test_voice"
-    assert vc.voice_type == "narrator"
+    assert vc.gender == "female"
     assert vc.speed == 1.0
     assert vc.pitch == 1.0
     assert vc.volume == 1.0
     assert vc.style is None
+
+
+def test_voice_config_neutral_gender_defaults_none():
+    vc = VoiceConfig(provider="p", voice_id="alloy")
+    assert vc.gender is None
+    assert not hasattr(vc, "voice_type")
 
 
 # ========== Character ==========
@@ -42,7 +48,7 @@ def test_character_with_voice():
     vc = VoiceConfig(
         provider="volcengine",
         voice_id="v1",
-        voice_type="male",
+        gender="male",
     )
     char = Character(id="hero", name="英雄", description="主角", voice_config=vc)
     assert char.voice_config.voice_id == "v1"
@@ -139,3 +145,18 @@ def test_enums_are_strings():
     # Enums should compare equal to their string values
     assert LineType.DIALOGUE == "dialogue"
     assert ProjectStatus.COMPLETED == "completed"
+
+
+def test_voice_from_dict_ignores_legacy_voice_type():
+    from storyteller.core.project import _voice_from_dict
+
+    legacy = {
+        "provider": "volcengine",
+        "voice_id": "old_voice",
+        "voice_type": "narrator",  # legacy key, must be ignored
+        "name": "旧旁白",
+    }
+    vc = _voice_from_dict(legacy)
+    assert vc.voice_id == "old_voice"
+    assert vc.gender is None
+    assert not hasattr(vc, "voice_type")
