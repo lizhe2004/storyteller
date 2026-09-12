@@ -268,15 +268,14 @@ def list_projects(data_dir):
         config.resolve_paths()
     root = config.get("project_dir")
     manager = ProjectManager(root)
-    projects = manager.list_projects()
-    if not projects:
+    entries = manager.list_project_entries()
+    if not entries:
         click.echo("没有找到项目。")
         return
-    for state in projects:
+    for dir_name, state in entries:
         status = click.style(state.state, fg="green" if state.state == "completed" else "yellow")
         title = state.script.title if state.script else None
         label = title or state.config.get("topic", "")
-        dir_name = manager.resolve_project_dir(state.project_id).name
         click.echo("{}  [{}]  {}".format(dir_name, status, label))
 
 

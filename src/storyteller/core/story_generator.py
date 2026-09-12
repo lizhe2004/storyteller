@@ -290,7 +290,9 @@ def _script_from_json(data, topic):
             )
         )
 
-    # Cues on a trailing marker with no line after: keep them on the last line.
+    # A trailing sound-only marker has no later line to attach to: keep its
+    # beds/music on the last line, and drop any effect whose anchor is absent
+    # from that line (same evidence rule as above).
     if pending_sounds and lines:
         lines[-1].sound_effects.extend(
             _cues_for_line(pending_sounds, lines[-1].text)

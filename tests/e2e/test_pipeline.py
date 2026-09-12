@@ -320,6 +320,60 @@ def test_near_silent_retry_prints_retry_progress(tmp_path, capsys):
     assert "重试 2/2" in output
 
 
+def test_failed_cue_clip_path_reused_across_runs(tmp_path):
+    # A cue that keeps failing must overwrite the same inspection file on a
+    # later resume instead of accumulating 雷.mp3, 雷-2.mp3, 雷-3.mp3.
+    from storyteller.core.exceptions import SoundGenerationError
+    from storyteller.core.models import SoundEffect
+    from storyteller.core.sound_library import SoundLibrary
+
+    config = Config()
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
+    config.set("sound.dir", str(tmp_path / "sounds"))
+    pipeline = _make_pipeline(tmp_path)
+    state = pipeline.projects.create_project(topic="雷声")
+
+    cue = SoundEffect(
+        effect_id="e1", name="炸雷", type="effect", prompt="一声炸雷，无人声"
+    )
+    library = SoundLibrary(tmp_path / "sounds")
+    raw_first = pipeline._project_sound_path(state.project_id, cue)
+    with pytest.raises(SoundGenerationError):
+        pipeline._materialize_cue(
+            _NearSilentSoundProvider(), library, cue, raw_first
+        )
+    # "Resume": the same still-pending cue resolves to the same path.
+    raw_second = pipeline._project_sound_path(state.project_id, cue)
+    assert raw_first == raw_second
+
+
+def test_cached_cue_reports_cache_hit_not_generating(tmp_path, capsys):
+    from storyteller.providers.mock.sfx import MockSoundProvider
+    from storyteller.core.sound_library import SoundLibrary
+
+    config = Config()
+    provider = MockSoundProvider(config)
+    library = SoundLibrary(tmp_path / "sounds")
+
+    for run_no in range(2):
+        llm = MockLLMProvider(config)
+        llm.set_response(_sound_script())
+        pipeline = _make_sound_pipeline(tmp_path, llm, provider, library)
+        pipeline.run("雨夜")
+
+    output = capsys.readouterr().out.splitlines()
+    # The second run is fully cached: no billed generation announced...
+    second_run_start = [
+        i for i, line in enumerate(output)
+        if line.startswith("Generating script")
+    ][-1]
+    second_output = output[second_run_start:]
+    assert not any("Generating sound" in l for l in second_output)
+    # ...both cues explicitly report cache hits.
+    assert sum("cached" in l for l in second_output) == 2
+
+
 def test_resume_from_script_generated(tmp_path):
     from storyteller.core.project import ProjectManager
     from storyteller.core.models import Script, ScriptLine, Character

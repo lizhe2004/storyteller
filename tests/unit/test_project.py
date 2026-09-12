@@ -178,3 +178,57 @@ def test_legacy_proj_id_directory_still_loads(temp_dir):
     )
     assert manager.load_project(state.project_id).project_id == state.project_id
 
+
+def test_resolve_empty_ref_raises(temp_dir):
+    manager = ProjectManager(temp_dir)
+    _project_with_script(manager, "故事")
+    with pytest.raises(ProjectError):
+        manager.resolve_project_dir("")
+    with pytest.raises(ProjectError):
+        manager.resolve_project_dir("   ")
+
+
+def test_resolve_id_prefix_matches_renamed_project(temp_dir):
+    from datetime import datetime
+
+    manager = ProjectManager(temp_dir)
+    state = _project_with_script(
+        manager, "客栈夜铃", datetime(2026, 9, 12, 11, 41, 51)
+    )
+    manager.rename_for_title(state, "客栈夜铃")
+    # A short prefix of the stable id still resolves after the rename.
+    assert manager.resolve_project_dir(
+        state.project_id[:10]
+    ).name == "2026-09-12-客栈夜铃"
+
+
+def test_save_with_duplicated_id_raises_instead_of_forking(temp_dir):
+    import shutil
+
+    manager = ProjectManager(temp_dir)
+    state = _project_with_script(manager, "故事")
+    renamed = manager.rename_for_title(state, "故事")
+    # User duplicates the renamed directory as a backup: same project_id
+    # now lives in two directories.
+    shutil.copytree(renamed, Path(temp_dir) / "backup-故事")
+
+    state.state = "generating_audio"
+    with pytest.raises(ProjectError):
+        manager.save_project(state)
+    # No third, id-named directory was silently created.
+    assert not (Path(temp_dir) / state.project_id).exists()
+
+
+def test_list_project_entries_includes_dir_names(temp_dir):
+    manager = ProjectManager(temp_dir)
+    a = _project_with_script(manager, "甲")
+    manager.rename_for_title(a, "甲")
+    b = manager.create_project(topic="无剧本")
+
+    entries = manager.list_project_entries()
+    names = {name for name, _ in entries}
+    assert a.project_id not in names  # renamed: date-title dir, not id dir
+    assert b.project_id in names
+    assert any(name.endswith("-甲") for name in names)
+
+

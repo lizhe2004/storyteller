@@ -332,15 +332,27 @@ class Pipeline:
         """
         return self.projects.resolve_project_dir(project_id)
 
-    def _project_sound_path(self, project_id, cue):
-        """Chinese-named raw clip path inside the project's sounds/ dir."""
-        from .sound_library import safe_sound_name, unique_path
+    def _project_sound_path(self, project_id, cue, referenced_paths=None):
+        """Raw clip path inside the project's sounds/ dir for one cue.
+
+        An existing file is REUSED (overwritten) unless another cue already
+        owns that path in this pass (``referenced_paths``), so a failed
+        near-silent clip keeps the same inspection path on retry/resume
+        instead of accumulating name-2.mp3, name-3.mp3.
+        """
+        from .sound_library import safe_sound_name
 
         sounds_dir = self._project_dir(project_id) / "sounds"
         sounds_dir.mkdir(parents=True, exist_ok=True)
         fallback = "sfx_" + str(cue.effect_id)[-6:]
         stem = safe_sound_name(cue.name or (cue.prompt or "")[:12], fallback)
-        return unique_path(sounds_dir, stem, "mp3")
+        referenced = referenced_paths or set()
+        candidate = sounds_dir / "{}.mp3".format(stem)
+        suffix = 2
+        while candidate in referenced:
+            candidate = sounds_dir / "{}-{}.mp3".format(stem, suffix)
+            suffix += 1
+        return candidate
 
     def _export_script(self, state):
         """Write the script to a standalone JSON file in the output dir."""
@@ -407,27 +419,21 @@ class Pipeline:
         self._sound_library = SoundLibrary(sound_dir)
         return self._sound_library
 
-    def _materialize_cue(self, provider, library, cue, raw_path):
-        """Return an audible clip for one cue: cache hit or retried generate.
+    def _generate_cue_with_retry(self, provider, library, cue, raw_path):
+        """Generate one cue, retrying near-silent results up to the limit.
 
-        Near-silent generations (SoundGenerationError from the loudness gate)
-        are retried with the same prompt up to MAX_SOUND_ATTEMPTS; the raw
-        clip is overwritten each time, leaving only the last failure on disk.
-        Other errors (network/API) are not retried here. Returns
-        ``(record, created)``.
+        SoundGenerationError from the loudness gate is retried with the same
+        prompt up to MAX_SOUND_ATTEMPTS; the raw clip is overwritten each
+        time, leaving only the last failure on disk. Other errors (network,
+        API) propagate to the caller without retry.
         """
-        record = library.find(provider, cue.prompt, audio_format="mp3")
-        if record is not None:
-            shutil.copy2(library.path_for(record), raw_path)
-            return record, False
-
         last_error = None
         for attempt in range(1, MAX_SOUND_ATTEMPTS + 1):
             _, gen_duration = provider.generate(
                 cue.prompt, raw_path, audio_format="mp3"
             )
             try:
-                record = library.admit(
+                return library.admit(
                     raw_path,
                     provider,
                     prompt=cue.prompt,
@@ -447,8 +453,22 @@ class Pipeline:
                         )
                     )
                 continue
-            return record, True
         raise last_error
+
+    def _materialize_cue(self, provider, library, cue, raw_path, record=None):
+        """Return an audible clip for one cue: cache hit or retried generate.
+
+        ``record`` may be a cache record the caller already looked up so the
+        fingerprint is not hashed twice. Returns ``(record, created)``.
+        """
+        if record is None:
+            record = library.find(provider, cue.prompt, audio_format="mp3")
+        if record is not None:
+            shutil.copy2(library.path_for(record), raw_path)
+            return record, False
+        return self._generate_cue_with_retry(
+            provider, library, cue, raw_path
+        ), True
 
     def _apply_soundtrack(self, state, output_path):
         """Generate/cache BGM + effects and mix them into the concatenated file."""
@@ -467,22 +487,40 @@ class Pipeline:
         provider = self._get_sound_provider()
         library = self._get_sound_library()
         total_pending = len(pending)
+        # Paths already owned by cues materialized this pass, so same-named
+        # distinct cues get a -2 suffix rather than overwriting each other.
+        referenced_paths = {
+            Path(c.source_path)
+            for c in cues
+            if c.source_path and Path(c.source_path).exists()
+        }
         for idx, cue in enumerate(pending, start=1):
-            raw_path = self._project_sound_path(state.project_id, cue)
-            self._log_progress(
-                "Generating sound %d/%d · %s" % (
-                    idx, total_pending, cue.name
+            record = library.find(provider, cue.prompt, audio_format="mp3")
+            if record is not None:
+                self._log_progress(
+                    "Sound %d/%d · %s (cached)" % (
+                        idx, total_pending, cue.name
+                    )
                 )
-            )
+            else:
+                self._log_progress(
+                    "Generating sound %d/%d · %s" % (
+                        idx, total_pending, cue.name
+                    )
+                )
             try:
+                raw_path = self._project_sound_path(
+                    state.project_id, cue, referenced_paths
+                )
                 record, created = self._materialize_cue(
-                    provider, library, cue, raw_path
+                    provider, library, cue, raw_path, record=record
                 )
             except Exception as exc:
                 # The raw clip (if any) stays in the project's sounds/ dir
                 # for inspection; the cue is simply left out of the mix.
                 self._log_error(cue.effect_id, exc)
                 continue
+            referenced_paths.add(Path(raw_path))
             cue.source_path = str(raw_path)
             cue.source_type = "local"
             if cue.duration is None:

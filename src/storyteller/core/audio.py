@@ -151,10 +151,11 @@ class PydubAudioProcessor(AudioProcessor):
                 if effect.type in ("ambient", "music")
                 else _EFFECT_TARGET_DBFS
             )
-            # Lift quiet cues only up to a capped boost: full normalization
-            # to target would erase the near/far, loud/faint dynamics the
-            # generation prompt asked for. Loud clips are never attenuated
-            # here; the group cap below is what protects the speech.
+            # Move quiet cues toward target, but cap the boost at
+            # _MAX_BOOST_DB: fully normalizing a faint cue would erase the
+            # near/far, loud/faint dynamics the prompt asked for. Cues already
+            # louder than target are trimmed to it; the group cap below then
+            # protects the speech after multiple cues overlap.
             gain = min(target - clip.dBFS, _MAX_BOOST_DB)
             clip = clip.apply_gain(gain)
             if effect.volume and effect.volume > 0:

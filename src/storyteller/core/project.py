@@ -38,6 +38,9 @@ class ProjectManager:
 
     def __init__(self, project_root):
         self.project_root = Path(project_root)
+        # Lazily-built index of project_id -> directories (a duplicated id
+        # maps to several dirs); invalidated by rename/delete.
+        self._id_index = None
 
     # ----- lifecycle -----
     def create_project(self, topic=None, config=None):
@@ -54,10 +57,9 @@ class ProjectManager:
         return state
 
     def save_project(self, state):
-        try:
-            project_dir = self.resolve_project_dir(state.project_id)
-        except ProjectError:
-            # Brand-new project: its id-named directory does not exist yet.
+        project_dir = self._dir_for_id(state.project_id)
+        if project_dir is None:
+            # Brand-new project: its directory does not exist yet.
             project_dir = self.project_root / state.project_id
         project_dir.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -73,6 +75,10 @@ class ProjectManager:
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        if self._id_index is not None:
+            dirs = self._id_index.setdefault(state.project_id, [])
+            if project_dir not in dirs:
+                dirs.append(project_dir)
 
     def load_project(self, ref):
         """Load a project by project_id, directory name, or unique prefix."""
@@ -107,57 +113,109 @@ class ProjectManager:
             import shutil
 
             shutil.rmtree(project_dir)
+            self._id_index = None
 
     # ----- queries -----
     def get_project_dir(self, project_id):
         """Directory for a project id, following a date-title rename."""
         return self.resolve_project_dir(project_id)
 
+    def _iter_project_dirs(self):
+        """Yield directories that contain a project file, sorted by name."""
+        if not self.project_root.exists():
+            return
+        for entry in sorted(self.project_root.iterdir()):
+            if entry.is_dir() and (entry / _PROJECT_FILE).is_file():
+                yield entry
+
+    def _build_id_index(self):
+        """Map every project_id to the dir(s) containing it."""
+        index = {}
+        for entry in self._iter_project_dirs():
+            try:
+                payload = json.loads(
+                    (entry / _PROJECT_FILE).read_text(encoding="utf-8")
+                )
+            except (ValueError, OSError):
+                continue
+            pid = payload.get("project_id")
+            if pid:
+                index.setdefault(pid, []).append(entry)
+        return index
+
+    def _index(self):
+        if self._id_index is None:
+            self._id_index = self._build_id_index()
+        return self._id_index
+
+    def _dir_for_id(self, project_id):
+        """The unique directory for an id, or None. Raises on duplicates."""
+        dirs = self._index().get(project_id)
+        if not dirs:
+            return None
+        if len(dirs) > 1:
+            raise ProjectError(
+                "Ambiguous project id '{}' found in: {}".format(
+                    project_id,
+                    ", ".join(sorted(d.name for d in dirs)),
+                )
+            )
+        return dirs[0]
+
     def resolve_project_dir(self, ref):
         """Resolve an id, directory name, or unique prefix to a project dir.
 
-        New projects live in ``<date>-<title>`` directories while keeping a
-        stable ``proj_xxx`` id inside project.json; legacy projects still use
-        the id as the directory name.
+        Prefixes match directory names (date-title dirs or legacy proj_ dirs);
+        full project ids resolve through an id index. Legacy projects still
+        use the id as the directory name.
         """
-        ref = str(ref or "")
+        ref = str(ref or "").strip()
+        if not ref:
+            raise ProjectError("Project reference must not be empty")
+
         direct = self.project_root / ref
         if (direct / _PROJECT_FILE).is_file():
             return direct
 
-        id_matches = []
-        prefix_matches = []
-        if self.project_root.exists():
-            for entry in self.project_root.iterdir():
-                project_file = entry / _PROJECT_FILE
-                if not entry.is_dir() or not project_file.is_file():
-                    continue
-                if entry.name.startswith(ref):
-                    prefix_matches.append(entry)
-                try:
-                    payload = json.loads(
-                        project_file.read_text(encoding="utf-8")
-                    )
-                except (ValueError, OSError):
-                    continue
-                if payload.get("project_id") == ref:
-                    id_matches.append(entry)
+        id_dir = self._dir_for_id(ref)
+        if id_dir is not None:
+            return id_dir
 
-        matches = id_matches or prefix_matches
-        if len(matches) == 1:
-            return matches[0]
-        if len(matches) > 1:
+        # Unique id prefix: the id index also accepts a leading prefix.
+        id_matches = [
+            d for pid, dirs in self._index().items()
+            if pid.startswith(ref) for d in dirs
+        ]
+        if len(id_matches) == 1:
+            return id_matches[0]
+        if len(id_matches) > 1:
             raise ProjectError(
                 "Ambiguous project reference '{}': {}".format(
-                    ref, ", ".join(sorted(m.name for m in matches))
+                    ref,
+                    ", ".join(sorted(d.name for d in id_matches)),
+                )
+            )
+
+        prefix_matches = [
+            entry for entry in self._iter_project_dirs()
+            if entry.name.startswith(ref)
+        ]
+        if len(prefix_matches) == 1:
+            return prefix_matches[0]
+        if len(prefix_matches) > 1:
+            raise ProjectError(
+                "Ambiguous project reference '{}': {}".format(
+                    ref,
+                    ", ".join(sorted(d.name for d in prefix_matches)),
                 )
             )
         raise ProjectError("Project not found: {}".format(ref))
 
     def rename_for_title(self, state, title=None):
-        """Move the project dir to ``<created date>-<title>`` and persist it.
+        """Move the project dir to ``<created date>-<title>``.
 
-        The project_id inside project.json stays stable. Returns the new
+        The project_id inside project.json stays stable. The move carries
+        project.json itself, so no re-save is needed. Returns the new
         directory path.
         """
         title = title if title is not None else (
@@ -177,8 +235,9 @@ class ProjectManager:
             return self.resolve_project_dir(state.project_id)
         target.parent.mkdir(parents=True, exist_ok=True)
         source.rename(target)
-        state.updated_at = datetime.now()
-        self.save_project(state)
+        # Rebuild lazily on next use rather than patch the cached index:
+        # invalidation also picks up externally created/duplicated dirs.
+        self._id_index = None
         return target
 
     def _try_id_dir(self, project_id):
@@ -186,17 +245,18 @@ class ProjectManager:
         candidate = self.project_root / project_id
         return candidate if candidate.is_dir() else None
 
+    def list_project_entries(self):
+        """Return ``(dir_name, ProjectState)`` pairs for every project."""
+        entries = []
+        for entry in self._iter_project_dirs():
+            try:
+                entries.append((entry.name, self.load_project(entry.name)))
+            except ProjectError:
+                continue
+        return entries
+
     def list_projects(self):
-        if not self.project_root.exists():
-            return []
-        projects = []
-        for entry in sorted(self.project_root.iterdir()):
-            if entry.is_dir() and (entry / _PROJECT_FILE).exists():
-                try:
-                    projects.append(self.load_project(entry.name))
-                except ProjectError:
-                    continue
-        return projects
+        return [state for _, state in self.list_project_entries()]
 
 
 # ========== serialization helpers ==========
