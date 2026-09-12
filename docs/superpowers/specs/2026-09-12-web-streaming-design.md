@@ -98,6 +98,7 @@ class StreamingTTSProvider(Protocol):
 
 - registry 新增能力探测：`registry.get_stream_tts(name)`：注册的 provider 实现了该方法且 `supports_streaming` 为真才返回，否则 None→编排层降级。
 - 统一输出 **PCM s16le 单声道**（无音效透传格式）：火山请求 `pcm` + 24kHz（ogg_opus 才需 48k 的规则不适用）；阿里 adapter 用 `AudioFormat.PCM_22050HZ_MONO_16BIT`（22.05kHz）。sample_rate 由 provider 决定并随 `line_start` 声明给前端。
+- **为什么不把采样率在服务端统一成一个值**：PCM s16le 是无头裸采样点，率只存在于带外信令；不同 provider 原生率不同（火山 24k、阿里 22.05k），且多 provider 混用的故事里旁白/角色可能跨行交替。服务端实时重采样会给每行透传增加延迟，与帧到即播相悖；而浏览器 Web Audio 对混率零成本——`createBuffer(1, n, line_start.sample_rate)` 后由 AudioContext 自动重采样到硬件率。契约要求：**率以行（line_start）为单位声明，前端永远不猜测、不自行重采样；同一行内率恒定**。
 - 每行独立合成： directives/context 沿用现有 `_line_context`（direction 加 `#`、最近一句旁白+对话引用上文）。
 
 ### 3.2 火山 adapter（P1）
