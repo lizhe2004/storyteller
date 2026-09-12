@@ -92,6 +92,7 @@ class Pipeline:
             config={"length": length, "complexity": complexity},
         )
         llm = self._get_default_llm()
+        self._log_progress("Generating script...")
         state.script = StoryGenerator(llm).generate_script(
             topic, length, complexity, with_sound=self._sound_enabled()
         )
@@ -112,6 +113,7 @@ class Pipeline:
         if state.state not in ("script_generated", "voice_configured", "voice_configuring", "generating_audio", "audio_generated", "post_processing"):
             llm = self._get_default_llm()
             generator = StoryGenerator(llm)
+            self._log_progress("Generating script...")
             state.script = generator.generate_script(
                 topic, length, complexity, with_sound=self._sound_enabled()
             )
@@ -464,8 +466,14 @@ class Pipeline:
 
         provider = self._get_sound_provider()
         library = self._get_sound_library()
-        for cue in pending:
+        total_pending = len(pending)
+        for idx, cue in enumerate(pending, start=1):
             raw_path = self._project_sound_path(state.project_id, cue)
+            self._log_progress(
+                "Generating sound %d/%d · %s" % (
+                    idx, total_pending, cue.name
+                )
+            )
             try:
                 record, created = self._materialize_cue(
                     provider, library, cue, raw_path
@@ -528,6 +536,7 @@ class Pipeline:
         #     )
 
         if groups:
+            self._log_progress("Mixing soundtrack...")
             processor.add_effect_groups(
                 working_path, groups, output_path
             )
