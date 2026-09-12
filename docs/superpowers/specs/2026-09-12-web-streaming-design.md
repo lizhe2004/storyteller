@@ -56,7 +56,7 @@ src/storyteller/web/
   routes_ws.py           # /ws：start/cancel/重连，事件循环
   streaming.py           # StreamOrchestrator：剧本→音色→逐行→精混的流式编排
   mixes.py               # 单行动态混音（复用 audio.py 的组轨道构建/响度/grace）
-  fillers.py             # 填充语文本模板、主持人音色选择、并行预取与缓存
+  fillers.py             # thinking 口播 LLM 调用+清洗+模板回退、intro 模板、主持人音色、并行预取与缓存
   tts_chunks.py          # StreamChunk、线缆常量(24k/mono/s16le)、PCM 累积→mp3、文件→标准PCM
   frontend/              # Vue 3 + Vite + TS 工程（独立 package.json，见 §7）
   static/                # npm run build 产物（FastAPI 实际托管目录；入 .gitignore）
@@ -163,12 +163,14 @@ class StreamingTTSProvider(Protocol):
 
 剧本生成 + 音色匹配是首行前的固定空窗（十几秒到几十秒），用"主持人报幕"式短填充语音填补，而不是让用户干等进度条：
 
-- **两类**：`thinking`（剧本生成期间播放，文本含用户主题，例："好的，关于{topic}的故事，让我好好想一想……"）；`intro`（剧本/音色就绪后、第一行之前播放，例："故事就要开始喽，准备好了吗？"）。
-- **文本由模板生成，不额外调用 LLM**（延迟敏感段不能再串行加 LLM 往返）：每类备 3–4 条模板，job 启动时随机选取；`{topic}` 插值并截断到 20 字。LLM 个性化报幕留 P3。
-- **预取与并行**：job 一启动（与剧本 LLM 请求同时）就在编排器内用一个**独立的小 executor**（不占 JobManager 的任务并发槽）并行发起两段 filler 的 TTS；走普通整行 `synthesize()` 出 mp3（不依赖流式能力，任何已配置 provider 都能报幕），发送时复用统一的"文件→标准 24k PCM"出口（§4.2）。
+- **两类**：`thinking`（剧本生成期间播放，内容回应用户主题里的关键诉求，例：用户输入"适合五岁孩子、语气温柔的勇敢小恐龙交朋友故事"→"你想听一个关于勇敢小恐龙交朋友的故事，还要温柔地讲给五岁小朋友，让我好好想一想……"）；`intro`（剧本/音色就绪后、第一行之前播放，例："故事就要开始喽，准备好了吗？"）。
+- **文本来源不同**：
+  - `thinking` 走**一次轻量 LLM 调用**：主题是含混输入，可能包含角色、年龄段、情绪、用途等诉求，模板无法消化。专用"主持人"system prompt：从主题提取关键诉求（主角/题材/年龄段/语气/用途），用一句温暖口语的话复述确认并表示要去构思，**只输出这句口播文本本身**（无引号、无 markdown/emoji、无称呼前缀，1–2 句、≤50 汉字，严禁开始讲故事）；低 temperature（约 0.3）、max_tokens 约 150、短超时（约 20s）；输出做清洗（去引号/折行/常见前缀，超长按句截断）。
+  - `intro` 是固定模板（3–4 条随机），不含主题，无需 LLM。
+  - **thinking 的 LLM 失败/超时/返回不合规 → 回退模板**（"好的，关于{topic}的故事，让我好好想一想……"，topic 截断 20 字），绝不因填充语报错。
+- **预取与并行**：intro 在 job 一启动即可 TTS；thinking 是"轻量 LLM（短）→ TTS"的小链条，与剧本 LLM 请求**同时并行**发起（两个独立请求，打到同一默认 LLM provider）。均在编排器的**独立小 executor** 内运行（不占 JobManager 任务并发槽，排队等待期间也能播）；主持人音色仅依赖 start 参数的 provider 集合，此时已知。TTS 走普通整行 `synthesize()` 出 mp3（不依赖流式能力，任何已配置 provider 都能报幕），发送时复用统一的"文件→标准 24k PCM"出口（§4.2）。
 - **主持人音色**：job 启动时确定性选取，不用等音色匹配——在用户 start 时选择的 provider 集合内，取默认（或第一个）TTS provider 中优先 `voice_type=narrator` 的音色（复用 `is_narration_voice` 判定），可用 `STORYTELLER_WEB_FILLER_VOICE`（`provider:voice_id`）覆盖。它刻意独立于故事旁白音色，语义上是"主持人"。
-- **缓存**：filler mp3 存 `.storyteller/web_cache/fillers/<sha256(provider|voice_id|speed|pitch|text)>.mp3`，命中直接复用；不是项目产物，不进 `.storyteller/stories/`、不进最终 story.mp3、不进字幕/故事时间轴。
-- **预取时机**：start 请求到达时立即预取（独立 executor，不经过任务并发槽），所以排队等待期间 filler 也能播；主持人音色仅依赖 start 参数里的 provider 集合，此时已知。
+- **缓存**：filler mp3 存 `.storyteller/web_cache/fillers/<sha256(provider|voice_id|speed|pitch|text)>.mp3`，按最终口播文本命中（intro 与回退模板复用率高；thinking 因低 temperature，相似主题的 LLM 文本也可能命中）；不是项目产物，不进 `.storyteller/stories/`、不进最终 story.mp3、不进字幕/故事时间轴。
 - **播放时序（不允许 filler 反过来拖慢故事）**：
   - `thinking` 在 script/voices 阶段发送。音色匹配结束时：它已发完就自然结束；还在播放/排队则发 `filler_abort{kind:"thinking"}` **立即打断**（TTS 通常远快于实时，整段可能已被客户端预调度，仅停发帧不足以截断）；压根没就绪则丢弃并日志记 skipped。
   - `intro` 在 script_ready 之后、第一行之前播放，编排器等它就绪（短片段，预期 3–5s，是用户明确要的仪式感）；intro 也失败/缺失则不加等待直接进第一行。
@@ -297,7 +299,7 @@ ref 沿用 ProjectManager.resolve_project_dir 的解析（目录名/id/前缀，
   - 鉴权：对/错密码、过期/篡改 token、WS cookie 与 ?token=、options 无密钥回显、限流。
   - 重连：任务运行中断开→以 job_id 重连→收到当前 status；旧连接被顶替。
   - cancel：行边界生效、project 留可 resume 状态、不产 story.mp3。
-  - filler：事件序列与标准 PCM 出口；thinking 早于剧本就绪→发送、剧本就绪时未播完→filler_abort 丢弃未播 source、未就绪→跳过且不拖延；intro 总在首行前；缓存命中零 TTS；filler 失败仅 warning；filler 时间不计入故事时间轴/不进 story.mp3。
+  - filler：事件序列与标准 PCM 出口；thinking 文本用 MockLLM 验证（正常提取复述、超时/异常/超长/带引号 markdown 时回退模板且不报错）；thinking 早于剧本就绪→发送、剧本就绪时未播完→filler_abort 丢弃未播 source、未就绪→跳过且不拖延；intro 总在首行前；缓存命中零 TTS；filler TTS 失败仅 warning；filler 时间不计入故事时间轴/不进 story.mp3。
   - 历史接口：列表/详情/音频/段下载、line_id 白名单防穿越、歧义 ref→400。
   - CLI 回归：`storyteller` 现有全部测试（337）全绿；volcengine tts 重构前后字节一致（mock NDJSON 比较输出）。
 - **前端单测（Vitest）**：mock WebSocket + 假 AudioContext（手动推进 currentTime），断言帧到达顺序与 source.start 时间、暂停恢复、`ready` 声明驱动解码器初始化。
@@ -309,7 +311,7 @@ ref 沿用 ProjectManager.resolve_project_dir 的解析（目录名/id/前缀，
 
 ## 10. 分期建议
 
-- **P1（本次实现计划范围）**：web 骨架+鉴权+JobManager+WS 协议（ready/统一 PCM/filler）+火山流式 adapter（重构）+三种行处理统一出口+mix_line+等待期 filler（并行预取/主持人音色/缓存）+PCM 时间轴前端+历史接口+测试。dashscope 实时仅保留"整行 mp3→标准 PCM"降级路径与配置预留。
+- **P1（本次实现计划范围）**：web 骨架+鉴权+JobManager+WS 协议（ready/统一 PCM/filler）+火山流式 adapter（重构）+三种行处理统一出口+mix_line+等待期 filler（thinking 轻量 LLM 口播+模板回退/并行预取/主持人音色/缓存）+PCM 时间轴前端+历史接口+测试。dashscope 实时仅保留"整行 mp3→标准 PCM"降级路径与配置预留。
 - **P2**：阿里云 dashscope 实时 adapter（实例池+回调桥）+真机；如果 P1 实测 PCM 编码成为瓶颈再做行编码与下一行 TTS 的并行。
 - **P3+**：剧本 token 级流（阿里双向流/火山分句）、直播 seek（服务端保留 PCM 索引）、POST 创建+后台通知、Web 端声音选择。
 
@@ -324,3 +326,4 @@ ref 沿用 ProjectManager.resolve_project_dir 的解析（目录名/id/前缀，
 | WS 在反代下空闲断开（nginx 默认 60s read timeout） | 文档要求反代配 ws 超时；可加心跳帧（P1 实现时每 15s ping） |
 | 直播混音与精混不一致引起用户困惑 | UI 明确"直播版/精混下载版"；下载版标为完整版 |
 | 临时 WEB_SECRET 重启掉登录 | 启动 warning + README/.env.example 说明 |
+| thinking 口播 LLM 慢/挂导致反而拖延 | 与剧本生成并行、短超时（~20s），超时或异常回退模板文本；ready 判定只看"音色匹配结束"时刻，永不阻塞故事开始 |
