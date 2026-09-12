@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +34,40 @@ def fingerprint_for(model, prompt, audio_format):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+_UNSAFE_NAME_RE = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
+
+# Filenames are bounded to 60 chars (<=180 UTF-8 bytes worst case for CJK),
+# safely under the 255-byte per-component filesystem limit.
+_MAX_STEM_LEN = 60
+
+
+def safe_sound_name(name, fallback="sound"):
+    """Turn a cue name into a cross-platform filename stem (no extension)."""
+    text = re.sub(r"\s+", " ", str(name or "")).strip(" .")
+    text = _UNSAFE_NAME_RE.sub("_", text)
+    # Names that contained only unsafe characters collapse to underscores;
+    # treat those as empty so the fallback is used instead of "___".
+    if not text.strip("_ "):
+        text = ""
+    return (text or fallback)[:_MAX_STEM_LEN]
+
+
+def extension_for(audio_format):
+    """File extension for an audio format alias (ogg_opus -> ogg)."""
+    return _EXTENSIONS.get((audio_format or "mp3").lower(), "mp3")
+
+
+def unique_path(directory, stem, ext):
+    """Return directory/<stem>.<ext>, appending -2/-3... when it exists."""
+    directory = Path(directory)
+    candidate = directory / "{}.{}".format(stem, ext)
+    counter = 2
+    while candidate.exists():
+        candidate = directory / "{}-{}.{}".format(stem, counter, ext)
+        counter += 1
+    return candidate
+
+
 class SoundLibrary:
     """A global, cross-project cache of generated sounds.
 
@@ -50,8 +85,27 @@ class SoundLibrary:
         self._records = None
 
     # ----- public API -----
-    def get_or_create(
+    def find(self, provider, prompt, audio_format="mp3"):
+        """Return the cached record for model+prompt+format, or None.
+
+        A record whose library file was deleted is treated as a miss.
+        """
+        prompt = normalize_prompt(prompt)
+        if not prompt:
+            raise ValueError("prompt must not be empty")
+        fingerprint = fingerprint_for(
+            getattr(provider, "model", None) or provider.name,
+            prompt,
+            audio_format,
+        )
+        record = self._find_by_fingerprint(self._load(), fingerprint)
+        if record is not None and self._record_path(record).exists():
+            return record
+        return None
+
+    def admit(
         self,
+        source_path,
         provider,
         *,
         prompt,
@@ -60,52 +114,43 @@ class SoundLibrary:
         description="",
         tags=None,
         audio_format="mp3",
+        duration=None,
     ):
-        """Return (path, record, created); cache hits never call provider."""
+        """Gate an already-generated clip and COPY it into the library.
+
+        The source file is never deleted: a near-silent or unreadable clip
+        raises SoundGenerationError (message names the source path) and stays
+        on disk for inspection.
+        """
         if kind not in _KINDS:
             raise ValueError("kind must be one of {}".format(", ".join(_KINDS)))
         prompt = normalize_prompt(prompt)
         if not prompt:
             raise ValueError("prompt must not be empty")
+        source = Path(source_path)
+        ext = _EXTENSIONS.get((audio_format or "mp3").lower(), "mp3")
 
-        records = self._load()
+        dbfs = _measure_dbfs(source)
+        if dbfs is None or dbfs <= MIN_SOUND_DBFS:
+            level = "unreadable" if dbfs is None else "{:.0f} dBFS".format(dbfs)
+            from .exceptions import SoundGenerationError
+
+            raise SoundGenerationError(
+                "Generated sound for {!r} was {} and was not admitted to "
+                "the library (raw clip kept at {})".format(
+                    prompt, level, source
+                )
+            )
+
         fingerprint = fingerprint_for(
             getattr(provider, "model", None) or provider.name,
             prompt,
             audio_format,
         )
-        existing = self._find_by_fingerprint(records, fingerprint)
-        if existing is not None:
-            path = self._record_path(existing)
-            if path.exists():
-                return path, existing, False
-            # File was deleted out from under the index; regenerate below.
-            records = [r for r in records if r is not existing]
-
         record_id = generate_id("snd_")
-        ext = _EXTENSIONS.get((audio_format or "mp3").lower(), "mp3")
-        path = self.base_dir / "{}.{}".format(record_id, ext)
-
-        _, duration = provider.generate(
-            prompt, path, audio_format=audio_format
-        )
-
-        # Reject a failed generation (near-silence or undecodable output)
-        # before it is cached, otherwise the fingerprint would permanently
-        # resolve to a useless clip.
-        dbfs = _measure_dbfs(path)
-        if dbfs is None or dbfs <= MIN_SOUND_DBFS:
-            try:
-                path.unlink()
-            except OSError:
-                pass
-            level = "unreadable" if dbfs is None else "{:.0f} dBFS".format(dbfs)
-            from .exceptions import SoundGenerationError
-
-            raise SoundGenerationError(
-                "Generated sound for {!r} was {} and was discarded "
-                "(not cached)".format(prompt, level)
-            )
+        dest = self.base_dir / "{}.{}".format(record_id, ext)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, dest)
 
         record = {
             "id": record_id,
@@ -115,15 +160,16 @@ class SoundLibrary:
             "tags": list(tags or []),
             "prompt": prompt,
             "fingerprint": fingerprint,
-            "path": path.name,
+            "path": dest.name,
             "format": ext,
             "duration": duration,
             "model": getattr(provider, "model", None) or provider.name,
             "created_at": datetime.now().isoformat(timespec="seconds"),
         }
+        records = self._load()
         records.append(record)
         self._write(records)
-        return path, record, True
+        return record
 
     def all(self):
         return list(self._load())

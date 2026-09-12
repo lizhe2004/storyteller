@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -205,8 +206,6 @@ class Pipeline:
             if line.audio_path and Path(line.audio_path).exists():
                 # Segment recorded under an older layout: relocate it into the
                 # per-project audio dir so offsets and later resumes find it.
-                import shutil
-
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(line.audio_path, out_path)
                 line.audio_path = str(out_path)
@@ -324,6 +323,16 @@ class Pipeline:
         ) or "./.storyteller/stories"
         return Path(root) / project_id
 
+    def _project_sound_path(self, project_id, cue):
+        """Chinese-named raw clip path inside the project's sounds/ dir."""
+        from .sound_library import safe_sound_name, unique_path
+
+        sounds_dir = self._project_dir(project_id) / "sounds"
+        sounds_dir.mkdir(parents=True, exist_ok=True)
+        fallback = "sfx_" + str(cue.effect_id)[-6:]
+        stem = safe_sound_name(cue.name or (cue.prompt or "")[:12], fallback)
+        return unique_path(sounds_dir, stem, "mp3")
+
     def _export_script(self, state):
         """Write the script to a standalone JSON file in the output dir."""
         path = self._script_path(state.project_id)
@@ -406,26 +415,40 @@ class Pipeline:
         provider = self._get_sound_provider()
         library = self._get_sound_library()
         for cue in pending:
+            created = False
             try:
-                path, record, created = library.get_or_create(
-                    provider,
-                    prompt=cue.prompt,
-                    name=cue.name,
-                    kind=_KIND_FOR_TYPE.get(cue.type, "sfx"),
-                    description=cue.description or "",
-                    tags=cue.tags or [],
-                    audio_format="mp3",
-                )
+                raw_path = self._project_sound_path(state.project_id, cue)
+                record = library.find(provider, cue.prompt, audio_format="mp3")
+                if record is not None:
+                    shutil.copy2(library.path_for(record), raw_path)
+                else:
+                    _, gen_duration = provider.generate(
+                        cue.prompt, raw_path, audio_format="mp3"
+                    )
+                    record = library.admit(
+                        raw_path,
+                        provider,
+                        prompt=cue.prompt,
+                        name=cue.name,
+                        kind=_KIND_FOR_TYPE.get(cue.type, "sfx"),
+                        description=cue.description or "",
+                        tags=cue.tags or [],
+                        audio_format="mp3",
+                        duration=gen_duration,
+                    )
+                    created = True
             except Exception as exc:
+                # The raw clip (if any) stays in the project's sounds/ dir
+                # for inspection; the cue is simply left out of the mix.
                 self._log_error(cue.effect_id, exc)
                 continue
-            cue.source_path = str(path)
+            cue.source_path = str(raw_path)
             cue.source_type = "local"
             if cue.duration is None:
                 cue.duration = record.get("duration")
             self._log_detail(
                 "  sound %s -> %s (%.1fs%s)" % (
-                    cue.name, Path(path).name, record.get("duration") or 0,
+                    cue.name, raw_path.name, record.get("duration") or 0,
                     "" if created else ", cached"
                 )
             )

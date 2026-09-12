@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
 from ..core.config import Config
@@ -465,12 +467,35 @@ def make_sound(prompt, name, kind, description, tags, audio_format,
             "STORYTELLER_SOUND_<NAME>_API_KEY (or pass --sound-provider)."
         )
 
-    library = SoundLibrary(
-        config.get("sound.dir") or "./.storyteller/sounds"
-    )
+    sound_root = config.get("sound.dir") or "./.storyteller/sounds"
+    library = SoundLibrary(sound_root)
+    raw_path = None
     try:
         provider = registry.get_sound(chosen)
-        path, record, created = library.get_or_create(
+        record = library.find(provider, prompt, audio_format)
+        if record is not None:
+            cached_path = library.path_for(record)
+            click.echo("Cache hit (no API call): {}".format(cached_path))
+            click.echo(
+                "Name: {}  kind: {}".format(record["name"], record["kind"])
+            )
+            return
+
+        from ..core.sound_library import (
+            extension_for,
+            safe_sound_name,
+            unique_path,
+        )
+
+        ext = extension_for(audio_format)
+        stem = safe_sound_name(name or prompt[:12], fallback="sound")
+        raw_path = unique_path(Path(sound_root) / "raw", stem, ext)
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        _, gen_duration = provider.generate(
+            prompt, raw_path, audio_format=audio_format
+        )
+        record = library.admit(
+            raw_path,
             provider,
             prompt=prompt,
             name=name or prompt[:12],
@@ -478,16 +503,20 @@ def make_sound(prompt, name, kind, description, tags, audio_format,
             description=description,
             tags=[t.strip() for t in tags.split(",") if t.strip()],
             audio_format=audio_format,
+            duration=gen_duration,
         )
     except click.ClickException:
         raise
     except Exception as exc:
         raise click.ClickException(str(exc))
 
-    if created:
-        click.echo("Generated: {}".format(path))
-    else:
-        click.echo("Cache hit (no API call): {}".format(path))
+    # Admitted to the curated library: drop the staging copy. On failure
+    # the exception above has already returned non-zero with the raw path.
+    try:
+        raw_path.unlink()
+    except OSError:
+        pass
+    click.echo("Generated: {}".format(library.path_for(record)))
     click.echo("Name: {}  kind: {}".format(record["name"], record["kind"]))
 
 
