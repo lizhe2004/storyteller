@@ -73,7 +73,11 @@ _SOUND_PROMPT = (
     "17. anchor 仅 effect 必填、ambient 不填：必须是本行 text 里**逐字出现**的短句，"
     "正是这个声音发生的地方（如 text 里的“肚子咕咕叫了起来”）。"
     "一行有先后两个音效时，各自锚定对应的短语，不要都写句首。\n"
-    "18. 背景音乐描述整体情绪基调；没有合适的声音就直接省略对应字段，"
+    "18. **声音必须在剧本里有据可依**：音效只能给本行 text 已经明确写到的"
+    "动作、物体或环境声。听众看不到画面，如果一句台词里根本没有提到拔剑，"
+    "就不要在这句台词上挂剑声——需要这个声音，就先在旁白里把动作写出来，"
+    "再把音效挂到那句旁白上。严禁给台词配画外声音。\n"
+    "19. 背景音乐描述整体情绪基调；没有合适的声音就直接省略对应字段，"
     "不要硬加。\n"
     "prompt 正反例：\n"
     "  肚子叫 ✔“人肚子饿时咕咕叫的声音，低沉冒泡，两三声，近景，无人声”；"
@@ -272,14 +276,8 @@ def _script_from_json(data, topic):
         if direction:
             metadata["direction"] = str(direction).strip()
         line_type = "dialogue" if raw_type == "dialogue" else "narration"
-        cues = pending_sounds + own_sounds
+        cues = _cues_for_line(pending_sounds + own_sounds, text)
         pending_sounds = []
-        # Only punctual effects use an anchor, and it must occur verbatim in
-        # the spoken text; a wrong/paraphrased anchor is dropped (cue then
-        # starts at the line head). Ambient beds always start at the head.
-        for cue in cues:
-            if cue.type != "effect" or not cue.anchor or cue.anchor not in text:
-                cue.anchor = None
         lines.append(
             ScriptLine(
                 line_id=str(raw_line.get("line_id") or generate_id("l_")),
@@ -294,7 +292,9 @@ def _script_from_json(data, topic):
 
     # Cues on a trailing marker with no line after: keep them on the last line.
     if pending_sounds and lines:
-        lines[-1].sound_effects.extend(pending_sounds)
+        lines[-1].sound_effects.extend(
+            _cues_for_line(pending_sounds, lines[-1].text)
+        )
 
     has_narration = any(line.line_type == "narration" for line in lines)
     if has_narration and not _has_narrator(characters):
@@ -329,6 +329,22 @@ def _script_from_json(data, topic):
 
 
 _NARRATOR_KEYWORDS = ("旁白", "narrator", "说书", "叙述")
+
+
+def _cues_for_line(cues, text):
+    """Keep only cues the spoken line actually accounts for.
+
+    A punctual effect without an anchor phrase that occurs verbatim in the
+    line text describes a sound the listener gets no narration for — it
+    would play out of nowhere — so drop the whole cue. Ambient beds and
+    music carry no anchor and always start at the line head.
+    """
+    kept = []
+    for cue in cues:
+        if cue.type == "effect" and (not cue.anchor or cue.anchor not in text):
+            continue
+        kept.append(cue)
+    return kept
 
 
 def _has_narrator(characters):

@@ -250,7 +250,10 @@ def test_effect_anchor_not_in_text_is_dropped():
                         "name": "雷",
                         "type": "effect",
                         "prompt": "一声闷雷，无人声",
-                        # Paraphrase, not a verbatim substring of the text.
+                        # Paraphrase, not a verbatim substring of the text:
+                        # the cue describes a sound the line never mentions,
+                        # so it must be dropped entirely rather than played
+                        # unannounced at the line head.
                         "anchor": "天空中打雷",
                     },
                 ],
@@ -259,8 +262,72 @@ def test_effect_anchor_not_in_text_is_dropped():
     }
     generator, _ = _make_generator(json.dumps(payload, ensure_ascii=False))
     script = generator.generate_script(topic="测试")
-    cue = script.lines[0].sound_effects[0]
-    assert cue.anchor is None
+    assert script.lines[0].sound_effects == []
+
+
+def test_effect_without_anchor_is_dropped():
+    payload = {
+        "title": "测试",
+        "characters": [
+            {"id": "narrator", "name": "旁白", "description": "旁白"}
+        ],
+        "lines": [
+            {
+                "line_id": "1",
+                "line_type": "narration",
+                "text": "屋里安静极了。",
+                "sound_effects": [
+                    {
+                        "name": "脚步",
+                        "type": "effect",
+                        "prompt": "一阵脚步声，无人声",
+                    },
+                ],
+            },
+        ],
+    }
+    generator, _ = _make_generator(json.dumps(payload, ensure_ascii=False))
+    script = generator.generate_script(topic="测试")
+    assert script.lines[0].sound_effects == []
+
+
+def test_ambient_without_anchor_is_kept():
+    payload = {
+        "title": "测试",
+        "characters": [
+            {"id": "narrator", "name": "旁白", "description": "旁白"}
+        ],
+        "lines": [
+            {
+                "line_id": "1",
+                "line_type": "narration",
+                "text": "夜深了。",
+                "sound_effects": [
+                    {
+                        "name": "夜风",
+                        "type": "ambient",
+                        "prompt": "持续的夜晚风声，无人声",
+                    },
+                ],
+            },
+        ],
+    }
+    generator, _ = _make_generator(json.dumps(payload, ensure_ascii=False))
+    script = generator.generate_script(topic="测试")
+    effects = script.lines[0].sound_effects
+    assert len(effects) == 1
+    assert effects[0].type == "ambient"
+    assert effects[0].anchor is None
+
+
+def test_sound_prompt_requires_sound_evidence_in_line_text():
+    from storyteller.core.story_generator import _SOUND_PROMPT
+
+    # The prompt must forbid sounds the line never mentions (off-screen
+    # actions on dialogue lines) and require the sound to be written into
+    # the narration/dialogue text first.
+    assert "画外" in _SOUND_PROMPT
+    assert "先在旁白" in _SOUND_PROMPT
 
 
 def test_sound_cue_without_prompt_is_dropped():
@@ -307,7 +374,8 @@ def test_standalone_sound_line_is_merged_into_next_spoken_line():
                 "text": "",
                 "sound_effects": [
                     {"name": "打雷", "type": "effect",
-                     "prompt": "低沉轰鸣的雷声，有回响"},
+                     "prompt": "低沉轰鸣的雷声，有回响",
+                     "anchor": "雷声炸响"},
                 ],
             },
             {
