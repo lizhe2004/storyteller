@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,16 @@ from .models import (
 from .utils import generate_id
 
 _PROJECT_FILE = "project.json"
+_TITLE_MAX_CHARS = 60
+_INVALID_DIR_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+
+
+def slug_title(title):
+    """Filesystem-safe title segment used for date-title directories."""
+    slug = _INVALID_DIR_CHARS.sub("-", str(title or ""))
+    slug = re.sub(r"\s+", " ", slug).strip().strip("- .")
+    slug = slug[:_TITLE_MAX_CHARS].strip().strip("- .")
+    return slug or "未命名故事"
 
 
 class ProjectManager:
@@ -43,7 +54,11 @@ class ProjectManager:
         return state
 
     def save_project(self, state):
-        project_dir = self.get_project_dir(state.project_id)
+        try:
+            project_dir = self.resolve_project_dir(state.project_id)
+        except ProjectError:
+            # Brand-new project: its id-named directory does not exist yet.
+            project_dir = self.project_root / state.project_id
         project_dir.mkdir(parents=True, exist_ok=True)
         payload = {
             "project_id": state.project_id,
@@ -59,13 +74,12 @@ class ProjectManager:
             encoding="utf-8",
         )
 
-    def load_project(self, project_id):
-        project_dir = self.get_project_dir(project_id)
-        if not project_dir.exists():
-            raise ProjectError("Project not found: {}".format(project_id))
+    def load_project(self, ref):
+        """Load a project by project_id, directory name, or unique prefix."""
+        project_dir = self.resolve_project_dir(ref)
         project_file = project_dir / _PROJECT_FILE
         if not project_file.exists():
-            raise ProjectError("Project file missing for: {}".format(project_id))
+            raise ProjectError("Project file missing for: {}".format(ref))
         payload = json.loads(project_file.read_text(encoding="utf-8"))
         return ProjectState(
             project_id=payload["project_id"],
@@ -87,8 +101,8 @@ class ProjectManager:
         self.save_project(state)
         return state
 
-    def delete_project(self, project_id):
-        project_dir = self.get_project_dir(project_id)
+    def delete_project(self, ref):
+        project_dir = self.resolve_project_dir(ref)
         if project_dir.exists():
             import shutil
 
@@ -96,7 +110,81 @@ class ProjectManager:
 
     # ----- queries -----
     def get_project_dir(self, project_id):
-        return self.project_root / project_id
+        """Directory for a project id, following a date-title rename."""
+        return self.resolve_project_dir(project_id)
+
+    def resolve_project_dir(self, ref):
+        """Resolve an id, directory name, or unique prefix to a project dir.
+
+        New projects live in ``<date>-<title>`` directories while keeping a
+        stable ``proj_xxx`` id inside project.json; legacy projects still use
+        the id as the directory name.
+        """
+        ref = str(ref or "")
+        direct = self.project_root / ref
+        if (direct / _PROJECT_FILE).is_file():
+            return direct
+
+        id_matches = []
+        prefix_matches = []
+        if self.project_root.exists():
+            for entry in self.project_root.iterdir():
+                project_file = entry / _PROJECT_FILE
+                if not entry.is_dir() or not project_file.is_file():
+                    continue
+                if entry.name.startswith(ref):
+                    prefix_matches.append(entry)
+                try:
+                    payload = json.loads(
+                        project_file.read_text(encoding="utf-8")
+                    )
+                except (ValueError, OSError):
+                    continue
+                if payload.get("project_id") == ref:
+                    id_matches.append(entry)
+
+        matches = id_matches or prefix_matches
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            raise ProjectError(
+                "Ambiguous project reference '{}': {}".format(
+                    ref, ", ".join(sorted(m.name for m in matches))
+                )
+            )
+        raise ProjectError("Project not found: {}".format(ref))
+
+    def rename_for_title(self, state, title=None):
+        """Move the project dir to ``<created date>-<title>`` and persist it.
+
+        The project_id inside project.json stays stable. Returns the new
+        directory path.
+        """
+        title = title if title is not None else (
+            state.script.title if state.script else None
+        )
+        date_part = (state.created_at or datetime.now()).strftime("%Y-%m-%d")
+        base = "{}-{}".format(date_part, slug_title(title))
+        target = self.project_root / base
+        suffix = 2
+        while target.exists():
+            target = self.project_root / "{}-{}".format(base, suffix)
+            suffix += 1
+
+        source = self._try_id_dir(state.project_id)
+        if source is None:
+            # Already renamed (e.g. resume after the move): nothing to do.
+            return self.resolve_project_dir(state.project_id)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        source.rename(target)
+        state.updated_at = datetime.now()
+        self.save_project(state)
+        return target
+
+    def _try_id_dir(self, project_id):
+        """Legacy/current id-named directory if it exists, else None."""
+        candidate = self.project_root / project_id
+        return candidate if candidate.is_dir() else None
 
     def list_projects(self):
         if not self.project_root.exists():

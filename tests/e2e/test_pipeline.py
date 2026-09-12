@@ -215,6 +215,46 @@ def test_draft_script_saves_json_without_audio(tmp_path):
     assert list((tmp_path / ".storyteller").rglob("*.mp3")) == []
 
 
+def test_run_renames_project_dir_to_date_title(tmp_path):
+    from datetime import datetime
+
+    pipeline = _make_pipeline(tmp_path)
+    result_path = Path(pipeline.run("故事"))
+
+    project_dir = result_path.parent
+    date_prefix = datetime.now().strftime("%Y-%m-%d")
+    assert project_dir.name == "{}-小猫的冒险".format(date_prefix)
+    assert not any(
+        d.name.startswith("proj_")
+        for d in (tmp_path / ".storyteller" / "stories").iterdir()
+    )
+
+    import json
+
+    payload = json.loads((project_dir / "project.json").read_text("utf-8"))
+    assert payload["project_id"].startswith("proj_")
+
+
+def test_draft_script_renames_project_dir(tmp_path):
+    from datetime import datetime
+
+    pipeline = _make_pipeline(tmp_path)
+    _, script_path = pipeline.draft_script("只看剧本")
+
+    date_prefix = datetime.now().strftime("%Y-%m-%d")
+    assert Path(script_path).parent.name == "{}-小猫的冒险".format(date_prefix)
+
+
+def test_resume_accepts_date_title_dir_name(tmp_path):
+    pipeline = _make_pipeline(tmp_path)
+    result_path = Path(pipeline.run("故事"))
+    dir_name = result_path.parent.name
+
+    resume_path = Path(pipeline.resume(dir_name))
+    assert resume_path.exists()
+    assert resume_path.parent.name == dir_name
+
+
 def test_resume_from_script_generated(tmp_path):
     from storyteller.core.project import ProjectManager
     from storyteller.core.models import Script, ScriptLine, Character

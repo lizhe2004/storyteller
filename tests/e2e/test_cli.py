@@ -97,6 +97,33 @@ def test_generate_with_mock_succeeds():
         assert "Done" in result.output
 
 
+def test_project_dir_and_listing_use_date_title():
+    import datetime
+
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            cli,
+            ["generate", "测试故事"],
+            env=_MOCK_ENV,
+        )
+        assert result.exit_code == 0, result.output
+
+        date_prefix = datetime.datetime.now().strftime("%Y-%m-%d")
+        listing = runner.invoke(cli, ["list-projects"], env=_MOCK_ENV)
+        assert listing.exit_code == 0, listing.output
+        assert "{}-小猫的冒险".format(date_prefix) in listing.output
+        assert "小猫的冒险" in listing.output
+
+        # The renamed directory (not just the stable id) resumes the project.
+        resumed = runner.invoke(
+            cli,
+            ["continue", "{}-小猫的冒险".format(date_prefix)],
+            env=_MOCK_ENV,
+        )
+        assert resumed.exit_code == 0, resumed.output
+
+
 def test_generate_dry_run():
     runner = CliRunner()
     with runner.isolated_filesystem():

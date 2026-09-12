@@ -274,7 +274,10 @@ def list_projects(data_dir):
         return
     for state in projects:
         status = click.style(state.state, fg="green" if state.state == "completed" else "yellow")
-        click.echo("{}  [{}]  {}".format(state.project_id, status, state.config.get("topic", "")))
+        title = state.script.title if state.script else None
+        label = title or state.config.get("topic", "")
+        dir_name = manager.resolve_project_dir(state.project_id).name
+        click.echo("{}  [{}]  {}".format(dir_name, status, label))
 
 
 # ========== list-voices ==========

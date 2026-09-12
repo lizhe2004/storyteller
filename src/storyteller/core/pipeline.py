@@ -93,6 +93,7 @@ class Pipeline:
         )
         state.state = "script_generated"
         self.projects.save_project(state)
+        self.projects.rename_for_title(state)
         script_path = self._export_script(state)
         return state.script, script_path
 
@@ -112,6 +113,7 @@ class Pipeline:
             )
             state.state = "script_generated"
             self.projects.save_project(state)
+            self.projects.rename_for_title(state)
             self._log_progress("Script generated: %s" % state.script.title)
 
         # Export the script as a standalone JSON next to the final audio.
@@ -317,11 +319,12 @@ class Pipeline:
         return self._project_dir(project_id) / "story.script.json"
 
     def _project_dir(self, project_id):
-        """All files for one story (state, segments, script, final audio)."""
-        root = self.config.get("project_dir") or self.config.get(
-            "output_dir"
-        ) or "./.storyteller/stories"
-        return Path(root) / project_id
+        """All files for one story (state, segments, script, final audio).
+
+        Follows the date-title directory rename via the project manager's
+        id -> directory resolution.
+        """
+        return self.projects.resolve_project_dir(project_id)
 
     def _project_sound_path(self, project_id, cue):
         """Chinese-named raw clip path inside the project's sounds/ dir."""
