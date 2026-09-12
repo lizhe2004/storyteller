@@ -18,6 +18,65 @@ _KIND_FOR_TYPE = {"effect": "sfx", "ambient": "ambient", "music": "music"}
 # near-silent clips, so the same prompt is retried before the cue is skipped.
 MAX_SOUND_ATTEMPTS = 3
 
+# seed-audio exposes no duration parameter: the desired length is appended to
+# text_prompt as natural language. Clamp to a sane range; 120s is the API's
+# single-request ceiling.
+MIN_SOUND_DURATION_SEC = 2
+MAX_SOUND_DURATION_SEC = 120
+# A punctual effect is one discrete event, not a bed: the anchor-to-line-end
+# window can be tens of seconds on long lines, which would make the "no longer
+# than N seconds" directive meaningless. Cap it; the mix still hard-cuts at
+# the line end as a backstop.
+EFFECT_MAX_DURATION_SEC = 6
+
+
+def sound_duration_seconds(cue_type, line_duration, anchor_offset=0.0):
+    """Target clip length for a cue, from its owning line's real TTS length.
+
+    Ambient/music fills the whole line; a punctual effect gets only the window
+    from its anchor position to the line's end (capped). Returns None when the
+    line duration is unknown, so the caller leaves the prompt unconstrained.
+    """
+    if not line_duration or line_duration <= 0:
+        return None
+    if cue_type == "effect":
+        from .audio import EFFECT_TAIL_GRACE_SEC
+
+        # The mix lets an effect ring EFFECT_TAIL_GRACE_SEC past the line end
+        # (an event on the line's last words must not be chopped), so request
+        # a clip matching that wider playable window.
+        window = min(
+            EFFECT_MAX_DURATION_SEC,
+            max(0.0, line_duration - (anchor_offset or 0.0))
+            + EFFECT_TAIL_GRACE_SEC,
+        )
+    else:
+        window = line_duration
+    if window <= 0:
+        return None
+    # Half-up rounding (not Python's banker's rounding): a 2.5s window is
+    # worth asking for 3 seconds, not 2.
+    seconds = int(window + 0.5)
+    if seconds < 1:
+        seconds = 1
+    return min(
+        MAX_SOUND_DURATION_SEC, max(MIN_SOUND_DURATION_SEC, seconds)
+    )
+
+
+def build_sound_prompt(prompt, cue_type, line_duration, anchor_offset=0.0):
+    """Append a natural-language duration directive to a cue's prompt."""
+    seconds = sound_duration_seconds(
+        cue_type, line_duration, anchor_offset
+    )
+    if seconds is None:
+        return prompt
+    if cue_type == "effect":
+        directive = "这是一个单独的声音事件，时长不超过%d秒" % seconds
+    else:
+        directive = "持续约%d秒，平缓可循环，结尾自然减弱" % seconds
+    return "%s，%s" % (prompt.rstrip("。.!?！？"), directive)
+
 # Punctuation/whitespace ignored when estimating an anchor's spoken position.
 _PUNCT_RE = re.compile(r"[\s，。！？；：、,…,.\!?;:\-—“”\"'（）()…]")
 
@@ -419,7 +478,9 @@ class Pipeline:
         self._sound_library = SoundLibrary(sound_dir)
         return self._sound_library
 
-    def _generate_cue_with_retry(self, provider, library, cue, raw_path):
+    def _generate_cue_with_retry(
+        self, provider, library, cue, raw_path, gen_prompt
+    ):
         """Generate one cue, retrying near-silent results up to the limit.
 
         SoundGenerationError from the loudness gate is retried with the same
@@ -430,13 +491,13 @@ class Pipeline:
         last_error = None
         for attempt in range(1, MAX_SOUND_ATTEMPTS + 1):
             _, gen_duration = provider.generate(
-                cue.prompt, raw_path, audio_format="mp3"
+                gen_prompt, raw_path, audio_format="mp3"
             )
             try:
                 return library.admit(
                     raw_path,
                     provider,
-                    prompt=cue.prompt,
+                    prompt=gen_prompt,
                     name=cue.name,
                     kind=_KIND_FOR_TYPE.get(cue.type, "sfx"),
                     description=cue.description or "",
@@ -455,19 +516,25 @@ class Pipeline:
                 continue
         raise last_error
 
-    def _materialize_cue(self, provider, library, cue, raw_path, record=None):
+    def _materialize_cue(
+        self, provider, library, cue, raw_path, gen_prompt, record=None
+    ):
         """Return an audible clip for one cue: cache hit or retried generate.
 
-        ``record`` may be a cache record the caller already looked up so the
-        fingerprint is not hashed twice. Returns ``(record, created)``.
+        ``gen_prompt`` is the duration-enhanced prompt used for both cache
+        lookup and generation, so fingerprints stay consistent. ``record`` may
+        be a cache record the caller already looked up. Returns
+        ``(record, created)``.
         """
         if record is None:
-            record = library.find(provider, cue.prompt, audio_format="mp3")
+            record = library.find(
+                provider, gen_prompt, audio_format="mp3"
+            )
         if record is not None:
             shutil.copy2(library.path_for(record), raw_path)
             return record, False
         return self._generate_cue_with_retry(
-            provider, library, cue, raw_path
+            provider, library, cue, raw_path, gen_prompt
         ), True
 
     def _apply_soundtrack(self, state, output_path):
@@ -486,6 +553,35 @@ class Pipeline:
 
         provider = self._get_sound_provider()
         library = self._get_sound_library()
+
+        # Line durations bound each generation request: ambient fills its
+        # line, an effect fills the window after its anchor, script-level
+        # cues target the full story. Computed before generation so the
+        # duration directive can be baked into the generation prompt.
+        timing = self._line_timing(
+            state, output_path.suffix.lstrip(".")
+        )
+        total_duration = sum(
+            (d or 0.0) for _, d in timing.values()
+        )
+        cue_context = {}
+        for line in script.lines:
+            _, line_duration = timing.get(line.line_id, (0.0, 0.0))
+            line_cues = list(line.sound_effects)
+            if line.background_music is not None:
+                line_cues.append(line.background_music)
+            for cue in line_cues:
+                cue_context[id(cue)] = (
+                    line_duration,
+                    self._anchor_offset(line, cue, line_duration),
+                )
+        for cue in script.sound_effects:
+            cue_context.setdefault(id(cue), (total_duration, 0.0))
+        if script.background_music is not None:
+            cue_context.setdefault(
+                id(script.background_music), (total_duration, 0.0)
+            )
+
         total_pending = len(pending)
         # Paths already owned by cues materialized this pass, so same-named
         # distinct cues get a -2 suffix rather than overwriting each other.
@@ -495,7 +591,15 @@ class Pipeline:
             if c.source_path and Path(c.source_path).exists()
         }
         for idx, cue in enumerate(pending, start=1):
-            record = library.find(provider, cue.prompt, audio_format="mp3")
+            line_duration, anchor_offset = cue_context.get(
+                id(cue), (0.0, 0.0)
+            )
+            gen_prompt = build_sound_prompt(
+                cue.prompt, cue.type, line_duration, anchor_offset
+            )
+            record = library.find(
+                provider, gen_prompt, audio_format="mp3"
+            )
             if record is not None:
                 self._log_progress(
                     "Sound %d/%d · %s (cached)" % (
@@ -513,7 +617,12 @@ class Pipeline:
                     state.project_id, cue, referenced_paths
                 )
                 record, created = self._materialize_cue(
-                    provider, library, cue, raw_path, record=record
+                    provider,
+                    library,
+                    cue,
+                    raw_path,
+                    gen_prompt,
+                    record=record,
                 )
             except Exception as exc:
                 # The raw clip (if any) stays in the project's sounds/ dir
@@ -537,9 +646,6 @@ class Pipeline:
         from .audio import PydubAudioProcessor
 
         processor = PydubAudioProcessor()
-        timing = self._line_timing(
-            state, output_path.suffix.lstrip(".")
-        )
 
         # One cue group per line. Punctual effects with an anchor phrase are
         # offset to where that phrase is spoken inside the line; ambience and

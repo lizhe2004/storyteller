@@ -341,7 +341,7 @@ def test_failed_cue_clip_path_reused_across_runs(tmp_path):
     raw_first = pipeline._project_sound_path(state.project_id, cue)
     with pytest.raises(SoundGenerationError):
         pipeline._materialize_cue(
-            _NearSilentSoundProvider(), library, cue, raw_first
+            _NearSilentSoundProvider(), library, cue, raw_first, cue.prompt
         )
     # "Resume": the same still-pending cue resolves to the same path.
     raw_second = pipeline._project_sound_path(state.project_id, cue)
@@ -533,6 +533,54 @@ def test_run_with_sound_reuses_cache_on_second_story(tmp_path):
     for project_dir in project_dirs:
         names = sorted(p.name for p in (project_dir / "sounds").glob("*.mp3"))
         assert names == ["宁静夜曲.mp3", "雨声.mp3"]
+
+
+def test_sound_prompts_include_target_duration_from_line_length(tmp_path):
+    # Each TTS line is 6s: the inline ambient must ask for ~6s and the
+    # script-level BGM for the full 12s. The same enhanced prompt reaches
+    # the cache record, so cache lookups stay consistent.
+    from storyteller.providers.mock.sfx import MockSoundProvider
+    from storyteller.core.sound_library import SoundLibrary
+
+    config = Config()
+    llm = MockLLMProvider(config)
+    llm.set_response(_sound_script())
+    provider = MockSoundProvider(config)
+    library = SoundLibrary(tmp_path / "sounds")
+    pipeline = _make_sound_pipeline(tmp_path, llm, provider, library)
+    pipeline.registry.register_tts("mock", _FixedDurationTTS)
+
+    pipeline.run("雨夜")
+
+    prompts = [call["prompt"] for call in provider.calls]
+    assert any("持续约6秒" in p for p in prompts), prompts
+    assert any("持续约12秒" in p for p in prompts), prompts
+    assert all("无人声" in p for p in prompts)
+    cached = {r["name"]: r["prompt"] for r in library.all()}
+    assert "持续约6秒" in cached["雨声"]
+    assert "持续约12秒" in cached["宁静夜曲"]
+
+
+class _FixedDurationTTS(MockTTSProvider):
+    """TTS stub whose segments are exactly 6 seconds of silence."""
+
+    def synthesize(self, text, voice_config, output_path, **kwargs):
+        import wave
+        from pathlib import Path
+
+        self.synth_calls.append(
+            {"text": text, "output_path": str(output_path)}
+        )
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame_rate = 16000
+        n_frames = frame_rate * 6
+        with wave.open(str(path), "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(frame_rate)
+            wf.writeframes(b"\x00\x00" * n_frames)
+        return path
 
 
 def test_sound_disabled_by_default_ignores_cues(tmp_path):

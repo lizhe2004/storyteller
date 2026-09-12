@@ -106,32 +106,29 @@ class PydubAudioProcessor(AudioProcessor):
         return self._export(mixed, output_path)
 
     def add_effect_groups(self, main_audio, groups, output_path):
-        """Overlay per-line cue groups with per-group loudness caps and cuts.
+        """Overlay per-line cue groups with per-cue loudness caps and cuts.
 
         ``groups`` is a list of ``(start_sec, duration_sec, entries)`` with
         entries a list of ``(effect, intra_offset_sec)``. Each cue is placed at
         its intra-line offset (anchored punctual effects land on their trigger
-        phrase; ambience starts at the head); clips running past the owning
-        line's ``duration_sec`` are trimmed with a short tail fade so they
-        cannot continue into the next line. Cues are normalized by type, then
-        the combined group is capped as a unit.
+        phrase; ambience starts at the head). Ambient beds are hard-cut at the
+        owning line's end; punctual effects may carry EFFECT_TAIL_GRACE_SEC
+        past it (an event anchored to the line's last words would otherwise be
+        chopped mid-ring), faded out. Cues are normalized by type, then the
+        combined group is capped as a unit.
         """
         from pydub import AudioSegment
 
         mixed = AudioSegment.from_file(str(main_audio))
         for start_sec, duration_sec, entries in groups:
-            track = self._build_group_track(mixed, entries)
+            track = self._build_group_track(mixed, entries, duration_sec)
             if track is None:
                 continue
-            if duration_sec and len(track) > duration_sec * 1000:
-                limit_ms = int(duration_sec * 1000)
-                fade = min(_TAIL_FADE_MS, limit_ms // 2)
-                track = track[:limit_ms].fade_out(fade)
             position_ms = max(0, int((start_sec or 0.0) * 1000))
             mixed = mixed.overlay(track, position=position_ms)
         return self._export(mixed, output_path)
 
-    def _build_group_track(self, reference, entries):
+    def _build_group_track(self, reference, entries, line_duration_sec=None):
         """Render one line's cues, each at its intra offset, capped together."""
         from pydub import AudioSegment
 
@@ -164,6 +161,9 @@ class PydubAudioProcessor(AudioProcessor):
                 clip = clip.fade_in(int(effect.fade_in * 1000))
             if effect.fade_out:
                 clip = clip.fade_out(int(effect.fade_out * 1000))
+            clip = self._trim_to_window(
+                clip, effect, offset_sec, line_duration_sec
+            )
             if effect.type not in ("ambient", "music"):
                 has_effect = True
             placed.append((max(0, int((offset_sec or 0.0) * 1000)), clip))
@@ -183,6 +183,23 @@ class PydubAudioProcessor(AudioProcessor):
         if track.dBFS != float("-inf") and track.dBFS > cap:
             track = track.apply_gain(cap - track.dBFS)
         return track
+
+    @staticmethod
+    def _trim_to_window(clip, effect, offset_sec, line_duration_sec):
+        """Cut a cue to what may play inside (and, for effects, just past)
+        its owning line."""
+        if not line_duration_sec:
+            return clip
+        window_ms = int(
+            (line_duration_sec - (offset_sec or 0.0)) * 1000
+        )
+        if effect.type not in ("ambient", "music"):
+            window_ms += int(EFFECT_TAIL_GRACE_SEC * 1000)
+        window_ms = max(0, window_ms)
+        if len(clip) <= window_ms:
+            return clip
+        fade = min(_TAIL_FADE_MS, window_ms // 2)
+        return clip[:window_ms].fade_out(fade)
 
     @staticmethod
     def _match(segment, reference):
@@ -239,3 +256,8 @@ _GROUP_AMBIENT_CAP_DBFS = -22
 
 # Tail fade when a clip is cut at the owning line's end.
 _TAIL_FADE_MS = 600
+
+# How far a punctual effect may carry past its owning line's end. A knock
+# anchored to a line's final words still needs to finish ringing; ambience is
+# never granted this (a bed spilling into the next line muddies the speech).
+EFFECT_TAIL_GRACE_SEC = 2.0

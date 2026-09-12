@@ -186,6 +186,68 @@ def test_add_effect_groups_trims_clip_to_line_duration(tmp_path):
     assert combined[900:1500].dBFS == float("-inf")
 
 
+def test_effect_at_line_end_keeps_tail_with_grace(tmp_path):
+    # A punctual effect anchored near the line's final words must not be
+    # chopped at the line boundary: it may carry a 2s grace tail (faded),
+    # while ambience on the same line would still be hard-cut.
+    from pydub import AudioSegment
+    from storyteller.core.models import SoundEffect
+
+    main = tmp_path / "main.wav"
+    knock = tmp_path / "knock.wav"
+    out = tmp_path / "grace.wav"
+    AudioSegment.silent(duration=4000, frame_rate=16000).export(
+        str(main), format="wav"
+    )
+    # 3s knock, longer than the 2.1s playable window, so trimming + fade fire.
+    _tone(knock, 3000, freq=220)
+
+    effect = SoundEffect(
+        effect_id="e1",
+        name="敲门声",
+        type="effect",
+        source_path=str(knock),
+    )
+    # Line lasts 0.8s; the knock fires at 0.7s. Playable window is
+    # 0.1s + 2s grace = 2.1s from the group start (ends at 2.8s absolute).
+    processor = PydubAudioProcessor()
+    processor.add_effect_groups(main, [(0.0, 0.8, [(effect, 0.7)])], out)
+
+    combined = AudioSegment.from_wav(str(out))
+    # The tail spills past the line end (old hard-cut left this silent)...
+    assert combined[900:1500].dBFS != float("-inf")
+    # ...but stops, faded, at the grace boundary (~2.8s absolute).
+    assert combined[3000:].dBFS == float("-inf")
+    # The final 400ms of the fade-out tail is well below the clip's head.
+    tail = combined[2400:2800]
+    head = combined[700:1100]
+    assert tail.dBFS < head.dBFS - 6
+
+
+def test_effect_grace_does_not_extend_unbounded_top_level_cue(tmp_path):
+    # Script-scoped groups pass duration_sec=None: no line cut and no grace
+    # math, the cue plays at its natural length (existing behavior).
+    from storyteller.core.models import SoundEffect
+
+    main = tmp_path / "main.wav"
+    knock = tmp_path / "knock.wav"
+    out = tmp_path / "toplevel.wav"
+    _tone(main, 2000)
+    _tone(knock, 700, freq=220)
+
+    effect = SoundEffect(
+        effect_id="e1", name="雷", type="effect", source_path=str(knock)
+    )
+    PydubAudioProcessor().add_effect_groups(
+        main, [(0.0, None, [(effect, 0.0)])], out
+    )
+    from pydub import AudioSegment
+
+    combined = AudioSegment.from_wav(str(out))
+    # main is 2s, cue 0.7s: no extension either way.
+    assert 1980 <= len(combined) <= 2020
+
+
 def test_add_effect_groups_caps_combined_level(tmp_path):
     from pydub import AudioSegment
     from storyteller.core import audio as audio_mod
