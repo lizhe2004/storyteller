@@ -151,7 +151,12 @@ class PydubAudioProcessor(AudioProcessor):
                 if effect.type in ("ambient", "music")
                 else _EFFECT_TARGET_DBFS
             )
-            clip = clip.apply_gain(target - clip.dBFS)
+            # Lift quiet cues only up to a capped boost: full normalization
+            # to target would erase the near/far, loud/faint dynamics the
+            # generation prompt asked for. Loud clips are never attenuated
+            # here; the group cap below is what protects the speech.
+            gain = min(target - clip.dBFS, _MAX_BOOST_DB)
+            clip = clip.apply_gain(gain)
             if effect.volume and effect.volume > 0:
                 clip = clip + _gain_for_volume(effect.volume)
             if effect.fade_in:
@@ -218,6 +223,11 @@ def _gain_for_volume(volume):
 # sound_library) are failed generations and skipped entirely.
 _EFFECT_TARGET_DBFS = -14
 _AMBIENT_TARGET_DBFS = -27
+
+# Most a cue is ever boosted toward its target, preserving the relative
+# loudness a prompt implies (distant/faint sounds stay fainter than near
+# ones) instead of flattening every cue to the same level.
+_MAX_BOOST_DB = 12.0
 
 # Combined-level caps for every cue group sharing one line. Without a cap,
 # several cues each normalized to target stack 3-6 dB louder and bury the

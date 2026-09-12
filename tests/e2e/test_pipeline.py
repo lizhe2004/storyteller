@@ -446,14 +446,141 @@ class _NearSilentSoundProvider:
     name = "mock"
     model = "mock-sound"
 
+    def __init__(self):
+        self.calls = 0
+
     def generate(self, prompt, output_path, *, audio_format="mp3", **kwargs):
         from pydub.generators import Sine
 
+        self.calls += 1
         output_path.parent.mkdir(parents=True, exist_ok=True)
         Sine(440).to_audio_segment(duration=300).apply_gain(-70).export(
             str(output_path), format="wav"
         )
         return output_path, 0.3
+
+
+class _FlakySoundProvider:
+    """Near-silent for the first ``fail_times`` calls per prompt, then audible."""
+
+    name = "mock"
+    model = "mock-sound"
+
+    def __init__(self, fail_times=2):
+        self.fail_times = fail_times
+        self.calls = 0
+
+    def generate(self, prompt, output_path, *, audio_format="mp3", **kwargs):
+        from pydub.generators import Sine
+
+        attempt = self.calls
+        self.calls += 1
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        gain_db = -70 if attempt < self.fail_times else -6
+        Sine(440).to_audio_segment(duration=300).apply_gain(gain_db).export(
+            str(output_path), format="wav"
+        )
+        return output_path, 0.3
+
+
+def _single_cue_script():
+    import json as _json
+
+    return _json.dumps(
+        {
+            "title": "一声雷",
+            "characters": [
+                {"id": "narrator", "name": "旁白", "description": "旁白"},
+            ],
+            "lines": [
+                {
+                    "line_id": "1",
+                    "line_type": "narration",
+                    "text": "天边响起一声炸雷。",
+                    "sound_effects": [
+                        {
+                            "name": "炸雷",
+                            "type": "effect",
+                            "description": "雷声",
+                            "prompt": "一声炸雷，无人声",
+                            "anchor": "炸雷",
+                        }
+                    ],
+                },
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+
+def test_near_silent_clip_is_retried_then_accepted(tmp_path):
+    from storyteller.core.sound_library import SoundLibrary
+
+    config = Config()
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
+    config.set("sound.enabled", True)
+    config.set("sound.dir", str(tmp_path / "sounds"))
+    config.set("llm.default_provider", "mock")
+    config.set("tts.default_provider", "mock")
+
+    llm = MockLLMProvider(config)
+    llm.set_response(_single_cue_script())
+    provider = _FlakySoundProvider(fail_times=2)
+    library = SoundLibrary(tmp_path / "sounds")
+    pipeline = Pipeline(
+        config, sound_provider=provider, sound_library=library
+    )
+    pipeline.registry.register_llm("mock", lambda c: llm)
+    pipeline.registry.register_tts("mock", MockTTSProvider)
+
+    result_path = Path(pipeline.run("雷声"))
+    assert result_path.exists()
+
+    # Two near-silent failures, then one audible attempt.
+    assert provider.calls == 3
+    assert len(library.all()) == 1
+    import json as _json
+
+    data = _json.loads(
+        (result_path.parent / "story.script.json").read_text(encoding="utf-8")
+    )
+    assert data["lines"][0]["sound_effects"][0]["source_path"]
+
+
+def test_near_silent_clip_retried_up_to_limit_then_skipped(tmp_path):
+    from storyteller.core.sound_library import SoundLibrary
+
+    config = Config()
+    config.set("data_dir", str(tmp_path / ".storyteller"))
+    config.resolve_paths()
+    config.set("sound.enabled", True)
+    config.set("sound.dir", str(tmp_path / "sounds"))
+    config.set("llm.default_provider", "mock")
+    config.set("tts.default_provider", "mock")
+
+    llm = MockLLMProvider(config)
+    llm.set_response(_single_cue_script())
+    provider = _NearSilentSoundProvider()
+    library = SoundLibrary(tmp_path / "sounds")
+    pipeline = Pipeline(
+        config, sound_provider=provider, sound_library=library
+    )
+    pipeline.registry.register_llm("mock", lambda c: llm)
+    pipeline.registry.register_tts("mock", MockTTSProvider)
+
+    result_path = Path(pipeline.run("雷声"))
+    assert result_path.exists()
+    # The cue is attempted MAX_SOUND_ATTEMPTS times then skipped.
+    assert provider.calls == 3
+    assert library.all() == []
+    import json as _json
+
+    data = _json.loads(
+        (result_path.parent / "story.script.json").read_text(encoding="utf-8")
+    )
+    assert data["lines"][0]["sound_effects"][0]["source_path"] is None
+
 
 
 def test_failed_sound_clip_is_kept_in_project_but_not_mixed(tmp_path):

@@ -214,6 +214,37 @@ def test_add_effect_groups_caps_combined_level(tmp_path):
     assert mixed[:500].dBFS < audio_mod._GROUP_EFFECT_CAP_DBFS + 1.0
 
 
+def test_quiet_clip_gets_limited_compensation_not_full_normalization(tmp_path):
+    from pydub import AudioSegment
+    from pydub.generators import Sine
+    from storyteller.core import audio as audio_mod
+    from storyteller.core.models import SoundEffect
+
+    main = tmp_path / "main.wav"
+    quiet = tmp_path / "quiet.wav"
+    out = tmp_path / "out.wav"
+    AudioSegment.silent(duration=2000, frame_rate=16000).export(
+        str(main), format="wav"
+    )
+    # A deliberately soft clip (~-40 dBFS), like a distant/faint cue.
+    Sine(440).to_audio_segment(duration=500).apply_gain(-37).export(
+        str(quiet), format="wav"
+    )
+
+    effect = SoundEffect(
+        effect_id="e1", name="远铃", type="effect", source_path=str(quiet)
+    )
+    processor = PydubAudioProcessor()
+    processor.add_effect_groups(main, [(0.0, None, [(effect, 0.0)])], out)
+
+    mixed = AudioSegment.from_wav(str(out))
+    head = mixed[:400].dBFS
+    # Compensation is capped at _MAX_BOOST_DB (+12): -40 -> ~-28 dBFS,
+    # preserving the "faint" intent instead of flattening it to -14.
+    assert head < audio_mod._EFFECT_TARGET_DBFS - 6.0
+    assert -31.0 < head < -25.0
+
+
 def test_add_effect_groups_skips_cues_without_source(tmp_path):
     from storyteller.core.models import SoundEffect
 

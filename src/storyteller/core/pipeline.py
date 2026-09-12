@@ -6,13 +6,17 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from .exceptions import LLMError, TTSError
+from .exceptions import LLMError, TTSError, SoundGenerationError
 from .project import ProjectManager, _script_to_dict
 from .story_generator import StoryGenerator
 from .voice_matcher import is_narration_voice
 
 # Script SoundEffect.type -> SoundLibrary kind.
 _KIND_FOR_TYPE = {"effect": "sfx", "ambient": "ambient", "music": "music"}
+
+# Total generation attempts per cue: seed-audio nondeterministically returns
+# near-silent clips, so the same prompt is retried before the cue is skipped.
+MAX_SOUND_ATTEMPTS = 3
 
 # Punctuation/whitespace ignored when estimating an anchor's spoken position.
 _PUNCT_RE = re.compile(r"[\s，。！？；：、,…,.\!?;:\-—“”\"'（）()…]")
@@ -401,6 +405,49 @@ class Pipeline:
         self._sound_library = SoundLibrary(sound_dir)
         return self._sound_library
 
+    def _materialize_cue(self, provider, library, cue, raw_path):
+        """Return an audible clip for one cue: cache hit or retried generate.
+
+        Near-silent generations (SoundGenerationError from the loudness gate)
+        are retried with the same prompt up to MAX_SOUND_ATTEMPTS; the raw
+        clip is overwritten each time, leaving only the last failure on disk.
+        Other errors (network/API) are not retried here. Returns
+        ``(record, created)``.
+        """
+        record = library.find(provider, cue.prompt, audio_format="mp3")
+        if record is not None:
+            shutil.copy2(library.path_for(record), raw_path)
+            return record, False
+
+        last_error = None
+        for attempt in range(1, MAX_SOUND_ATTEMPTS + 1):
+            _, gen_duration = provider.generate(
+                cue.prompt, raw_path, audio_format="mp3"
+            )
+            try:
+                record = library.admit(
+                    raw_path,
+                    provider,
+                    prompt=cue.prompt,
+                    name=cue.name,
+                    kind=_KIND_FOR_TYPE.get(cue.type, "sfx"),
+                    description=cue.description or "",
+                    tags=cue.tags or [],
+                    audio_format="mp3",
+                    duration=gen_duration,
+                )
+            except SoundGenerationError as exc:
+                last_error = exc
+                if attempt < MAX_SOUND_ATTEMPTS:
+                    self._log_progress(
+                        "  %s 近静音，重试 %d/%d…" % (
+                            cue.name, attempt, MAX_SOUND_ATTEMPTS - 1
+                        )
+                    )
+                continue
+            return record, True
+        raise last_error
+
     def _apply_soundtrack(self, state, output_path):
         """Generate/cache BGM + effects and mix them into the concatenated file."""
         script = state.script
@@ -418,28 +465,11 @@ class Pipeline:
         provider = self._get_sound_provider()
         library = self._get_sound_library()
         for cue in pending:
-            created = False
+            raw_path = self._project_sound_path(state.project_id, cue)
             try:
-                raw_path = self._project_sound_path(state.project_id, cue)
-                record = library.find(provider, cue.prompt, audio_format="mp3")
-                if record is not None:
-                    shutil.copy2(library.path_for(record), raw_path)
-                else:
-                    _, gen_duration = provider.generate(
-                        cue.prompt, raw_path, audio_format="mp3"
-                    )
-                    record = library.admit(
-                        raw_path,
-                        provider,
-                        prompt=cue.prompt,
-                        name=cue.name,
-                        kind=_KIND_FOR_TYPE.get(cue.type, "sfx"),
-                        description=cue.description or "",
-                        tags=cue.tags or [],
-                        audio_format="mp3",
-                        duration=gen_duration,
-                    )
-                    created = True
+                record, created = self._materialize_cue(
+                    provider, library, cue, raw_path
+                )
             except Exception as exc:
                 # The raw clip (if any) stays in the project's sounds/ dir
                 # for inspection; the cue is simply left out of the mix.
