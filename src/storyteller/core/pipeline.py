@@ -30,6 +30,11 @@ MAX_SOUND_DURATION_SEC = 120
 EFFECT_MAX_DURATION_SEC = 6
 
 
+def human_time():
+    """Return a local, millisecond-precision time for project diagnostics."""
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+
 def sound_duration_seconds(cue_type, line_duration, anchor_offset=0.0):
     """Target clip length for a cue, from its owning line's real TTS length.
 
@@ -215,11 +220,13 @@ class Pipeline:
             matcher = VoiceMatcher(
                 self.registry, llm=matcher_llm, mode=mode
             )
+            allowed_tts = kwargs.get("tts_providers")
+            if allowed_tts is None:
+                allowed_tts = self.config.get("tts.providers") or None
             matcher.match_voices(
                 state.script,
-                allowed_providers=kwargs.get("tts_providers"),
+                allowed_providers=allowed_tts,
                 allowed_voice_ids=kwargs.get("voice_ids"),
-                default_provider=self.config.get("tts.default_provider"),
             )
             state.state = "voice_configured"
             self.projects.save_project(state)
@@ -281,13 +288,18 @@ class Pipeline:
             try:
                 tts = self.registry.get_tts(voice.provider)
                 directives, context = self._line_context(state.script.lines, idx - 1)
-                tts.synthesize(
-                    line.text,
-                    voice,
-                    out_path,
-                    directives=directives,
-                    context=context,
-                )
+                tts_timing = line.processing.setdefault("tts", {})
+                tts_timing["started_at"] = human_time()
+                try:
+                    tts.synthesize(
+                        line.text,
+                        voice,
+                        out_path,
+                        directives=directives,
+                        context=context,
+                    )
+                finally:
+                    tts_timing["ended_at"] = human_time()
                 line.audio_path = str(out_path)
                 lines_audio_paths.append(str(out_path))
             except Exception as exc:
@@ -332,6 +344,57 @@ class Pipeline:
         for voice in char_voice_map.values():
             return voice
         return None
+
+    def voice_for_line(self, line, char_voice_map, narrator_voice):
+        voice = line.voice_config
+        if not voice and line.line_type == "dialogue" and line.character_id:
+            voice = char_voice_map.get(line.character_id)
+        return voice or narrator_voice
+
+    def line_context_directives(self, lines, idx):
+        return self._line_context(lines, idx)
+
+    def materialize_line_cues(self, state, line, line_duration, provider,
+                              library, referenced_paths):
+        cues = list(line.sound_effects)
+        if line.background_music is not None:
+            cues.append(line.background_music)
+        entries = []
+        for cue in cues:
+            if not cue.source_path and not cue.prompt:
+                continue
+            offset = self._anchor_offset(line, cue, line_duration)
+            if not cue.source_path:
+                gen_prompt = build_sound_prompt(cue.prompt, cue.type,
+                                                 line_duration, offset)
+                record = library.find(provider, gen_prompt, audio_format="mp3")
+                raw_path = self._project_sound_path(
+                    state.project_id, cue, referenced_paths)
+                try:
+                    record, _ = self._materialize_cue(
+                        provider, library, cue, raw_path, gen_prompt,
+                        record=record)
+                except Exception as exc:
+                    self._log_error(cue.effect_id, exc)
+                    continue
+                referenced_paths.add(Path(raw_path))
+                cue.source_path = str(raw_path)
+                cue.source_type = "local"
+                if cue.duration is None:
+                    cue.duration = record.get("duration")
+            if Path(cue.source_path).exists():
+                entries.append((cue, offset))
+        return entries
+
+    def finalize_audio(self, state, line_paths, output_format="mp3",
+                       with_sound=False):
+        output_path = self._final_output_path(state.project_id, output_format)
+        self._concatenate(line_paths, output_path)
+        if with_sound:
+            self._apply_soundtrack(state, output_path)
+        state.state = "completed"
+        self.projects.save_project(state)
+        return output_path
 
     def _setup_logging(self):
         from .utils import setup_logging
@@ -490,9 +553,14 @@ class Pipeline:
         """
         last_error = None
         for attempt in range(1, MAX_SOUND_ATTEMPTS + 1):
-            _, gen_duration = provider.generate(
-                gen_prompt, raw_path, audio_format="mp3"
-            )
+            attempt_timing = {"attempt": attempt, "started_at": human_time()}
+            cue.generation_history.append(attempt_timing)
+            try:
+                _, gen_duration = provider.generate(
+                    gen_prompt, raw_path, audio_format="mp3"
+                )
+            finally:
+                attempt_timing["ended_at"] = human_time()
             try:
                 return library.admit(
                     raw_path,
@@ -681,9 +749,16 @@ class Pipeline:
 
         if groups:
             self._log_progress("Mixing soundtrack...")
-            processor.add_effect_groups(
-                working_path, groups, output_path
-            )
+            mix_started = human_time()
+            try:
+                processor.add_effect_groups(
+                    working_path, groups, output_path
+                )
+            finally:
+                mix_ended = human_time()
+                for line in script.lines:
+                    if any(c.source_path for c in line.sound_effects) or line.background_music is not None:
+                        line.processing["mixing"] = {"started_at": mix_started, "ended_at": mix_ended}
             if working_path != output_path and working_path.exists():
                 working_path.unlink()
         elif working_path != output_path:

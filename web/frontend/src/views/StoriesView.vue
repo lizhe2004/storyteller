@@ -1,0 +1,4 @@
+<script setup lang="ts">
+import { onMounted, ref } from 'vue'; import { api } from '../api'; const stories = ref<any[]>([]); const error = ref(''); onMounted(async () => { try { stories.value = (await api.stories()).stories } catch (e:any) { error.value = e.message } })
+</script>
+<template><section class="list-page"><p class="eyebrow">听过的故事</p><div class="page-title"><h1>故事书架</h1><p>每一个被讲过的念头，都值得再听一次。</p></div><p v-if="error" class="error">{{ error }}</p><div v-if="!stories.length && !error" class="empty-list">书架还是空的。<router-link to="/">去写第一个故事</router-link></div><router-link v-for="story in stories" :key="story.id" :to="'/stories/' + story.id" class="story-row"><span class="story-symbol">✦</span><span><strong>{{ story.title || '未命名故事' }}</strong><small>{{ story.created_at?.slice(0, 10) }} · {{ story.state }}</small></span><b>打开</b></router-link></section></template>

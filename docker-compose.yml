@@ -1,0 +1,17 @@
+services:
+  storyteller:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: audio-story-generator:latest
+    env_file:
+      - .env
+    environment:
+      STORYTELLER_WEB_HOST: 0.0.0.0
+      STORYTELLER_WEB_PORT: 8000
+      STORYTELLER_DATA_DIR: /data
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./docker-data:/data
+    restart: unless-stopped

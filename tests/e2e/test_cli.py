@@ -21,7 +21,6 @@ _MOCK_ENV = {
     "STORYTELLER_LLM_DEFAULT_PROVIDER": "mock",
     "STORYTELLER_TTS_PROVIDERS": "mock",
     "STORYTELLER_TTS_MOCK_TYPE": "mock",
-    "STORYTELLER_TTS_DEFAULT_PROVIDER": "mock",
     "STORYTELLER_SOUND_PROVIDERS": "mock",
     "STORYTELLER_SOUND_MOCK_TYPE": "mock",
 }
@@ -170,7 +169,6 @@ def test_continue_accepts_provider_selection_flags():
             [
                 "continue", "proj_does_not_exist",
                 "--default-llm-provider", "mock",
-                "--default-tts-provider", "mock",
                 "--sound-provider", "mock",
             ],
             env=_MOCK_ENV,

@@ -23,6 +23,7 @@ htmlcov/
 
 # Generated artifacts (single data root)
 .storyteller/
+src/storyteller/web/static/
 
 # Legacy layout (kept ignored for existing checkouts)
 outputs/

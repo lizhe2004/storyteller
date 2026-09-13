@@ -68,6 +68,8 @@ class ProjectManager:
             "script": _script_to_dict(state.script) if state.script else None,
             "current_step": state.current_step,
             "config": state.config,
+            "error": state.error,
+            "error_at": state.error_at,
             "created_at": _dt_to_str(state.created_at),
             "updated_at": _dt_to_str(state.updated_at),
         }
@@ -95,6 +97,8 @@ class ProjectManager:
             else None,
             current_step=payload.get("current_step"),
             config=payload.get("config", {}),
+            error=payload.get("error"),
+            error_at=payload.get("error_at"),
             created_at=_str_to_dt(payload.get("created_at")),
             updated_at=_str_to_dt(payload.get("updated_at")),
         )
@@ -326,6 +330,7 @@ def _sound_to_dict(sfx):
         "description": sfx.description,
         "tags": list(sfx.tags or []),
         "anchor": sfx.anchor,
+        "generation_history": list(sfx.generation_history or []),
     }
 
 
@@ -347,6 +352,7 @@ def _sound_from_dict(data):
         description=data.get("description"),
         tags=list(data.get("tags", []) or []),
         anchor=data.get("anchor"),
+        generation_history=list(data.get("generation_history", []) or []),
     )
 
 
@@ -381,6 +387,7 @@ def _line_to_dict(line):
         ],
         "background_music": _sound_to_dict(line.background_music),
         "metadata": line.metadata,
+        "processing": line.processing,
     }
 
 
@@ -397,6 +404,7 @@ def _line_from_dict(data):
         ],
         background_music=_sound_from_dict(data.get("background_music")),
         metadata=data.get("metadata", {}),
+        processing=data.get("processing", {}),
     )
 
 

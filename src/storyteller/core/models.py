@@ -55,6 +55,7 @@ class SoundEffect:
     # fire (ambient beds omit it and start at the line head). Used to estimate
     # an intra-line offset because TTS gives no word-level timestamps.
     anchor: Optional[str] = None
+    generation_history: list = field(default_factory=list)
 
 
 # ========== Voice ==========
@@ -97,6 +98,7 @@ class ScriptLine:
     sound_effects: list = field(default_factory=list)
     background_music: Optional[SoundEffect] = None
     metadata: dict = field(default_factory=dict)
+    processing: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -134,5 +136,7 @@ class ProjectState:
     script: Optional[Script] = None
     current_step: Optional[str] = None
     config: dict = field(default_factory=dict)
+    error: Optional[str] = None
+    error_at: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)

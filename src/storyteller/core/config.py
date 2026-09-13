@@ -28,7 +28,6 @@ class Config:
         },
         "tts": {
             "providers": [],
-            "default_provider": None,
             "provider_config": {},
         },
         "sound": {
@@ -37,6 +36,16 @@ class Config:
             "providers": [],
             "default_provider": None,
             "provider_config": {},
+        },
+        "web": {
+            "passwords": [],
+            "secret": None,
+            "token_ttl_days": 30,
+            "host": "127.0.0.1",
+            "port": 8000,
+            "concurrency": 2,
+            "rate_limit_per_min": 10,
+            "filler_voice": None,
         },
     }
 
@@ -90,10 +99,27 @@ class Config:
         cls._load_openai_compatible_tts(config)
         cls._load_provider_group(config, "sound")
         cls._load_sound(config)
+        cls._load_web(config)
 
         # Artifact dirs are derived lazily in get() from data_dir, so an
         # explicit --data-dir / STORYTELLER_DATA_DIR stays authoritative.
         return config
+
+    @staticmethod
+    def _load_web(config):
+        raw = os.getenv("STORYTELLER_WEB_PASSWORDS", "")
+        config.set("web.passwords", [p.strip() for p in raw.split(",") if p.strip()])
+        config.set("web.secret", os.getenv("STORYTELLER_WEB_SECRET") or None)
+        config.set("web.filler_voice", os.getenv("STORYTELLER_WEB_FILLER_VOICE") or None)
+        for env_key, cfg_key, default in (
+            ("STORYTELLER_WEB_TOKEN_TTL_DAYS", "web.token_ttl_days", 30),
+            ("STORYTELLER_WEB_PORT", "web.port", 8000),
+            ("STORYTELLER_WEB_CONCURRENCY", "web.concurrency", 2),
+            ("STORYTELLER_WEB_RATE_LIMIT_PER_MIN", "web.rate_limit_per_min", 10),
+        ):
+            value = os.getenv(env_key)
+            config.set(cfg_key, int(value) if value else default)
+        config.set("web.host", os.getenv("STORYTELLER_WEB_HOST", "127.0.0.1"))
 
     def resolve_paths(self):
         """Materialize the artifact directories from the single data root.
@@ -146,10 +172,11 @@ class Config:
         providers_env = os.getenv(group_prefix + "PROVIDERS", "")
         providers = [p.strip() for p in providers_env.split(",") if p.strip()]
 
-        config.set(
-            "{}.default_provider".format(kind),
-            os.getenv(group_prefix + "DEFAULT_PROVIDER"),
-        )
+        if kind != "tts":
+            config.set(
+                "{}.default_provider".format(kind),
+                os.getenv(group_prefix + "DEFAULT_PROVIDER"),
+            )
 
         # The suffix allowlist alone excludes reserved names (PROVIDERS,
         # DEFAULT_PROVIDER, ENABLED, DIR all lack a recognised suffix).

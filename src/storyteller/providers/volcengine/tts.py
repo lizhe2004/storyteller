@@ -11,7 +11,7 @@ import requests
 
 from ...core.exceptions import TTSError
 from ...core.models import VoiceConfig
-from ...core.tts import TTSProvider
+from ...core.tts import TTSProvider, StreamChunk, CHUNK_AUDIO, STREAM_SAMPLE_RATE
 from ..base import BaseProvider
 
 _DEFAULT_ENDPOINT = (
@@ -24,6 +24,8 @@ _VOICE_CATALOG = Path(__file__).with_name("voices.json")
 
 class VolcengineTTS(BaseProvider, TTSProvider):
     """Volcengine text-to-speech provider (v3 seed-tts streaming API)."""
+
+    supports_streaming = True
 
     def __init__(self, config):
         super().__init__(config)
@@ -97,51 +99,8 @@ class VolcengineTTS(BaseProvider, TTSProvider):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         audio_format = _encoding_for_path(output_path)
-        audio_params = {
-            "format": audio_format,
-            # ogg_opus is only supported at 48 kHz; others default to 24 kHz.
-            "sample_rate": 48000 if audio_format == "ogg_opus" else 24000,
-            # speech_rate / loudness_rate are integer offsets: 0 normal,
-            # [-50, 100] (100 = 2x, -50 = 0.5x).
-            "speech_rate": _clamp(
-                int(round((voice_config.speed - 1.0) * 100)), -50, 100
-            ),
-            "loudness_rate": _clamp(
-                int(round((voice_config.volume - 1.0) * 100)), -50, 100
-            ),
-        }
-        additions = {
-            # Strip markdown syntax and emoji so they are not read aloud.
-            "disable_markdown_filter": True,
-            "disable_emoji_filter": True,
-        }
-        context_texts = _build_context_texts(directives, context)
-        if context_texts:
-            # Voice directives use a leading "#"; quoted context does not.
-            additions["context_texts"] = context_texts
-
-        req_params = {
-            "text": text,
-            "speaker": voice_config.voice_id,
-            "audio_params": audio_params,
-            "additions": json.dumps(additions, ensure_ascii=False),
-        }
-        # post_process.pitch is semitones in [-12, 12], default 0.
-        if voice_config.pitch != 1.0:
-            semitones = _clamp(
-                int(round(12 * _safe_log2(voice_config.pitch))), -12, 12
-            )
-            if semitones:
-                req_params["post_process"] = {"pitch": semitones}
-        body = {"req_params": req_params}
-
-        headers = {
-            "X-Api-Key": self.api_key,
-            "X-Api-Resource-Id": self._resource_id_for(voice_config.voice_id),
-            "X-Api-Request-Id": uuid.uuid4().hex,
-            "Content-Type": "application/json",
-            "Connection": "keep-alive",
-        }
+        headers, body = self._build_request(
+            text, voice_config, audio_format, directives, context)
 
         response = None
         try:
@@ -153,7 +112,7 @@ class VolcengineTTS(BaseProvider, TTSProvider):
                 timeout=60,
             )
             response.raise_for_status()
-            audio_bytes = self._read_stream(response)
+            audio_bytes = b"".join(self._iter_ndjson(response))
         except requests.RequestException as exc:
             raise TTSError(
                 "Volcengine TTS request failed: {}".format(exc)
@@ -168,10 +127,35 @@ class VolcengineTTS(BaseProvider, TTSProvider):
         output_path.write_bytes(bytes(audio_bytes))
         return output_path
 
-    @staticmethod
-    def _read_stream(response):
-        """Collect base64 audio chunks from the NDJSON response stream."""
-        audio = bytearray()
+    def _build_request(self, text, voice_config, audio_format, directives, context):
+        audio_params = {
+            "format": audio_format,
+            "sample_rate": 48000 if audio_format == "ogg_opus" else STREAM_SAMPLE_RATE,
+            "speech_rate": _clamp(int(round((voice_config.speed - 1.0) * 100)), -50, 100),
+            "loudness_rate": _clamp(int(round((voice_config.volume - 1.0) * 100)), -50, 100),
+        }
+        additions = {"disable_markdown_filter": True, "disable_emoji_filter": True}
+        context_texts = _build_context_texts(directives, context)
+        if context_texts:
+            additions["context_texts"] = context_texts
+        req_params = {
+            "text": text, "speaker": voice_config.voice_id,
+            "audio_params": audio_params,
+            "additions": json.dumps(additions, ensure_ascii=False),
+        }
+        if voice_config.pitch != 1.0:
+            semitones = _clamp(int(round(12 * _safe_log2(voice_config.pitch))), -12, 12)
+            if semitones:
+                req_params["post_process"] = {"pitch": semitones}
+        headers = {
+            "X-Api-Key": self.api_key,
+            "X-Api-Resource-Id": self._resource_id_for(voice_config.voice_id),
+            "X-Api-Request-Id": uuid.uuid4().hex,
+            "Content-Type": "application/json", "Connection": "keep-alive",
+        }
+        return headers, {"req_params": req_params}
+
+    def _iter_ndjson(self, response):
         for line in response.iter_lines(decode_unicode=True):
             if not line:
                 continue
@@ -194,12 +178,30 @@ class VolcengineTTS(BaseProvider, TTSProvider):
             chunk = data.get("data")
             if chunk:
                 try:
-                    audio.extend(base64.b64decode(chunk))
+                    yield base64.b64decode(chunk)
                 except (ValueError, TypeError) as exc:
                     raise TTSError(
                         "Failed to decode Volcengine audio chunk"
                     ) from exc
-        return audio
+    def _read_stream(self, response):
+        return bytearray(b"".join(self._iter_ndjson(response)))
+
+    def stream_synthesize(self, text, voice_config, *, directives=None, context=None):
+        headers, body = self._build_request(
+            text, voice_config, "pcm", directives, context)
+        response = None
+        try:
+            response = self._session.post(
+                self.endpoint, headers=headers, json=body,
+                stream=True, timeout=60)
+            response.raise_for_status()
+            for piece in self._iter_ndjson(response):
+                yield StreamChunk(CHUNK_AUDIO, bytes(piece))
+        except requests.RequestException as exc:
+            raise TTSError("Volcengine TTS request failed: {}".format(exc)) from exc
+        finally:
+            if response is not None:
+                response.close()
 
 
 def _encoding_for_path(output_path):

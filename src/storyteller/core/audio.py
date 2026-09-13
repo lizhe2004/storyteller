@@ -105,6 +105,17 @@ class PydubAudioProcessor(AudioProcessor):
         mixed = main.overlay(bed)
         return self._export(mixed, output_path)
 
+    def mix_line(self, main_line_path, entries, output_path):
+        """Overlay one line's cue group onto its speech at offset zero."""
+        from pydub import AudioSegment
+
+        main = AudioSegment.from_file(str(main_line_path))
+        if entries:
+            track = self._build_group_track(main, entries, len(main) / 1000.0)
+            if track is not None:
+                main = main.overlay(track, position=0)
+        return self._export(main, output_path)
+
     def add_effect_groups(self, main_audio, groups, output_path):
         """Overlay per-line cue groups with per-cue loudness caps and cuts.
 

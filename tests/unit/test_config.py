@@ -56,10 +56,9 @@ def test_config_loads_llm_providers(monkeypatch):
 
 def test_config_loads_tts_providers(monkeypatch):
     monkeypatch.setenv("STORYTELLER_TTS_PROVIDERS", "volcengine")
-    monkeypatch.setenv("STORYTELLER_TTS_DEFAULT_PROVIDER", "volcengine")
     monkeypatch.setenv("STORYTELLER_TTS_VOLCENGINE_API_KEY", "ttskey")
     config = Config.from_env()
-    assert config.get("tts.default_provider") == "volcengine"
+    assert config.get("tts.providers") == ["volcengine"]
     assert config.get("tts.provider_config.volcengine.api_key") == "ttskey"
 
 
@@ -103,7 +102,6 @@ def test_config_loads_dotenv_from_cwd(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text(
         "STORYTELLER_TTS_PROVIDERS=mock\n"
         "STORYTELLER_TTS_MOCK_TYPE=mock\n"
-        "STORYTELLER_TTS_DEFAULT_PROVIDER=mock\n"
     )
     monkeypatch.chdir(tmp_path)
     # Make sure no inherited env var masks the file

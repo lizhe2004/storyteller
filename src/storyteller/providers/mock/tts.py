@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import wave
+import math
+import struct
 from pathlib import Path
 
 from ...core.models import VoiceConfig
-from ...core.tts import TTSProvider
+from ...core.tts import TTSProvider, StreamChunk, CHUNK_AUDIO, STREAM_SAMPLE_RATE
 from ...providers.base import BaseProvider
 
 
@@ -107,3 +109,23 @@ class MockTTSProvider(BaseProvider, TTSProvider):
             raise self._error
         _write_silence_wav(output_path)
         return Path(output_path)
+
+
+class MockStreamingTTS(MockTTSProvider):
+    supports_streaming = True
+
+    def stream_synthesize(self, text, voice_config, *, directives=None, context=None):
+        self.synth_calls.append({
+            "text": text, "voice_config": voice_config, "output_path": None,
+            "kwargs": {"directives": directives, "context": context},
+        })
+        if self._error is not None:
+            raise self._error
+        samples = STREAM_SAMPLE_RATE // 2
+        pcm = bytearray()
+        for i in range(samples):
+            value = int(0.2 * 32767 * math.sin(2 * math.pi * 220 * i / STREAM_SAMPLE_RATE))
+            pcm.extend(struct.pack("<h", value))
+        block = STREAM_SAMPLE_RATE * 2 // 10
+        for off in range(0, len(pcm), block):
+            yield StreamChunk(CHUNK_AUDIO, bytes(pcm[off:off + block]))

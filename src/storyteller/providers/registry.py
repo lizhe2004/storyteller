@@ -78,6 +78,12 @@ class ProviderRegistry:
     def list_tts_names(self):
         return list(self._tts_factories.keys())
 
+    def get_stream_tts(self, name):
+        tts = self.get_tts(name)
+        if getattr(tts, "supports_streaming", False) and hasattr(tts, "stream_synthesize"):
+            return tts
+        return None
+
     # ----- Sound -----
     def register_sound(self, name, factory):
         """Register a sound provider. factory is a class/callable taking

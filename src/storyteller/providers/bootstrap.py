@@ -23,10 +23,11 @@ except ImportError:  # pragma: no cover
 
 try:
     from .mock.llm import MockLLMProvider
-    from .mock.tts import MockTTSProvider
+    from .mock.tts import MockTTSProvider, MockStreamingTTS
 except ImportError:  # pragma: no cover
     MockLLMProvider = None
     MockTTSProvider = None
+    MockStreamingTTS = None
 
 try:
     from .volcengine.sfx import VolcengineSoundProvider
@@ -90,7 +91,7 @@ def _register_tts(config, registry):
         elif provider_type == "aliyun" and AliyunTTS:
             registry.register_tts(name, lambda c: AliyunTTS(c))
         elif provider_type == "mock" and MockTTSProvider:
-            registry.register_tts(name, lambda c: MockTTSProvider(c))
+            registry.register_tts(name, lambda c: MockStreamingTTS(c) if MockStreamingTTS else MockTTSProvider(c))
         elif VolcengineTTS:
             registry.register_tts(name, lambda c: VolcengineTTS(c))
 

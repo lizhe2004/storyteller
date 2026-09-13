@@ -21,6 +21,40 @@
 - 测试禁止真实网络/真实 API key：一律用 mock provider 与 FastAPI TestClient；真机验证只在最后的手动任务。
 - 线程取消只在阶段/行边界检查 `cancel_event`，不强杀 provider 调用。
 
+## Implementation Decisions Added During Review
+
+- **WS handler must remain non-blocking.** The async endpoint must not call
+  `queue.Queue.get(timeout=...)` or `WebSocket.receive_json()` directly from
+  the event-loop thread. Use an asyncio task for client input and
+  `await asyncio.to_thread(...)` (or an explicit loop executor for Python
+  3.8) for blocking job-queue reads. Cancel the client-input task in a
+  `finally` block. Add a websocket test with two simultaneous connections so
+  one idle job cannot prevent another connection from receiving `ready`.
+- **Event order is contractual.** A normal run must emit
+  `ready → status/script/voices → script_ready → intro filler (if available)
+  → line_start/... → finalizing → complete`. `script_ready` is emitted before
+  the intro filler. Thinking may be emitted once ready during script/voices;
+  if it is not ready at the voices boundary, emit `filler_abort` without
+  delaying story audio.
+- **The registry used by the app is the registry used by jobs.** Pass the
+  app registry into `StreamOrchestrator` (or inject a factory), so tests and
+  configured provider instances are not silently replaced by a second
+  registry.
+- **Terminal state is observable and durable.** `run()` sets `job.phase` to
+  `failed` on exceptions, emits exactly one terminal event, and persists the
+  project state. `complete.duration_ms` is calculated from the final output.
+  Add tests for failure and for a client disconnect while the worker
+  continues.
+- **Validate audio at the boundary.** Ignore or reject non-audio
+  `StreamChunk` events unless explicitly supported, enforce even-length PCM,
+  and test that path A accumulates exactly the bytes sent. Filler clips use
+  the same conversion helper but never enter `line_paths` or `story.mp3`.
+- **BGM behavior is pinned to the current pipeline.** Add a characterization
+  test for `line.background_music`; retain the currently implemented
+  line-level behavior in both CLI finalization and Web live mixing, while
+  preserving the existing disabled top-level BGM block. If the spec is later
+  changed to disable line-level BGM too, update both paths in one task.
+
 ## File Structure
 
 ```
@@ -314,90 +348,70 @@ def get_stream_tts(self, name):
 
 **Files:**
 - Modify: `src/storyteller/providers/volcengine/tts.py`
-- Test: `tests/unit/test_volcengine_stream.py`
+- Test: 在**既有** `tests/integration/test_volcengine_tts.py` 末尾追加（该文件全是 mock HTTP、离线运行，已提供 `_config()`/`_FakeSession`/`_FakeResponse`/`_stream_lines`；本仓库火山 TTS 的 mock 测试约定就放 integration/，不另建 unit 文件）
 
 **Interfaces:**
 - Consumes: `StreamChunk`, `CHUNK_AUDIO`, `STREAM_SAMPLE_RATE`（core.tts）。
-- Produces: `VolcengineTTS.supports_streaming=True`；`stream_synthesize(text, voice_config, *, directives, context) -> Iterator[StreamChunk]`，音频块为 24k mono s16le；`synthesize()` 行为/错误文案与字节输出不变（既有测试锁定）。内部方法 `_iter_ndjson(response, audio_format)` 生成器逐行产出解码字节，`_build_body(text, voice_config, audio_format, directives, context) -> (headers, body)` 供两条路径共用。
+- Produces: `VolcengineTTS.supports_streaming=True`；`stream_synthesize(text, voice_config, *, directives, context) -> Iterator[StreamChunk]`，音频块为 24k mono s16le；`synthesize()` 行为/错误文案与字节输出不变（既有 14 个测试锁定）。把现有请求构造抽为实例方法 `_build_request(self, text, voice_config, audio_format, directives, context) -> (headers, body)` 供两条路径共用；把静态 `_read_stream(response)`（收字节）改为生成器 `_iter_ndjson(self, response)`（逐块 yield 解码字节），`synthesize` 用 `b"".join(...)` 收齐。
 
 - [ ] **Step 1: 写失败测试**
 
+在 `tests/integration/test_volcengine_tts.py` **顶部 import 区**补一行（与现有 import 并列）：
+
 ```python
-# tests/unit/test_volcengine_stream.py
-import base64
-import json
-
-import pytest
-
-from storyteller.core.models import VoiceConfig
 from storyteller.core.tts import CHUNK_AUDIO, STREAM_SAMPLE_RATE
-from storyteller.providers.volcengine.tts import VolcengineTTS
+```
 
+文件末尾追加（直接复用同文件已有的 `_config()`、`_FakeSession`、`_FakeResponse`）：
 
-class _FakeResponse:
-    def __init__(self, lines):
-        self._lines = lines
-        self.closed = False
-
-    def iter_lines(self, decode_unicode=True):
-        for line in self._lines:
-            yield line
-
-    def raise_for_status(self):
-        pass
-
-    def close(self):
-        self.closed = True
-
-
-def _ndjson(chunks, done=True, code=0):
-    frames = []
-    for ch in chunks:
-        frames.append(json.dumps({"code": code, "data": base64.b64encode(ch).decode()}))
-    if done:
-        frames.append(json.dumps({"code": 20000000}))
+```python
+def _pcm_frames(chunks):
+    frames = [
+        json.dumps({"code": 0, "data": base64.b64encode(c).decode()})
+        for c in chunks
+    ]
+    frames.append(json.dumps({"code": 20000000}))
     return frames
 
 
-def _provider(monkeypatch, frames):
-    cfg = type("C", (), {"get": lambda self, k, d=None: {
-        "api_key": "k", "endpoint": "http://x", "resource_id": "r"} if "volcengine" in k else {}})()
-    prov = VolcengineTTS(cfg)
-    captured = {}
-
-    def fake_post(url, headers=None, json=None, stream=None, timeout=None):
-        captured["body"] = json
-        return _FakeResponse(frames)
-
-    monkeypatch.setattr(prov._session, "post", fake_post)
-    return prov, captured
-
-
-def test_stream_synthesize_yields_pcm(monkeypatch):
+def test_stream_synthesize_yields_pcm_chunks():
     pcm = [b"\x01\x00" * 100, b"\x02\x00" * 50]
-    prov, captured = _provider(monkeypatch, _ndjson(pcm))
+    tts = VolcengineTTS(_config())
+    tts._session = _FakeSession(_FakeResponse(200, _pcm_frames(pcm)))
     voice = VoiceConfig(provider="volcengine", voice_id="v")
-    chunks = list(prov.stream_synthesize("嗨", voice, directives=["#温柔"], context=None))
+    chunks = list(tts.stream_synthesize(
+        "嗨", voice, directives=["#温柔"], context=None))
     assert [c.kind for c in chunks] == [CHUNK_AUDIO, CHUNK_AUDIO]
     assert b"".join(c.data for c in chunks) == pcm[0] + pcm[1]
-    # 请求必须是 pcm 24k
-    assert captured["body"]["req_params"]["audio_params"]["format"] == "pcm"
-    assert captured["body"]["req_params"]["audio_params"]["sample_rate"] == STREAM_SAMPLE_RATE
+    params = tts._session.calls[0]["json"]["req_params"]
+    assert params["audio_params"]["format"] == "pcm"
+    assert params["audio_params"]["sample_rate"] == STREAM_SAMPLE_RATE
 
 
-def test_stream_propagates_error_code(monkeypatch):
+def test_stream_propagates_error_code():
     frames = [json.dumps({"code": 55000000, "message": "bad voice"})]
-    prov, _ = _provider(monkeypatch, frames)
+    tts = VolcengineTTS(_config())
+    tts._session = _FakeSession(_FakeResponse(200, frames))
     voice = VoiceConfig(provider="volcengine", voice_id="v")
     with pytest.raises(Exception, match="55000000"):
-        list(prov.stream_synthesize("嗨", voice))
+        list(tts.stream_synthesize("嗨", voice))
+
+
+def test_synthesize_bytes_unchanged_after_refactor(tmp_path):
+    # 回归锁：_read_stream→生成器重构后，非流式 mp3 字节输出必须不变。
+    audio_bytes = b"ID3fake-mp3-data"
+    tts = VolcengineTTS(_config())
+    tts._session = _FakeSession(_FakeResponse(200, _stream_lines(audio_bytes)))
+    out = tmp_path / "line.mp3"
+    tts.synthesize("你好", VoiceConfig(provider="volcengine", voice_id="v"), out)
+    assert out.read_bytes() == audio_bytes
 ```
 
 - [ ] **Step 2: 确认失败**：`supports_streaming` 为 False / 方法不存在 → FAIL。
 
 - [ ] **Step 3: 实现**（要点；保留既有 mp3 路径）
 
-把 `synthesize` 里构造 headers/body 的逻辑抽为：
+把 `synthesize` 里构造 headers/body 的逻辑（现有第 99–144 行）原样抽为实例方法（默认参数与现有逐字节一致）：
 
 ```python
 def _build_request(self, text, voice_config, audio_format, directives, context):
@@ -429,7 +443,7 @@ def _build_request(self, text, voice_config, audio_format, directives, context):
     return headers, {"req_params": req_params}
 ```
 
-`_read_stream(response)` 改为调用新生成器（签名带 audio_format 以便错误上下文）：
+把静态 `_read_stream(response)`（现在累积进 `bytearray` 后 return）改成逐块 `yield` 的生成器，逻辑/错误文案原样保留（`_DONE_CODE` 用 `return` 结束生成器）：
 
 ```python
 def _iter_ndjson(self, response):
@@ -493,6 +507,9 @@ def stream_synthesize(self, text, voice_config, *, directives=None, context=None
 
 **Files:**
 - Modify: `src/storyteller/providers/mock/tts.py`
+- Modify: `src/storyteller/providers/bootstrap.py` (register
+  `MockStreamingTTS` for the existing `mock` name; its `synthesize()` remains
+  unchanged, so existing CLI behavior is unaffected)
 - Test: `tests/unit/test_mock_stream_tts.py`
 
 **Interfaces:**
@@ -533,6 +550,7 @@ def test_records_call_kwargs():
 
 ```python
 import math
+import struct
 
 from ...core.tts import StreamChunk, CHUNK_AUDIO, STREAM_SAMPLE_RATE
 
@@ -1862,7 +1880,7 @@ def story_segment(ref: str, segment: str, request: Request):
 
 **Interfaces:**
 - Consumes: Pipeline（Task 7 构件）、registry stream/普通 tts、tts_chunks、mix_line、FillerPrefetcher、Job。
-- Produces: `class StreamOrchestrator:` `__init__(self, config, projects=None)`；`run(self, job) -> None`（直接操作 job.queue，不感知 WebSocket）。事件信封全部为 dict：文本事件 `{type, ...}`，音频 `{"_bytes": ...}`。阶段/取消在每个阶段与行边界检查 `job.cancel_event`。
+- Produces: `class StreamOrchestrator:` `__init__(self, config, projects=None, registry=None)`；`run(self, job) -> None`（直接操作 job.queue，不感知 WebSocket）。传入 registry 时必须复用调用方 registry，不得重新注册 provider。事件信封全部为 dict：文本事件 `{type, ...}`，音频 `{"_bytes": ...}`。阶段/取消在每个阶段与行边界检查 `job.cancel_event`。
 
 **filler 时序（与 spec §4.4 一致）**：job 启动即 `fillers.start(topic)` 并行预取；剧本一就绪就在"匹配音色"阶段发送 thinking（拿不到就 `filler_abort`），音色匹配结束时若 thinking 仍未取完则 abort；intro 在 script_ready 之后、line 1 之前播放。
 
@@ -1938,9 +1956,75 @@ def test_cancelled_before_lines(tmp_path):
     StreamOrchestrator(cfg).run(job)
     events = _drain(job)
     assert events[-1].get("type") == "canceled"
+
+
+def test_run_with_sound_cue_takes_line_mix_path(tmp_path, monkeypatch):
+    import json as _json
+    from storyteller.web import fillers as fillers_mod
+    cfg = _config(tmp_path)
+    cfg.set("sound.enabled", True)
+    cfg.set("sound.providers", ["mock"])
+    cfg.set("sound.provider_config.mock", {"type": "mock"})
+    cfg.set("sound.dir", str(tmp_path / ".storyteller" / "sounds"))
+    # thinking 预取与剧本生成共用同一 mock LLM 实例且并发跑；固定 thinking 文本，
+    # 让唯一的 LLM 响应就是带 cue 的剧本，避免并发抢占 _responses 队列。
+    monkeypatch.setattr(
+        fillers_mod, "build_thinking_text",
+        lambda llm, topic: "好的，让我想一想……")
+    cue_script = {
+        "title": "雷雨", "topic": "打雷",
+        "characters": [{"id": "narrator", "name": "旁白", "description": "旁白"}],
+        "lines": [{
+            "line_id": "1", "line_type": "narration",
+            "character_id": None, "text": "夜晚下起了雨。",
+            "sound_effects": [{
+                "name": "雨声", "type": "ambient", "description": "雨声",
+                "prompt": "舒缓的下雨声，无人声", "tags": [],
+            }],
+        }],
+    }
+    orch = StreamOrchestrator(cfg)
+    orch.registry.get_llm("mock").set_response(
+        _json.dumps(cue_script, ensure_ascii=False))
+    job = Job(JobParams(topic="打雷", with_sound=True,
+                        tts_providers=["mock"]))
+    orch.run(job)
+    events = _drain(job)
+    assert [e.get("type") for e in events if "_bytes" not in e][-1] == "complete"
+    line_start = next(e for e in events if e.get("type") == "line_start")
+    assert line_start["has_sound"] is True  # 走路径 B：materialize+mix
+    assert sum(len(e["_bytes"]) for e in events if "_bytes" in e) > 0
+    import pathlib
+    seg = list(pathlib.Path(cfg.get("project_dir")).glob("*/audio/1.mp3"))
+    assert seg and seg[0].stat().st_size > 0
+    # 项目内物化了该 cue 素材副本
+    assert list(pathlib.Path(cfg.get("project_dir")).glob("*/sounds/*"))
+
+
+def test_event_order_and_complete_duration(tmp_path):
+    cfg = _config(tmp_path)
+    job = Job(JobParams(topic="小恐龙", tts_providers=["mock"]))
+    StreamOrchestrator(cfg).run(job)
+    events = _drain(job)
+    types = [e["type"] for e in events if "_bytes" not in e]
+    assert types.index("script_ready") < types.index("filler_start")
+    assert types[-1] == "complete"
+    assert types.index("finalizing") < types.index("complete")
+    assert events[-1]["duration_ms"] > 0
+
+
+def test_provider_failure_emits_failed_terminal_event(tmp_path):
+    cfg = _config(tmp_path)
+    orch = StreamOrchestrator(cfg)
+    orch.registry.get_llm("mock").set_error(RuntimeError("boom"))
+    job = Job(JobParams(topic="x", tts_providers=["mock"]))
+    orch.run(job)
+    events = _drain(job)
+    assert events[-1]["type"] == "error"
+    assert job.phase == "failed"
 ```
 
-注：mock thinking/intro 都很快，正常路径断言能看到 filler_start/filler_end；abort 分支由 WS 集成测试在慢 provider 场景难以构造，不单列。
+注：mock thinking/intro 都很快，正常路径断言能看到 filler_start/filler_end；abort 分支由 WS 集成测试在慢 provider 场景难以构造，不单列。带音效的路径 B（materialize_line_cues + mix_line_with_cues + 文件→PCM 出口）由 `test_run_with_sound_cue_takes_line_mix_path` 锁定，因为 MockLLM 默认剧本无 cue，不能只靠默认剧本覆盖。
 
 - [ ] **Step 2: 确认失败**（模块不存在）。
 
@@ -1957,28 +2041,41 @@ from ..core.pipeline import Pipeline
 from ..core.story_generator import StoryGenerator
 from ..core.tts import STREAM_SAMPLE_RATE
 from ..core.voice_matcher import VoiceMatcher
-from ..providers.registry import ProviderRegistry
 from ..providers.bootstrap import register_providers_from_config
 from .fillers import FillerPrefetcher
 from .tts_chunks import (
-    audio_file_to_standard_pcm, iter_pcm_frames, pcm_duration_ms,
-    pcm_to_mp3_file,
+    audio_file_to_standard_pcm, iter_pcm_frames, pcm_to_mp3_file,
 )
 
 
 class StreamOrchestrator:
-    def __init__(self, config, projects=None):
+    def __init__(self, config, projects=None, registry=None):
         self.config = config
-        self.registry = ProviderRegistry(config)
-        register_providers_from_config(config, self.registry)
+        # Pipeline creates and owns its registry; register onto THAT instance
+        # (same pattern as CLI _build_pipeline) so pipeline internals
+        # (_get_sound_provider / _apply_soundtrack) see the configured
+        # providers. The orchestrator shares the pipeline registry rather than
+        # building a parallel one.
         self.pipeline = Pipeline(config, project_manager=projects)
+        if registry is None:
+            register_providers_from_config(config, self.pipeline.registry)
+            self.registry = self.pipeline.registry
+        else:
+            self.registry = registry
+            self.pipeline.registry = registry
         self.projects = self.pipeline.projects
 
     def run(self, job):
         try:
             self._run(job)
         except Exception as exc:
+            job.phase = "failed"
             job.emit({"type": "error", "message": str(exc)})
+
+        # Do not leak the filler executor when a provider, conversion, or
+        # project operation fails. The implementation should retain the
+        # current project state before emitting the terminal error where a
+        # project has already been created.
 
     def _send_file_as_pcm(self, job, path):
         pcm = audio_file_to_standard_pcm(path)
@@ -2033,15 +2130,17 @@ class StreamOrchestrator:
         self.projects.rename_for_title(state)
         self.pipeline._export_script(state)
 
-        # thinking：剧本就绪即取（预取与剧本生成并行）
+        # Non-blocking opportunity to start thinking while voice matching
+        # proceeds. A clip is emitted at most once; if the future is not
+        # ready, the voices-boundary check below decides whether to abort it.
+        thinking_sent = False
         thinking = fillers.get("thinking", timeout=0)
         if thinking is not None:
             job.emit({"type": "filler_start", "kind": "thinking",
                       "text": thinking.text})
             self._send_file_as_pcm(job, thinking.mp3_path)
             job.emit({"type": "filler_end", "kind": "thinking"})
-        else:
-            job.emit({"type": "filler_abort", "kind": "thinking"})
+            thinking_sent = True
 
         if job.cancel_event.is_set():
             job.phase = "canceled"
@@ -2062,8 +2161,16 @@ class StreamOrchestrator:
         self.projects.save_project(state)
         self.pipeline._export_script(state)
 
-        # 音色匹配结束：thinking 若还没播完则打断（正常 mock 路径早结束）。
-        # 已发送的 PCM 在客户端可能仍在排队，由 filler_abort 丢弃未播 source。
+        # 音色匹配结束时再取一次，但仍不等待；已发送的 PCM 可能仍在
+        # 客户端排队，由 abort 丢弃未播 source。
+        if not thinking_sent:
+            thinking = fillers.get("thinking", timeout=0)
+            if thinking is not None:
+                job.emit({"type": "filler_start", "kind": "thinking",
+                          "text": thinking.text})
+                self._send_file_as_pcm(job, thinking.mp3_path)
+                job.emit({"type": "filler_end", "kind": "thinking"})
+                thinking_sent = True
         job.emit({"type": "filler_abort", "kind": "thinking"})
 
         char_voice_map = {
@@ -2073,15 +2180,6 @@ class StreamOrchestrator:
         narrator_voice = self.pipeline._find_narrator_voice(
             state.script, char_voice_map)
         char_names = {c.id: c.name for c in state.script.characters}
-
-        # ---- intro filler（第一行之前）----
-        intro = fillers.get("intro", timeout=30)
-        if intro is not None:
-            job.emit({"type": "filler_start", "kind": "intro",
-                      "text": intro.text})
-            self._send_file_as_pcm(job, intro.mp3_path)
-            job.emit({"type": "filler_end", "kind": "intro"})
-        fillers.shutdown()
 
         script_ready = {
             "type": "script_ready", "title": state.script.title,
@@ -2094,6 +2192,16 @@ class StreamOrchestrator:
         }
         job.script_ready = script_ready
         job.emit(script_ready)
+
+        # ---- intro filler（script_ready 之后、第一行之前）----
+        intro = fillers.get("intro", timeout=30)
+        if intro is not None:
+            job.emit({"type": "filler_start", "kind": "intro",
+                      "text": intro.text})
+            self._send_file_as_pcm(job, intro.mp3_path)
+            job.emit({"type": "filler_end", "kind": "intro"})
+        fillers.shutdown()
+
 
         # ---- 阶段 3：逐行 ----
         job.phase = "line"
@@ -2188,12 +2296,14 @@ class StreamOrchestrator:
         output = self.pipeline.finalize_audio(
             state, line_paths, "mp3", with_sound=with_sound)
         job.phase = "completed"
+        from pydub import AudioSegment
+        duration_ms = len(AudioSegment.from_file(str(output)))
         job.emit({"type": "complete", "project_id": state.project_id,
                   "title": state.script.title,
                   "audio_url": "/api/stories/{}/audio".format(
                       state.project_id),
                   "script_url": "/api/stories/{}".format(state.project_id),
-                  "duration_ms": None})
+                  "duration_ms": duration_ms})
 ```
 
 - [ ] **Step 4: 验证**：`pytest tests/web/test_streaming_orchestrator.py -v` 全 PASS；全量绿。若 MockLLM 默认剧本行数变化，以 `script_ready.total` 为准调整断言数字。
@@ -2215,6 +2325,15 @@ class StreamOrchestrator:
   - `app.state.jobs = JobManager(concurrency)`、`app.state.job_viewers = {}`（**单观众顶替**：每个 job 只保留最新 websocket；`job_viewers` 只在单事件循环里读写，无需锁）。
   - 静态托管：`web/static/` 存在时，在所有 router 之后最后 `app.mount("/", StaticFiles(..., html=True))`（SPA 回退）；`/assets` 单独挂一次。
   - CLI：`storyteller web --host --port`；未配密码 → `click.ClickException`；缺 web 依赖 → 友好提示安装命令。
+
+实现约束：`ws_endpoint` 是 async 函数，不能在其中直接使用
+`incoming.get(timeout=120)`、`job.queue.get(timeout=0.2)` 或在线程中调用
+`ws.receive_json()`。采用一个 `asyncio.create_task` 持续接收客户端消息，
+并用 `asyncio.wait` 同时等待输入任务与
+`loop.run_in_executor(None, job.queue.get)`；连接关闭时取消输入任务并在
+`finally` 中清理 `job_viewers`。Python 3.8 不提供 `asyncio.to_thread`，计划
+中的实现应使用显式 executor 兼容 3.8。新增测试必须验证两个并发 WS 连接
+可以同时收到 `ready`，以及断开 WS 后 worker 仍能完成并留下 `story.mp3`。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -2359,6 +2478,10 @@ def test_web_cli_rejects_missing_passwords(tmp_path, monkeypatch):
 
 `routes_ws.py`：
 
+> 下方代码中的队列循环是协议示意；实现时必须按本任务前面的
+> async/executor 约束改写，不能把同步 `get(timeout=...)` 原样放进
+> `ws_endpoint`。验收以非阻塞实现和并发测试为准。
+
 ```python
 # src/storyteller/web/routes_ws.py
 from __future__ import annotations
@@ -2466,8 +2589,9 @@ async def ws_endpoint(ws: WebSocket):
             with_sound=bool(first.get("with_sound", False)),
             tts_providers=first.get("tts_providers"),
         ))
-        manager.submit(
-            job, lambda j: StreamOrchestrator(state.config).run(j))
+            manager.submit(
+            job, lambda j: StreamOrchestrator(
+                state.config, registry=state.registry).run(j))
 
     await _attach_viewer(state, job.id, ws)
     if reconnect:
@@ -2596,7 +2720,7 @@ from ..web.cli import web_command
 cli.add_command(web_command)
 ```
 
-- [ ] **Step 4: 验证**：`pytest tests/web/test_websocket.py -v` 全 PASS；`storyteller --help` 出现 `web`；`pytest` 全量绿。若 `test_ws_reconnect_supersedes_old_viewer` 在个别 CI 环境偶发时序抖动（A 的 `receive()` 收到缓冲帧而非立刻断开），先保持其余断言，确认「B 能顶替连接并收到 replay」这一核心语义成立，再决定是否保留该用例的关闭时序断言。
+- [ ] **Step 4: 验证**：`pytest tests/web/test_websocket.py -v` 全 PASS；`storyteller --help` 出现 `web`；`pytest` 全量绿。必须包含两个并发 WS 连接不互相阻塞、断开后 worker 仍完成、失败任务进入 `failed` 的测试。若 `test_ws_reconnect_supersedes_old_viewer` 在个别 CI 环境偶发时序抖动（A 的 `receive()` 收到缓冲帧而非立刻断开），先保持其余断言，确认「B 能顶替连接并收到 replay」这一核心语义成立，再决定是否保留该用例的关闭时序断言。
 
 - [ ] **Step 5: 提交**：`git commit -m "feat: websocket streaming endpoint, static hosting and web CLI command"`
 
@@ -2621,7 +2745,6 @@ from fastapi.testclient import TestClient
 
 from storyteller.core.config import Config
 from storyteller.web.app import create_app
-from storyteller.web.jobs import JobManager
 from storyteller.core.tts import STREAM_SAMPLE_RATE
 
 
@@ -2655,7 +2778,6 @@ def _cfg(tmp_path, with_sound):
 def _run(tmp_path, with_sound):
     cfg = _cfg(tmp_path, with_sound)
     app = create_app(cfg)
-    app.state.jobs = JobManager(concurrency=1)
     events, audio, saw_sound_line = [], bytearray(), False
     with TestClient(app) as client:
         token = app.state.issuer.issue()
@@ -2697,11 +2819,14 @@ def test_sound_story_completes_and_project_has_story_mp3(tmp_path):
 
 - [ ] **Step 2: 运行确认当前状态**：应基本通过（Task 13/14 已覆盖）；若发现事件字段缺失/PCM 长度非法，修复生产代码直到绿。
 
-- [ ] **Step 3: 补一个"非流式 provider 降级"单测**：注册只实现 `synthesize` 的 MockTTSProvider（默认 supports_streaming=False），跑 orchestrator，断言仍收到完整事件序列且音频为标准 PCM（降级路径在 Task 13 已实现，此处锁行为）。
+- [ ] **Step 3: 补一个"非流式 provider 降级"单测**：注册一个独立名称
+  `plain`、只实现 `synthesize` 的 MockTTSProvider（不要关闭 `mock` 的
+  streaming capability），跑 orchestrator，断言仍收到完整事件序列且音频
+  为标准 PCM（降级路径在 Task 13 已实现，此处锁行为）。
 
 ```python
 def test_non_streaming_provider_falls_back_to_file_pcm(tmp_path):
-    # 复用 _cfg 后把 mock 流能力关掉：直接构造 registry 注入
+    # 复用 _cfg，但用 plain provider 明确覆盖非流式能力
     cfg = _cfg(tmp_path, False)
     from storyteller.web.streaming import StreamOrchestrator
     from storyteller.web.jobs import Job, JobParams
@@ -2729,7 +2854,8 @@ def test_non_streaming_provider_falls_back_to_file_pcm(tmp_path):
 
 **Files:**
 - Modify: `README.md`（新增 Web 一节：安装 extras、配置、启动、开发模式）
-- Create: `web/.gitignore`（`static/`、`node_modules/`——node 部分供 Plan B）
+- Modify: `.gitignore`（忽略 `src/storyteller/web/static/` 构建产物）
+- Create: `web/frontend/.gitignore`（`node_modules/`、前端本地构建缓存，供 Plan B）
 
 - [ ] **Step 1: README 增加 Web 小节**，内容含：
 
@@ -2744,11 +2870,15 @@ WebSocket：/ws（cookie 或 ?token= 鉴权）。音频线缆标准：PCM s16le 
 前端工程与构建见 web/frontend（Plan B 交付）。
 ```
 
-- [ ] **Step 2: `.gitignore`/`web/.gitignore`** 写入：
+- [ ] **Step 2: 更新忽略文件**：
 
 ```
-static/
+# root .gitignore
+src/storyteller/web/static/
+
+# web/frontend/.gitignore
 node_modules/
+dist/
 ```
 
 并在仓库根 `.gitignore` 确认 `.storyteller/` 已忽略（既有）。
@@ -2770,6 +2900,6 @@ node_modules/
 
 - Spec §2 架构/鉴权/数据根 → Tasks 1/9/10/11/12/14；§3 适配层 → Tasks 2/3（火山），P2 阿里实时 adapter **明确不在本计划**（降级路径 Task 13/15 覆盖）；§4 三种行出口与 mix_line → Tasks 5/6/7/13；§4.4 filler → Task 8/13；§5 WS 协议 → Tasks 9/13/14（ready/status/script_ready/filler_*/line_*/finalizing/complete/error/canceled 全部有发射点；重连补发与单观众顶替在 Task 14 实现）；§6 REST → Tasks 11/12；§8 配置 → Task 1；§9 测试 → 每任务 + Task 15/16；§10 P1 范围与本计划一致；Vue 前端（spec §7）拆 Plan B。
 - 已知遗留到 Plan B：`web/frontend/` 全部、StaticFiles 实际构建产物（Task 14 仅在目录存在时挂载）。
-- 类型一致性：`Job.emit/emit_bytes`、`Job.script_ready`（Task 9 定义 → Task 13 写入 → Task 14 重连补发）、`StreamChunk(kind,data)`、`stream_synthesize(text, voice, *, directives, context)`、`materialize_line_cues(state,line,duration,provider,library,referenced)`、`mix_line(main,entries,out)`、`mix_line_with_cues(voice_path,entries,output_path)`（Task 6 web 封装 → Task 13 path-B 调用）、`StreamOrchestrator(config)` 在各任务间签名统一。
-- Task 14 已整体重写：WS 路由含 `?job_id=` 重连（补发 ready/status/script_ready，未知 job close 4404）与单观众顶替（`app.state.job_viewers`，旧连接 close 1012）；`create_app` 自己创建 `app.state.jobs`（测试不再手动赋值）；`web/cli.py` 用 `uvicorn.Server(uvicorn.Config(create_app(cfg), ...)).run()`（无 factory=True 歧义）；`cli/main.py` 末尾 `cli.add_command(web_command)`（web.cli 顶层只 import click，未装 [web] extras 时 `--help` 不崩）。
+- 类型一致性：`Job.emit/emit_bytes`、`Job.script_ready`（Task 9 定义 → Task 13 写入 → Task 14 重连补发）、`StreamChunk(kind,data)`、`stream_synthesize(text, voice, *, directives, context)`、`materialize_line_cues(state,line,duration,provider,library,referenced)`、`mix_line(main,entries,out)`、`mix_line_with_cues(voice_path,entries,output_path)`（Task 6 web 封装 → Task 13 path-B 调用）、`StreamOrchestrator(config, projects=None, registry=None)` 在各任务间签名统一；Task 14 必须把 `app.state.registry` 注入 orchestrator。
+- Task 14 的 WS 路由使用 async task/executor 桥接阻塞队列，含 `?job_id=` 重连（补发 ready/status/script_ready，未知 job close 4404）与单观众顶替（`app.state.job_viewers`，旧连接 close 1012）；`create_app` 自己创建 `app.state.jobs`；`web/cli.py` 用 `uvicorn.Server(uvicorn.Config(create_app(cfg), ...)).run()`（无 factory=True 歧义）；`cli/main.py` 末尾 `cli.add_command(web_command)`（web.cli 顶层只 import click，未装 [web] extras 时 `--help` 不崩）。
 - Task 6 既加 `core/audio.PydubAudioProcessor.mix_line` 原语又建 `web/mixes.py` 封装 `mix_line_with_cues`，Task 13 path-B 改调用 `mixes.mix_line_with_cues(out_path, entries, out_path)`、不再内联 `.mixed.mp3` 中转——与 spec §4.2「`web/mixes.py` + `core/audio.py`」模块划分一致；`streaming.py` 只管逐行编排/事件，混音交给 mixes。

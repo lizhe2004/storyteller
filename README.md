@@ -395,6 +395,18 @@ pytest tests/unit/test_voice_matcher.py
 pytest --cov=storyteller    # 覆盖率
 ```
 
+## Web 界面（后端）
+
+```bash
+pip install -e ".[web,dev]"
+cp .env.example .env
+storyteller web --host 0.0.0.0 --port 8000
+```
+
+配置 `STORYTELLER_WEB_PASSWORDS` 后即可登录。WebSocket `/ws` 使用 cookie
+或 token 鉴权，音频线缆标准为 PCM s16le / mono / 24kHz。前端工程见
+`web/frontend`，构建产物由 FastAPI 托管。
+
 ## 许可证
 
 MIT

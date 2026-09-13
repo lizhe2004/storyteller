@@ -1,9 +1,22 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
 
 from .models import VoiceConfig
+
+STREAM_SAMPLE_RATE = 24000
+STREAM_CHANNELS = 1
+STREAM_SAMPLE_WIDTH = 2
+CHUNK_AUDIO = "audio"
+CHUNK_EVENT = "event"
+
+
+@dataclass
+class StreamChunk:
+    kind: str
+    data: object
 
 
 class TTSProvider(ABC):
@@ -11,6 +24,11 @@ class TTSProvider(ABC):
 
     Knows only about text -> audio. Knows nothing about characters.
     """
+
+    supports_streaming = False
+
+    def stream_synthesize(self, text, voice_config, *, directives=None, context=None):
+        raise NotImplementedError
 
     @property
     @abstractmethod

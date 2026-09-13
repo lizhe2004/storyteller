@@ -51,6 +51,10 @@ def wizard():
     click.echo("Done! Output: {}".format(output_path))
 
 
+from ..web.cli import web_command
+cli.add_command(web_command)
+
+
 # ========== 通用选项 ==========
 _common_options = [
     click.option(
@@ -98,8 +102,6 @@ def _build_pipeline(**options):
     # Provider overrides from CLI
     if options.get("default_llm_provider"):
         config.set("llm.default_provider", options["default_llm_provider"])
-    if options.get("default_tts_provider"):
-        config.set("tts.default_provider", options["default_tts_provider"])
     if options.get("sound_provider"):
         config.set("sound.default_provider", options["sound_provider"])
 
@@ -127,7 +129,6 @@ def _build_pipeline(**options):
 @click.option("--tts-providers", default=None, help="可用的TTS provider列表，逗号分隔")
 @click.option("--voice-ids", default=None, help="限制使用的音色ID列表，逗号分隔")
 @click.option("--default-llm-provider", default=None, help="默认LLM provider")
-@click.option("--default-tts-provider", default=None, help="默认TTS provider")
 @click.option("--dry-run", is_flag=True, help="只生成剧本，不生成音频")
 @click.option(
     "--data-dir",
@@ -162,7 +163,6 @@ def generate(
     tts_providers,
     voice_ids,
     default_llm_provider,
-    default_tts_provider,
     dry_run,
     **options,
 ):
@@ -170,7 +170,6 @@ def generate(
     pipeline = _build_pipeline(
         output_format=output_format,
         default_llm_provider=default_llm_provider,
-        default_tts_provider=default_tts_provider,
         **options,
     )
 
@@ -226,7 +225,6 @@ def generate(
 )
 @click.option("--sound-dir", default=None, help="音效库目录（默认 <data-dir>/sounds）")
 @click.option("--default-llm-provider", default=None, help="默认LLM provider")
-@click.option("--default-tts-provider", default=None, help="默认TTS provider")
 @click.option(
     "--sound-provider",
     default=None,
