@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
+import logging
 import requests
 
 from ...core.exceptions import LLMError
 from ...core.llm import LLMProvider
 from ..base import BaseProvider
+from ...core.observability import timed_event
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAICompatibleLLM(BaseProvider, LLMProvider):
@@ -61,10 +66,12 @@ class OpenAICompatibleLLM(BaseProvider, LLMProvider):
         }
 
         try:
-            response = self._session.post(
-                url, headers=headers, json=body, timeout=60
-            )
-            response.raise_for_status()
+            with timed_event(logger, "llm_http_request", operation="chat",
+                             provider=self.provider_name, model=self.model):
+                response = self._session.post(
+                    url, headers=headers, json=body, timeout=60
+                )
+                response.raise_for_status()
             data = response.json()
         except requests.RequestException as exc:
             raise LLMError(
@@ -81,3 +88,54 @@ class OpenAICompatibleLLM(BaseProvider, LLMProvider):
                     data
                 )
             ) from exc
+
+    def chat_stream(self, messages, temperature=0.7, max_tokens=None, **kwargs):
+        url = "{}/chat/completions".format(self.base_url.rstrip("/"))
+        body = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if max_tokens is not None:
+            body["max_tokens"] = max_tokens
+        body.update(kwargs)
+        headers = {
+            "Authorization": "Bearer {}".format(self.api_key),
+            "Content-Type": "application/json",
+        }
+        try:
+            with timed_event(logger, "llm_http_request", operation="chat_stream",
+                             provider=self.provider_name, model=self.model):
+                response = self._session.post(
+                    url, headers=headers, json=body, stream=True, timeout=60
+                )
+                response.raise_for_status()
+                # Decode explicitly as UTF-8; requests may not infer the charset
+                # for text/event-stream responses correctly.
+                for line in response.iter_lines(decode_unicode=False):
+                    chunk = _content_from_sse_line(line)
+                    if chunk:
+                        yield chunk
+        except requests.RequestException as exc:
+            raise LLMError(
+                "OpenAI-compatible streaming LLM request failed: {}".format(exc)
+            ) from exc
+
+
+def _content_from_sse_line(line):
+    if isinstance(line, bytes):
+        line = line.decode("utf-8", errors="replace")
+    line = (line or "").strip()
+    if not line or not line.startswith("data:"):
+        return None
+    payload = line[5:].strip()
+    if payload == "[DONE]":
+        return None
+    try:
+        data = json.loads(payload)
+        choice = (data.get("choices") or [{}])[0]
+        delta = choice.get("delta") or {}
+        return delta.get("content") or choice.get("message", {}).get("content")
+    except (TypeError, ValueError, KeyError, IndexError):
+        return None

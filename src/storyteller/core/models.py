@@ -83,7 +83,11 @@ class Character:
     id: str
     name: str
     description: str
+    voice_preferences: list = field(default_factory=list)
     voice_config: Optional[VoiceConfig] = None
+    # Generated with the script; legacy data may leave these unset.
+    gender: Optional[str] = None
+    age: Optional[str] = None
 
 
 # ========== Script ==========

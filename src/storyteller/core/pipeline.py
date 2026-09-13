@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import shutil
 from datetime import datetime
@@ -10,6 +11,7 @@ from .exceptions import LLMError, TTSError, SoundGenerationError
 from .project import ProjectManager, _script_to_dict
 from .story_generator import StoryGenerator
 from .voice_matcher import is_narration_voice
+from .observability import timed_event
 
 # Script SoundEffect.type -> SoundLibrary kind.
 _KIND_FOR_TYPE = {"effect": "sfx", "ambient": "ambient", "music": "music"}
@@ -28,6 +30,8 @@ MAX_SOUND_DURATION_SEC = 120
 # than N seconds" directive meaningless. Cap it; the mix still hard-cuts at
 # the line end as a backstop.
 EFFECT_MAX_DURATION_SEC = 6
+
+logger = logging.getLogger(__name__)
 
 
 def human_time():
@@ -399,7 +403,10 @@ class Pipeline:
     def _setup_logging(self):
         from .utils import setup_logging
 
-        setup_logging(self.config.get("log_level") or "info")
+        setup_logging(
+            self.config.get("log_level") or "info",
+            log_dir=Path(self.config.get("data_dir") or "./.storyteller") / "logs",
+        )
 
     def _get_default_llm(self):
         default = self.config.get("llm.default_provider")
@@ -480,14 +487,16 @@ class Pipeline:
         """Write the script to a standalone JSON file in the output dir."""
         path = self._script_path(state.project_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(
-                _script_to_dict(state.script),
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
+        with timed_event(logger, "script_export", project_id=state.project_id,
+                         path=path):
+            path.write_text(
+                json.dumps(
+                    _script_to_dict(state.script),
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
         return path
 
     def _find_final_output(self, project_id):

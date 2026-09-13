@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 
+from partialjson.json_parser import JSONParser
+
 from .exceptions import LLMError
 from .llm import LLMProvider
 from .models import Character, Script, ScriptLine, SoundEffect
@@ -10,9 +12,9 @@ from .utils import generate_id
 
 
 DEFAULT_SYSTEM_PROMPT = (
-    "你是一位专业的广播剧编剧，作品面向儿童，会被制作成只有声音、"
-    "没有画面的音频故事。请根据用户给定的故事主题，创作一个多角色的"
-    "音频故事剧本。\n\n"
+    "你是一位专业的广播剧编剧，作品面向一般听众，会被制作成只有声音、"
+    "没有画面的音频故事或广播剧。请根据用户给定的故事主题，创作一个多角色的"
+    "音频故事剧本，题材、语气和受众年龄随主题自然变化。\n\n"
     "要求：\n"
     "1. 剧本包含旁白和至少2个对话角色。characters 数组里必须始终包含一个"
     "专门的旁白角色（id 用 \"narrator\"，name 用 \"旁白\"），"
@@ -22,7 +24,9 @@ DEFAULT_SYSTEM_PROMPT = (
     '  "title": "故事标题",\n'
     '  "characters": [\n'
     '    {"id": "narrator", "name": "旁白", "description": "故事旁白，叙述场景、动作和说话人"},\n'
-    '    {"id": "角色id", "name": "角色名", "description": "角色性格/年龄/性别描述"}\n'
+    '    {"id": "角色id", "name": "角色名", "description": "角色性格/年龄/性别描述", '
+    '"gender": "male|female", "age": "child|teen|young_adult|middle_aged|senior", '
+    '"voice_preferences": [{"type": "音色类别", "weight": 0.7}]}\n'
     '  ],\n'
     '  "lines": [\n'
     '    {"line_id": "1", "line_type": "narration", "text": "旁白内容"},\n'
@@ -31,7 +35,16 @@ DEFAULT_SYSTEM_PROMPT = (
     '}\n'
     "3. 旁白的 line_type 为 narration，对话的 line_type 为 dialogue，"
     "对话必须提供 character_id。\n"
-    "4. 角色描述请包含年龄、性别、性格等信息，便于后续匹配声音。\n\n"
+    "4. 每个角色必须单独给出 gender 和 age 字段；gender 只能是 male 或 female，"
+    "age 只能是 child、teen、young_adult、middle_aged、senior。角色描述也请包含年龄、性别、性格等信息。\n"
+    "5. 每个角色同时给出 voice_preferences 音色偏好数组，数组元素只有 type 和 weight 两个字段；"
+    "type 必须从以下音色类别中选择：体育解说、儿童陪伴、初期催收提醒客服、动漫配音、"
+    "医院社区引导型客服、古风有声书、商务汇报、娱乐搞笑、引导新手型客服、情感陪伴、"
+    "新品推荐型客服、新闻播报、日常对话、智能助手、智能客服、有声书配音、有声阅读、"
+    "标准通用型客服、核保理赔型客服、深夜电台、理财咨询型客服、理财顾问型客服、"
+    "电商直播、监察回访型客服、知识分享、社交互动、社交陪伴、角色扮演、讲解引导型客服、"
+    "账单提醒型客服。weight 是大于0的数字，所有权重加起来为1。"
+    "最多给出5个最相关类别，按偏好强弱排序。\n\n"
     "声音媒介规则（听众看不到画面、角色名和说话人标签，只能靠耳朵）：\n"
     "5. 开场第一段旁白必须交代清楚时间、地点、主角是谁以及当下的处境，"
     "让听众在第一句对话前就进入故事场景。\n"
@@ -89,7 +102,7 @@ _SOUND_PROMPT = (
     "示例片段：\n"
     '  顶层："background_music": {"name":"冒险主题曲","type":"music",'
     '"description":"轻快温馨的管弦乐","prompt":"轻快温暖的管弦乐，'
-    '木管与拨弦，适合儿童冒险，无人声"}\n'
+    '木管与拨弦，适合故事冒险场景，无人声"}\n'
     '  行内："sound_effects": [{"name":"肚子咕噜","type":"effect",'
     '"description":"肚子饿的咕咕声","prompt":"人肚子饿时咕咕叫的声音，'
     '低沉冒泡，两三声，近景，无人声","anchor":"肚子咕咕叫了起来"}]\n'
@@ -132,6 +145,52 @@ class StoryGenerator:
             response = self.llm.chat(messages, **kwargs)
         except Exception as exc:
             raise LLMError("LLM call failed: {}".format(exc)) from exc
+        return self._parse_response(response, topic)
+
+    def generate_script_stream(
+        self,
+        topic,
+        length="medium",
+        complexity="simple",
+        with_sound=False,
+        on_preview=None,
+        **kwargs,
+    ):
+        """Generate a script while reporting partial JSON snapshots.
+
+        ``on_preview`` receives speculative dictionaries produced by
+        ``partialjson``. They are for display only. The returned ``Script``
+        is parsed from the complete response and is the only authoritative
+        value for downstream processing.
+        """
+        system_content = self.system_prompt
+        if with_sound:
+            system_content = system_content + self.sound_prompt
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": self._build_user_prompt(topic, length, complexity)},
+        ]
+        chunks = []
+        last_preview = None
+        try:
+            for chunk in self.llm.chat_stream(messages, **kwargs):
+                if not chunk:
+                    continue
+                chunks.append(str(chunk))
+                if on_preview is None:
+                    continue
+                try:
+                    preview = JSONParser().parse("".join(chunks))
+                except (TypeError, ValueError, SyntaxError):
+                    continue
+                if isinstance(preview, dict):
+                    snapshot = _script_preview_from_json(preview)
+                    if snapshot != last_preview:
+                        on_preview(snapshot)
+                        last_preview = snapshot
+        except Exception as exc:
+            raise LLMError("LLM streaming call failed: {}".format(exc)) from exc
+        response = "".join(chunks)
         return self._parse_response(response, topic)
 
     def refine_script(self, script, feedback, **kwargs):
@@ -230,6 +289,34 @@ def _extract_json(text):
     return None
 
 
+def _script_preview_from_json(data):
+    """Return a UI-safe, best-effort snapshot of a partial script object."""
+    characters = []
+    for raw in data.get("characters") or []:
+        if not isinstance(raw, dict):
+            continue
+        characters.append({
+            "id": str(raw.get("id") or ""),
+            "name": str(raw.get("name") or ""),
+            "description": str(raw.get("description") or ""),
+        })
+    lines = []
+    for raw in data.get("lines") or []:
+        if not isinstance(raw, dict):
+            continue
+        lines.append({
+            "line_id": str(raw.get("line_id") or len(lines) + 1),
+            "line_type": str(raw.get("line_type") or "narration"),
+            "character_id": raw.get("character_id"),
+            "text": str(raw.get("text") or ""),
+        })
+    return {
+        "title": str(data.get("title") or ""),
+        "characters": characters,
+        "lines": lines,
+    }
+
+
 def _script_from_json(data, topic):
     characters = []
     char_lookup = {}
@@ -238,6 +325,11 @@ def _script_from_json(data, topic):
             id=str(raw_char.get("id") or "char_{}".format(idx)),
             name=str(raw_char.get("name") or "角色{}".format(idx + 1)),
             description=str(raw_char.get("description") or ""),
+            gender=_character_gender(raw_char.get("gender")),
+            age=_character_age(raw_char.get("age")),
+            voice_preferences=_voice_preferences_from_llm(
+                raw_char.get("voice_preferences")
+            ),
         )
         characters.append(char)
         char_lookup[char.id] = char
@@ -310,6 +402,13 @@ def _script_from_json(data, topic):
             id=narrator_id,
             name="旁白",
             description="故事旁白，负责叙述时间地点、场景、动作和说话人",
+            gender=None,
+            age=None,
+            voice_preferences=[
+                {"type": "有声阅读", "weight": 0.7},
+                {"type": "有声书配音", "weight": 0.2},
+                {"type": "深夜电台", "weight": 0.1},
+            ],
         )
         characters.insert(0, narrator)
         char_lookup[narrator_id] = narrator
@@ -355,6 +454,48 @@ def _has_narrator(characters):
         if any(kw in text for kw in _NARRATOR_KEYWORDS):
             return True
     return False
+
+
+def _voice_preferences_from_llm(raw):
+    """Keep a small, normalized preference list from an LLM response."""
+    if not isinstance(raw, list):
+        return []
+    preferences = []
+    by_type = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        preference_type = str(item.get("type") or "").strip()
+        try:
+            weight = float(item.get("weight"))
+        except (TypeError, ValueError):
+            continue
+        if not preference_type or weight <= 0:
+            continue
+        if preference_type in by_type:
+            by_type[preference_type]["weight"] += weight
+        elif len(preferences) < 5:
+            entry = {"type": preference_type, "weight": weight}
+            preferences.append(entry)
+            by_type[preference_type] = entry
+    total = sum(item["weight"] for item in preferences)
+    if not total:
+        return []
+    for item in preferences:
+        item["weight"] = round(item["weight"] / total, 6)
+    return preferences
+
+
+def _character_gender(raw):
+    value = str(raw or "").strip()
+    return value if value in ("male", "female") else None
+
+
+def _character_age(raw):
+    value = str(raw or "").strip()
+    return value if value in (
+        "child", "teen", "young_adult", "middle_aged", "senior"
+    ) else None
 
 
 def _truncate(text, limit):

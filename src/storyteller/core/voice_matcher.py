@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import re
+import random
+import logging
+from time import perf_counter
 
 from .exceptions import ProviderError
 from .models import VoiceConfig
+from .observability import log_event, timed_event
+
+logger = logging.getLogger(__name__)
 
 _NARRATOR_KEYWORDS = ("旁白", "narrator", "说书", "叙述")
 _NUMERIC_AGE = re.compile(r"(\d{1,2})\s*岁")
@@ -69,20 +75,6 @@ _LLM_SYSTEM_PROMPT = (
     "6. 不同角色尽量选择不同的音色，序号不可重复。\n"
     "7. 只输出 JSON，不要任何额外文字，格式：\n"
     '{"assignments":[{"character_id":"角色id","voice_index":序号}]}'
-)
-
-_LLM_CLASSIFY_SYSTEM_PROMPT = (
-    "你是配音选角助理。请只根据每个角色的名字和设定描述，判断其"
-    "性别和年龄段，用于挑选配音音色。\n"
-    "年龄段取值只能是：child(儿童，约0-12岁)、teen(少年，13-17岁)、"
-    "young_adult(青年，18-45岁)、middle_aged(中年，46-59岁)、"
-    "senior(老年，60岁以上)。\n"
-    "注意：儿童故事里写成“男孩/女孩”的角色通常是 child；"
-    "出现婆婆/奶奶/爷爷等是 senior；妈妈/爸爸/阿姨/叔叔多为 middle_aged。"
-    "gender 只能是 male 或 female。\n"
-    "只输出 JSON，不要任何额外文字，格式：\n"
-    '{"characters":[{"character_id":"角色id","gender":"male|female",'
-    '"age":"child|teen|young_adult|middle_aged|senior"}]}'
 )
 
 _AGE_BANDS = ("child", "teen", "young_adult", "middle_aged", "senior")
@@ -170,6 +162,68 @@ def _voice_sort_key(voice, age, narrator):
     )
 
 
+def _sample_voice_candidates(voices, gender, age, preferences,
+                             limit=10, rng=None):
+    """Sample a diverse, preference-weighted candidate pool for one role."""
+    if not voices or limit <= 0:
+        return []
+    rng = rng or random
+    eligible = _gender_pool(voices, gender) if gender is not None else list(voices)
+    if age is not None:
+        same_age = [voice for voice in eligible if voice.age == age]
+        if same_age:
+            eligible = same_age
+    if len(eligible) <= limit:
+        return list(eligible)
+
+    preferences = [
+        item for item in (preferences or [])
+        if isinstance(item, dict) and item.get("type")
+        and float(item.get("weight", 0) or 0) > 0
+    ]
+    preferred_types = {item["type"] for item in preferences}
+    matched = {
+        item["type"]: [voice for voice in eligible
+                       if voice.category == item["type"]]
+        for item in preferences
+    }
+    matched = {key: pool for key, pool in matched.items() if pool}
+    fallback = [voice for voice in eligible
+                if voice.category not in preferred_types]
+
+    selected = []
+    if fallback:
+        selected.append(rng.choice(fallback))
+
+    preferred_slots = min(limit - len(selected), sum(map(len, matched.values())))
+    weights = {item["type"]: float(item["weight"]) for item in preferences}
+    weight_total = sum(weights.get(key, 0.0) for key in matched)
+    if preferred_slots and matched and weight_total:
+        raw = {
+            key: preferred_slots * weights.get(key, 0.0) / weight_total
+            for key in matched
+        }
+        quotas = {key: int(value) for key, value in raw.items()}
+        remaining = preferred_slots - sum(quotas.values())
+        for key in sorted(raw, key=lambda item: raw[item] - quotas[item], reverse=True):
+            if remaining <= 0:
+                break
+            if quotas[key] < len(matched[key]):
+                quotas[key] += 1
+                remaining -= 1
+        for key, quota in quotas.items():
+            selected.extend(rng.sample(matched[key], min(quota, len(matched[key]))))
+
+    selected_ids = {voice.voice_id for voice in selected}
+    remaining_pool = [voice for voice in eligible
+                      if voice.voice_id not in selected_ids]
+    if len(selected) < limit and remaining_pool:
+        selected.extend(rng.sample(
+            remaining_pool, min(limit - len(selected), len(remaining_pool))
+        ))
+    return selected[:limit]
+
+
 class VoiceMatcher:
     """Assigns a VoiceConfig to every character in a script.
 
@@ -192,6 +246,9 @@ class VoiceMatcher:
         allowed_voice_ids=None,
         default_provider=None,
     ):
+        started = perf_counter()
+        log_event(logger, logging.INFO, "voice_matching_started",
+                  character_count=len(script.characters), mode=self.mode)
         if not script.characters:
             return script
 
@@ -214,16 +271,10 @@ class VoiceMatcher:
 
         # wanted[char_id] = (gender_or_None, age_or_None); narrator is (None, None).
         wanted = {c.id: (None, None) for c in narrators}
-        classified = {}
-        if self.mode == "llm" and self.llm is not None and others:
-            classified = self._classify_characters(others)
         for character in others:
             text = "{} {}".format(character.name, character.description)
-            if character.id in classified:
-                gender, age = classified[character.id]
-            else:
-                gender = _infer_gender(text)
-                age = _infer_age(text)
+            gender = character.gender if character.gender in _GENDERS else _infer_gender(text)
+            age = character.age if character.age in _AGE_BANDS else _infer_age(text)
             wanted[character.id] = (gender, age)
 
         used_ids = set()
@@ -245,56 +296,12 @@ class VoiceMatcher:
             character.voice_config = chosen
             used_ids.add(chosen.voice_id)
 
+        log_event(
+            logger, logging.INFO, "voice_matching_completed",
+            character_count=len(script.characters), mode=self.mode,
+            duration_ms=int((perf_counter() - started) * 1000),
+        )
         return script
-
-    def _classify_characters(self, characters):
-        """LLM call #1: decide gender + age band per character.
-
-        Returns {character_id: (gender, age)}. Only valid entries are
-        included; the method never raises (call/parse failures yield {}),
-        so unresolved characters fall back to keyword rules.
-        """
-        char_lines = [
-            '- character_id={} 「{}」：{}'.format(
-                c.id, c.name, c.description or "-"
-            )
-            for c in characters
-        ]
-        user_content = (
-            "待判定角色：\n{}\n\n请判断每个角色的性别和年龄段，"
-            "按规定只输出 JSON。"
-        ).format("\n".join(char_lines))
-        messages = [
-            {"role": "system", "content": _LLM_CLASSIFY_SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
-        ]
-        try:
-            response = self.llm.chat(messages, temperature=0.0)
-        except Exception:
-            return {}
-
-        from .story_generator import _extract_json
-
-        data = _extract_json(response)
-        if not isinstance(data, dict):
-            return {}
-        items = data.get("characters")
-        if not isinstance(items, list):
-            return {}
-
-        result = {}
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            cid = item.get("character_id")
-            gender = item.get("gender")
-            age = item.get("age")
-            if cid not in {c.id for c in characters}:
-                continue
-            if gender not in _GENDERS or age not in _AGE_BANDS:
-                continue
-            result[str(cid)] = (gender, age)
-        return result
 
     def _safe_llm_assign(self, ordered, wanted, voices):
         """Return {character_id: VoiceConfig} for valid LLM picks.
@@ -343,8 +350,15 @@ class VoiceMatcher:
         return picks
 
     def _request_llm(self, ordered, wanted, voices):
+        by_id = {}
+        for character in ordered:
+            gender, age = wanted[character.id]
+            for voice in _sample_voice_candidates(
+                voices, gender, age, character.voice_preferences
+            ):
+                by_id[voice.voice_id] = voice
         candidates = sorted(
-            voices,
+            by_id.values(),
             key=lambda v: (
                 0 if is_narration_voice(v) else 1,
                 _GENDER_ORDER.get(v.gender, 9),
@@ -395,7 +409,15 @@ class VoiceMatcher:
             {"role": "system", "content": _LLM_SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ]
-        response = self.llm.chat(messages, temperature=0.0)
+        with timed_event(
+            logger,
+            "llm_request",
+            operation="voice_assignment",
+            provider=type(self.llm).__name__,
+            candidate_count=len(candidates),
+            character_count=len(ordered),
+        ):
+            response = self.llm.chat(messages, temperature=0.0)
         return candidates, response
 
     def _rule_pick(self, voices, used_ids, default_provider,

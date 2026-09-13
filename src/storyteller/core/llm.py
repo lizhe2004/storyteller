@@ -22,6 +22,25 @@ class LLMProvider(ABC):
         {"role": ..., "content": ...} dicts. Returns the generated text."""
         raise NotImplementedError
 
+    def chat_stream(
+        self,
+        messages,
+        temperature=0.7,
+        max_tokens=None,
+        **kwargs,
+    ):
+        """Yield text chunks from a chat completion.
+
+        Providers that do not expose a streaming endpoint still get a
+        compatible one-chunk fallback, so callers can use the same interface.
+        """
+        yield self.chat(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs,
+        )
+
     def complete(
         self,
         prompt,

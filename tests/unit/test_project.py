@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 
 from storyteller.core.project import ProjectManager
-from storyteller.core.models import Script
+from storyteller.core.models import Character, Script
 from storyteller.core.exceptions import ProjectError
 
 
@@ -70,6 +70,35 @@ def test_serialization_roundtrip_script(temp_dir):
     manager.save_project(state)
     loaded = manager.load_project(state.project_id)
     assert loaded.script.metadata == {"length": "medium"}
+
+
+def test_serialization_roundtrip_character_voice_preferences(temp_dir):
+    manager = ProjectManager(temp_dir)
+    state = manager.create_project(topic="测试")
+    state.script = Script(
+        script_id="s1",
+        title="小猫",
+        topic="测试",
+        characters=[Character(
+            id="cat",
+            name="小猫",
+            description="活泼的女孩",
+            gender="female",
+            age="child",
+            voice_preferences=[
+                {"type": "儿童陪伴", "weight": 0.8},
+                {"type": "动漫配音", "weight": 0.2},
+            ],
+        )],
+    )
+    manager.save_project(state)
+    loaded = manager.load_project(state.project_id)
+    assert loaded.script.characters[0].voice_preferences == [
+        {"type": "儿童陪伴", "weight": 0.8},
+        {"type": "动漫配音", "weight": 0.2},
+    ]
+    assert loaded.script.characters[0].gender == "female"
+    assert loaded.script.characters[0].age == "child"
 
 
 # ---------- human-readable date-title directories ----------
@@ -230,5 +259,3 @@ def test_list_project_entries_includes_dir_names(temp_dir):
     assert a.project_id not in names  # renamed: date-title dir, not id dir
     assert b.project_id in names
     assert any(name.endswith("-甲") for name in names)
-
-

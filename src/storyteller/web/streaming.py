@@ -11,8 +11,28 @@ from ..core.tts import CHUNK_AUDIO, STREAM_SAMPLE_RATE
 from .fillers import FillerPrefetcher
 from .tts_chunks import audio_file_to_standard_pcm, iter_pcm_frames, pcm_to_mp3_file, pcm_duration_ms
 from ..core.pipeline import human_time
+from ..core.observability import log_event, timed_event, with_context
 
 logger = logging.getLogger(__name__)
+
+
+def _script_preview_event(preview):
+    characters = preview.get("characters") or []
+    names = {c.get("id"): c.get("name") for c in characters}
+    lines = []
+    for line in preview.get("lines") or []:
+        line = dict(line)
+        line["speaker"] = names.get(line.get("character_id")) or (
+            "旁白" if line.get("line_type") == "narration" else "未知角色"
+        )
+        lines.append(line)
+    return {
+        "type": "script_preview",
+        "title": preview.get("title") or "",
+        "total": len(lines),
+        "characters": characters,
+        "lines": lines,
+    }
 
 
 class StreamOrchestrator:
@@ -27,6 +47,11 @@ class StreamOrchestrator:
             self.pipeline.registry = registry
         self.registry = registry
         self.projects = self.pipeline.projects
+        from ..core.utils import setup_logging
+        setup_logging(
+            self.config.get("log_level") or "info",
+            log_dir=Path(self.config.get("data_dir") or "./.storyteller") / "logs",
+        )
 
     def _send_pcm_file(self, job, path):
         pcm = audio_file_to_standard_pcm(path)
@@ -58,6 +83,8 @@ class StreamOrchestrator:
 
     def _run(self, job):
         params = job.params
+        job_logger = with_context(logger, job_id=job.id)
+        log_event(job_logger, logging.INFO, "job_started", topic=params.topic)
         job.emit({"type": "ready", "audio": {"encoding": "pcm_s16le",
                   "sample_rate": STREAM_SAMPLE_RATE, "channels": 1}})
         tts_names = params.tts_providers or self.config.get("tts.providers") or self.registry.list_tts_names()
@@ -71,6 +98,8 @@ class StreamOrchestrator:
         )
         self._active_state = state
         job.project_id = state.project_id
+        job_logger = with_context(job_logger, project_id=state.project_id)
+        log_event(job_logger, logging.INFO, "project_created", topic=params.topic)
         fillers = FillerPrefetcher(
             self.registry, llm_name, tts_names,
             str(Path(self.config.get("data_dir")) / "web_cache"),
@@ -98,9 +127,17 @@ class StreamOrchestrator:
             fillers.start(params.topic, on_thinking_text=emit_thinking_text,
                           on_thinking_ready=emit_thinking_audio)
             llm = self.registry.get_llm(llm_name)
-            state.script = StoryGenerator(llm).generate_script(
+
+            def emit_script_preview(preview):
+                event = _script_preview_event(preview)
+                job.script_preview = event
+                job.emit(event)
+
+            state.script = StoryGenerator(llm).generate_script_stream(
                 params.topic, params.length, params.complexity,
-                with_sound=bool(params.with_sound))
+                with_sound=bool(params.with_sound),
+                on_preview=emit_script_preview,
+            )
             state.state = "script_generated"
             self.projects.save_project(state)
             self.projects.rename_for_title(state)
@@ -120,9 +157,10 @@ class StreamOrchestrator:
 
             job.phase = "voices"
             job.emit({"type": "status", "phase": "voices", "message": "正在匹配音色…"})
-            VoiceMatcher(self.registry, llm=llm,
-                         mode=self.config.get("voice_matcher") or "rule").match_voices(
-                             state.script, allowed_providers=tts_names)
+            with timed_event(job_logger, "voice_matching", phase="voices"):
+                VoiceMatcher(self.registry, llm=llm,
+                             mode=self.config.get("voice_matcher") or "rule").match_voices(
+                                 state.script, allowed_providers=tts_names)
             state.state = "voice_configured"
             self.projects.save_project(state)
             self.pipeline._export_script(state)
@@ -158,6 +196,8 @@ class StreamOrchestrator:
                                       for l in state.script.lines]}
             job.script_ready = script_ready
             job.emit(script_ready)
+            log_event(job_logger, logging.INFO, "script_ready_sent",
+                      phase="voices", line_count=len(state.script.lines))
             intro = fillers.get("intro", timeout=0)
             if intro:
                 job.emit({"type": "filler_start", "kind": "intro", "text": intro.text})
@@ -198,18 +238,26 @@ class StreamOrchestrator:
                 tts_timing = line.processing.setdefault("tts", {})
                 tts_timing["started_at"] = human_time()
                 streamed = stream is not None and not has_cues
-                if streamed:
-                    buf = bytearray()
-                    for chunk in stream.stream_synthesize(line.text, voice, directives=directives, context=context):
-                        if chunk.kind != CHUNK_AUDIO:
-                            continue
-                        if len(chunk.data) % 2:
-                            raise ValueError("PCM frame must have even byte length")
-                        job.emit_bytes(chunk.data); buf.extend(chunk.data)
-                    pcm_to_mp3_file(bytes(buf), out)
-                else:
-                    self.registry.get_tts(voice.provider).synthesize(
-                        line.text, voice, out, directives=directives, context=context)
+                with timed_event(
+                    job_logger,
+                    "tts_line",
+                    phase="line",
+                    line_id=line.line_id,
+                    provider=voice.provider,
+                    index=index,
+                ):
+                    if streamed:
+                        buf = bytearray()
+                        for chunk in stream.stream_synthesize(line.text, voice, directives=directives, context=context):
+                            if chunk.kind != CHUNK_AUDIO:
+                                continue
+                            if len(chunk.data) % 2:
+                                raise ValueError("PCM frame must have even byte length")
+                            job.emit_bytes(chunk.data); buf.extend(chunk.data)
+                        pcm_to_mp3_file(bytes(buf), out)
+                    else:
+                        self.registry.get_tts(voice.provider).synthesize(
+                            line.text, voice, out, directives=directives, context=context)
                 tts_timing["ended_at"] = human_time()
                 if has_cues:
                     from .mixes import mix_line_with_cues

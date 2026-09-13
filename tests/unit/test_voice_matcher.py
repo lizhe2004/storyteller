@@ -4,7 +4,13 @@ import pytest
 
 from storyteller.core.config import Config
 from storyteller.core.models import Character, Script
-from storyteller.core.voice_matcher import VoiceMatcher, _infer_age, _infer_gender, is_narration_voice
+from storyteller.core.voice_matcher import (
+    VoiceMatcher,
+    _infer_age,
+    _infer_gender,
+    _sample_voice_candidates,
+    is_narration_voice,
+)
 from storyteller.core.exceptions import ProviderError
 from storyteller.providers.registry import ProviderRegistry
 from storyteller.providers.mock.tts import MockTTSProvider
@@ -188,28 +194,23 @@ def test_infer_gender(desc, expected):
 
 
 # ---------- LLM semantic matching ----------
-def _two_call_llm(classify, assign):
-    """Mock LLM returning classify JSON on call #1, assign JSON on #2."""
+def _assignment_llm(assign):
+    """Mock LLM returning the single remaining assignment response."""
     llm = MockLLMProvider(Config())
-    llm.set_responses([
-        json.dumps(classify, ensure_ascii=False),
-        json.dumps(assign, ensure_ascii=False),
-    ])
+    llm.set_response(json.dumps(assign, ensure_ascii=False))
     return llm
 
 
-def test_llm_classify_then_pick_assigns_voices():
+def test_llm_uses_script_metadata_then_picks_voices():
     narrator = Character(id="narrator", name="旁白", description="旁白")
-    mom = Character(id="mom", name="月亮婆婆", description="慈祥温柔缓慢的老婆婆")
-    classify = {"characters": [
-        {"character_id": "mom", "gender": "female", "age": "senior"},
-    ]}
+    mom = Character(id="mom", name="月亮婆婆", description="慈祥温柔缓慢的老婆婆",
+                    gender="female", age="senior")
     assign = {"assignments": [
         {"character_id": "narrator", "voice_index": 1},
         {"character_id": "mom", "voice_index": 2},
     ]}
     matcher = _make_matcher(
-        llm=_two_call_llm(classify, assign), mode="llm"
+        llm=_assignment_llm(assign), mode="llm"
     )
     script = _make_script_with_characters(narrator, mom)
     matcher.match_voices(script)
@@ -218,20 +219,17 @@ def test_llm_classify_then_pick_assigns_voices():
     # [narrator_01, female_01, child_01, male_01]; mom's female pick is index 2.
     assert mom.voice_config.voice_id == "female_01"
     assert mom.voice_config.description
+    assert len(matcher.llm.calls) == 1
 
 
-def test_llm_classifies_boy_as_child_and_picks_child_voice():
-    # The key regression: "男孩" must be read by the LLM as a child, not an
-    # adult male (the keyword rule alone mapped it to young_adult).
-    boy = Character(id="b1", name="小一", description="数字积木，矮小害羞的男孩")
-    classify = {"characters": [
-        {"character_id": "b1", "gender": "male", "age": "child"},
-    ]}
+def test_llm_pick_uses_script_generated_child_metadata():
+    boy = Character(id="b1", name="小一", description="数字积木，矮小害羞的男孩",
+                    gender="male", age="child")
     assign = {"assignments": [
         {"character_id": "b1", "voice_index": 3},
     ]}
     matcher = _make_matcher(
-        llm=_two_call_llm(classify, assign), mode="llm"
+        llm=_assignment_llm(assign), mode="llm"
     )
     script = _make_script_with_characters(boy)
     matcher.match_voices(script)
@@ -240,13 +238,11 @@ def test_llm_classifies_boy_as_child_and_picks_child_voice():
 
 
 def test_llm_pick_falls_back_on_out_of_range_index():
-    mom = Character(id="mom", name="阿姨", description="温柔的中年女性")
-    classify = {"characters": [
-        {"character_id": "mom", "gender": "female", "age": "middle_aged"},
-    ]}
+    mom = Character(id="mom", name="阿姨", description="温柔的中年女性",
+                    gender="female", age="middle_aged")
     assign = {"assignments": [{"character_id": "mom", "voice_index": 99}]}
     matcher = _make_matcher(
-        llm=_two_call_llm(classify, assign), mode="llm"
+        llm=_assignment_llm(assign), mode="llm"
     )
     script = _make_script_with_characters(mom)
     matcher.match_voices(script)
@@ -254,7 +250,7 @@ def test_llm_pick_falls_back_on_out_of_range_index():
     assert mom.voice_config.gender == "female"
 
 
-def test_llm_classify_bad_json_falls_back_to_rules():
+def test_llm_assignment_bad_json_falls_back_to_rules():
     mom = Character(id="mom", name="阿姨", description="温柔的中年女性")
     llm = MockLLMProvider(Config())
     llm.set_responses(["not json", "not json"])
@@ -264,7 +260,7 @@ def test_llm_classify_bad_json_falls_back_to_rules():
     assert mom.voice_config.gender == "female"
 
 
-def test_llm_classify_error_falls_back_to_rules():
+def test_llm_assignment_error_falls_back_to_rules():
     mom = Character(id="mom", name="阿姨", description="温柔的中年女性")
     llm = MockLLMProvider(Config())
     llm.set_error(RuntimeError("boom"))
@@ -274,18 +270,15 @@ def test_llm_classify_error_falls_back_to_rules():
     assert mom.voice_config.gender == "female"
 
 
-def test_llm_invalid_gender_ignored_and_rule_used():
+def test_llm_assignment_failure_uses_rule_fallback():
     mom = Character(id="mom", name="阿姨", description="温柔的中年女性")
-    classify = {"characters": [
-        {"character_id": "mom", "gender": "robot", "age": "senior"},
-    ]}
     assign = {"assignments": []}
     matcher = _make_matcher(
-        llm=_two_call_llm(classify, assign), mode="llm"
+        llm=_assignment_llm(assign), mode="llm"
     )
     script = _make_script_with_characters(mom)
     matcher.match_voices(script)
-    # Invalid classification dropped -> rule path still gives a female voice.
+    # Invalid assignment is dropped -> rule path still gives a female voice.
     assert mom.voice_config.gender == "female"
 
 
@@ -311,16 +304,12 @@ def test_llm_duplicate_index_falls_back_to_distinct_voice():
     registry.register_tts("multi", _MultiFemaleTTS)
     a = Character(id="a", name="甲", description="年轻女孩")
     b = Character(id="b", name="乙", description="慈祥老婆婆")
-    classify = {"characters": [
-        {"character_id": "a", "gender": "female", "age": "young_adult"},
-        {"character_id": "b", "gender": "female", "age": "senior"},
-    ]}
     # Pick call wrongly hands the same index to both.
     assign = {"assignments": [
         {"character_id": "a", "voice_index": 1},
         {"character_id": "b", "voice_index": 1},
     ]}
-    llm = _two_call_llm(classify, assign)
+    llm = _assignment_llm(assign)
     matcher = VoiceMatcher(registry, llm=llm, mode="llm")
     script = _make_script_with_characters(a, b)
     matcher.match_voices(script)
@@ -337,3 +326,54 @@ def test_rule_mode_does_not_call_llm():
     matcher.match_voices(script)
     assert llm.calls == []
     assert mom.voice_config.gender == "female"
+
+
+def test_candidate_sampling_keeps_one_unmatched_fallback_voice():
+    from storyteller.core.models import VoiceConfig
+
+    voices = [
+        VoiceConfig(provider="p", voice_id="child-{}".format(i),
+                    gender="female", age="child", category="儿童陪伴")
+        for i in range(8)
+    ] + [
+        VoiceConfig(provider="p", voice_id="anime-{}".format(i),
+                    gender="female", age="child", category="动漫配音")
+        for i in range(8)
+    ] + [
+        VoiceConfig(provider="p", voice_id="other-{}".format(i),
+                    gender="female", age="child", category="日常对话")
+        for i in range(8)
+    ]
+    selected = _sample_voice_candidates(
+        voices,
+        gender="female",
+        age="child",
+        preferences=[
+            {"type": "儿童陪伴", "weight": 0.7},
+            {"type": "动漫配音", "weight": 0.3},
+        ],
+        limit=10,
+        rng=__import__("random").Random(3),
+    )
+    assert len(selected) == 10
+    assert any(voice.category == "日常对话" for voice in selected)
+    assert sum(voice.category != "日常对话" for voice in selected) == 9
+
+
+def test_candidate_sampling_uses_all_eligible_voices_when_no_preference_matches():
+    from storyteller.core.models import VoiceConfig
+
+    voices = [
+        VoiceConfig(provider="p", voice_id="v{}".format(i),
+                    gender="male", age="young_adult", category="日常对话")
+        for i in range(3)
+    ]
+    selected = _sample_voice_candidates(
+        voices,
+        gender="male",
+        age="young_adult",
+        preferences=[{"type": "儿童陪伴", "weight": 1.0}],
+        limit=10,
+        rng=__import__("random").Random(1),
+    )
+    assert {voice.voice_id for voice in selected} == {"v0", "v1", "v2"}

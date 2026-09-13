@@ -35,6 +35,16 @@ def test_mock_llm_records_calls():
     assert provider.calls[0]["messages"][0]["content"] == "hello"
 
 
+def test_mock_llm_streams_configured_response_in_chunks():
+    provider = MockLLMProvider(Config())
+    provider.set_response("abcdefgh")
+
+    chunks = list(provider.chat_stream([{"role": "user", "content": "hi"}]))
+
+    assert "".join(chunks) == "abcdefgh"
+    assert len(chunks) > 1
+
+
 def test_mock_llm_can_simulate_error():
     provider = MockLLMProvider(Config())
     provider.set_error(RuntimeError("simulated failure"))

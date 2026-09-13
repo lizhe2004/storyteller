@@ -12,6 +12,7 @@ class _FakeResponse:
         self.status_code = status_code
         self._payload = payload if payload is not None else {}
         self._raise_exc = raise_exc
+        self.stream_lines = []
 
     def json(self):
         return self._payload
@@ -27,6 +28,11 @@ class _FakeResponse:
             import requests
 
             raise requests.HTTPError("status {}".format(self.status_code))
+
+    def iter_lines(self, decode_unicode=False):
+        if decode_unicode:
+            return iter(self.stream_lines)
+        return iter(line.encode("latin-1") for line in self.stream_lines)
 
 
 class _FakeSession:
@@ -99,3 +105,21 @@ def test_volcengine_llm_raises_on_missing_key(monkeypatch):
     monkeypatch.setenv("STORYTELLER_LLM_VOLCENGINE_API_KEY", "")
     with pytest.raises(LLMError):
         VolcengineLLM(config)
+
+
+def test_volcengine_stream_decodes_utf8_sse_text():
+    config = _config()
+    llm = VolcengineLLM(config)
+    payload = json.dumps(
+        {"choices": [{"delta": {"content": "你好，世界"}}]},
+        ensure_ascii=False,
+    )
+    fake_response = _FakeResponse()
+    # This simulates requests returning a string decoded with the wrong
+    # default charset when iter_lines(decode_unicode=True) is used.
+    fake_response.stream_lines = ["data: " + (payload.encode("utf-8").decode("latin-1"))]
+    llm._session = _FakeSession(fake_response)
+
+    assert list(llm.chat_stream([{"role": "user", "content": "hi"}])) == [
+        "你好，世界"
+    ]

@@ -82,7 +82,7 @@ storyteller generate "月亮婆婆" --dry-run
 # → .storyteller/stories/<project_id>/story.script.json
 ```
 
-> 生成过程是网络密集型：剧本 + 音色分类/精选各有一次 LLM 调用，随后逐句 TTS。一个短篇通常需要几十秒到几分钟，期间无逐字输出属正常现象，可用 `--progress simple` 查看进度。
+> 生成过程是网络密集型：剧本生成、音色精选和逐句 TTS 都可能产生网络等待。一个短篇通常需要几十秒到几分钟，可用 `--progress simple` 查看进度；详细耗时会记录到 `.storyteller/logs/storyteller.log`。
 
 ### 命令参考
 
@@ -151,6 +151,31 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 ```
 
 说明：`detailed` 里 `cached, skipped` 表示该句台词已在本地缓存（断点续作）、不再调用 TTS；音效一行的 `, cached` 表示该音效命中全局音效库、未重复调用 seed-audio。
+
+#### 日志与耗时排查
+
+每次 CLI 或 Web 任务都会把诊断日志写入：
+
+```text
+.storyteller/logs/storyteller.log
+```
+
+日志采用传统文本格式，关键字段使用 `key=value`，例如：
+
+```text
+2026-09-14 23:49:31,123 INFO storyteller.core.voice_matcher event=llm_request_completed operation=voice_assignment duration_ms=19042 candidate_count=28
+```
+
+排查音色阶段时，可搜索同一个任务的 `job_id`，重点查看：
+
+```text
+voice_matching_started
+llm_request_started
+llm_request_completed
+project_saved
+script_export_completed
+script_ready_sent
+```
 
 #### `storyteller continue <project_id>` — 从断点继续
 
@@ -271,7 +296,7 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 
 任一步失败或返回非法结果，对应角色回退到确定性规则匹配：对话角色在同性别音色池里按年龄距离挑选（同性别池为空时退到中性音色），有声阅读类作为对话的最后备选；旁白角色在全库中优先有声阅读类。可用 `--voice-matcher rule` 或 `STORYTELLER_VOICE_MATCHER=rule` 完全走规则（不产生额外 LLM 调用）。
 
-内置火山音色库约 249 个（仅 seed-tts-2.0，含中英文混读音色），由 `scripts/build_voice_catalog.py` 从 `data/` 下的官方清单整理生成，打包在 `src/storyteller/providers/volcengine/voices.json`。启用阿里云 provider 后另有 11 个 Qwen-Audio-TTS 系统音色（含 3 个童声），打包在 `src/storyteller/providers/aliyun/voices.json`，每个音色记录其专属模型（plus/flash 音色不可混用）。
+内置火山音色库约 249 个（仅 seed-tts-2.0，含中英文混读音色），由 `scripts/build_voice_catalog.py` 从 `data/` 下的官方清单整理生成，打包在 `src/storyteller/providers/volcengine/voices.json`。启用阿里云 provider 后另有 1,189 个中文 Qwen-Audio-TTS 系统音色（含多个年龄段和 3.0 flash/plus 模型），打包在 `src/storyteller/providers/aliyun/voices.json`，每个音色记录其专属模型（plus/flash 音色不可混用）。原始清单位于项目根目录的两个 `qwen-audio-3.0-tts-*.md` 文件，目录可用 `scripts/build_aliyun_voice_catalog.py` 重新生成。
 
 ## 演法指令与上文引用
 

@@ -30,4 +30,6 @@ def test_ws_streams_pcm_and_completes(tmp_path):
                     break
     ready = next(e for e in events if e["type"] == "ready")
     assert ready["audio"] == {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}
+    assert ready["server_time"]
+    assert any(e["type"] == "script_preview" for e in events)
     assert events[-1]["type"] == "complete" and len(audio) > 0 and len(audio) % 2 == 0

@@ -24,6 +24,37 @@ def test_generate_script_parses_mock_response():
     assert len(script.lines) == 4
 
 
+def test_generate_script_stream_emits_partialjson_preview_before_final_script():
+    generator, llm = _make_generator()
+    previews = []
+
+    script = generator.generate_script_stream(
+        topic="测试故事",
+        on_preview=previews.append,
+    )
+
+    assert script.title == "小猫的冒险"
+    assert previews
+    assert any(preview.get("title") == "小猫的冒险" for preview in previews)
+    assert any(preview.get("lines") for preview in previews)
+    assert llm.stream_calls
+
+
+def test_generate_script_stream_does_not_emit_duplicate_preview_snapshots():
+    class _ChunkedLLM:
+        def chat_stream(self, messages, **kwargs):
+            yield '{"title":"测试","characters":[],"lines":[]}'
+            yield " "
+            yield "\n"
+
+    previews = []
+    generator = StoryGenerator(_ChunkedLLM())
+
+    generator.generate_script_stream("测试", on_preview=previews.append)
+
+    assert previews == [{"title": "测试", "characters": [], "lines": []}]
+
+
 def test_generate_script_sets_topic():
     generator, _ = _make_generator()
     script = generator.generate_script(topic="太空冒险")
@@ -48,6 +79,15 @@ def test_generate_script_prompt_has_system_and_user():
     messages = llm.calls[-1]["messages"]
     roles = [m["role"] for m in messages]
     assert roles == ["system", "user"]
+
+
+def test_generate_script_prompt_is_audience_neutral():
+    generator, llm = _make_generator()
+    generator.generate_script(topic="悬疑故事")
+    system_content = llm.calls[-1]["messages"][0]["content"]
+    assert "面向儿童" not in system_content
+    assert "面向一般听众" in system_content
+    assert "音频故事或广播剧" in system_content
 
 
 def test_generate_script_invalid_json_raises():
@@ -95,6 +135,53 @@ def test_generate_script_parses_direction_into_metadata():
     script = generator.generate_script(topic="测试")
     assert script.lines[0].metadata == {}
     assert script.lines[1].metadata["direction"] == "声音发抖，带着哭腔"
+
+
+def test_generate_script_parses_voice_preferences():
+    payload = {
+        "title": "测试",
+        "characters": [
+            {
+                "id": "c1",
+                "name": "小兔",
+                "description": "8岁女孩，活泼胆小",
+                "voice_preferences": [
+                    {"type": "儿童陪伴", "weight": 0.7},
+                    {"type": "动漫配音", "weight": 0.3},
+                ],
+            }
+        ],
+        "lines": [
+            {"line_id": "1", "line_type": "dialogue",
+             "character_id": "c1", "text": "你好。"},
+        ],
+    }
+    generator, _ = _make_generator(json.dumps(payload, ensure_ascii=False))
+    script = generator.generate_script(topic="测试")
+    assert script.characters[0].voice_preferences == [
+        {"type": "儿童陪伴", "weight": 0.7},
+        {"type": "动漫配音", "weight": 0.3},
+    ]
+
+
+def test_generate_script_parses_character_gender_and_age():
+    payload = {
+        "title": "测试",
+        "characters": [{
+            "id": "c1", "name": "小兔", "description": "活泼的女孩",
+            "gender": "female", "age": "child",
+        }],
+        "lines": [{
+            "line_id": "1", "line_type": "dialogue",
+            "character_id": "c1", "text": "你好。",
+        }],
+    }
+    generator, _ = _make_generator(json.dumps(payload, ensure_ascii=False))
+
+    character = generator.generate_script(topic="测试").characters[0]
+
+    assert character.gender == "female"
+    assert character.age == "child"
 
 
 def test_generate_script_injects_narrator_when_missing():

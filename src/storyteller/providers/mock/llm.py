@@ -55,6 +55,7 @@ class MockLLMProvider(BaseProvider, LLMProvider):
         self._responses = None
         self._error = None
         self.calls = []
+        self.stream_calls = []
 
     def set_response(self, response):
         """Configure the text that subsequent chat() calls return."""
@@ -89,6 +90,19 @@ class MockLLMProvider(BaseProvider, LLMProvider):
             # Pop the next queued response; keep (repeat) the last one.
             return self._responses.pop(0) if len(self._responses) > 1 else self._responses[0]
         return self._response
+
+    def chat_stream(self, messages, temperature=0.7, max_tokens=None, **kwargs):
+        self.stream_calls.append({
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "kwargs": kwargs,
+        })
+        response = self.chat(
+            messages, temperature=temperature, max_tokens=max_tokens, **kwargs
+        )
+        for index in range(0, len(response), 4):
+            yield response[index:index + 4]
 
     def complete(self, prompt, temperature=0.7, max_tokens=None, **kwargs):
         return self.chat(

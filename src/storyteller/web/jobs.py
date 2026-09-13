@@ -6,6 +6,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
+from ..core.observability import server_time
+
 PHASE_QUEUED = "queued"
 PHASE_SCRIPT = "script"
 PHASE_VOICES = "voices"
@@ -32,12 +34,16 @@ class Job:
         self.phase = PHASE_QUEUED
         self.project_id = None
         self.script_ready = None
+        self.script_preview = None
         self.line_index = 0
         self.total = 0
         self.cancel_event = threading.Event()
         self.queue = queue.Queue()
 
     def emit(self, obj):
+        if isinstance(obj, dict) and "_bytes" not in obj:
+            obj = dict(obj)
+            obj.setdefault("server_time", server_time())
         self.queue.put(obj)
 
     def emit_bytes(self, data):

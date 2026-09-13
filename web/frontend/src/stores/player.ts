@@ -3,11 +3,36 @@ import type { ReadyAudio, StoryCharacter, StoryLine } from '../types'
 
 type EventRecord = Record<string, any>
 export const usePlayerStore = defineStore('player', {
-  state: () => ({ socket: null as WebSocket | null, phase: 'idle', message: '', title: '', characters: [] as StoryCharacter[], lines: [] as StoryLine[], currentIndex: -1, lineDurations: {} as Record<string, number>, fillerText: '', warning: '', jobId: '', finalUrl: '', audio: null as ReadyAudio | null, error: '' }),
+  state: () => ({ socket: null as WebSocket | null, phase: 'idle', message: '', title: '', characters: [] as StoryCharacter[], lines: [] as StoryLine[], currentIndex: -1, lineDurations: {} as Record<string, number>, fillerText: '', warning: '', jobId: '', finalUrl: '', audio: null as ReadyAudio | null, error: '', previewFrame: null as number | null, pendingPreview: null as EventRecord | null }),
   actions: {
+    applyScriptPreview(item: EventRecord) {
+      this.title = item.title || this.title
+      this.characters = item.characters || this.characters
+      this.lines = (item.lines || []).map((line: any) => ({...line}))
+    },
+    scheduleScriptPreview(item: EventRecord) {
+      this.pendingPreview = item
+      if (this.previewFrame !== null) return
+      this.previewFrame = window.requestAnimationFrame(() => {
+        const preview = this.pendingPreview
+        this.pendingPreview = null
+        this.previewFrame = null
+        if (preview) this.applyScriptPreview(preview)
+      })
+    },
+    applyScriptReady(item: EventRecord) {
+      if (this.previewFrame !== null) {
+        window.cancelAnimationFrame(this.previewFrame)
+        this.previewFrame = null
+      }
+      this.pendingPreview = null
+      this.title = item.title
+      this.characters = item.characters || []
+      this.lines = (item.lines || []).map((line: any) => ({...line, text: line.text || ''}))
+    },
     start(payload: Record<string, unknown>, onBytes: (bytes: ArrayBuffer) => void, onEvent?: (event: EventRecord) => void) {
       this.socket?.close()
-      this.error = ''; this.warning = ''; this.message = ''; this.title = ''; this.characters = []; this.lines = []; this.currentIndex = -1; this.lineDurations = {}; this.fillerText = ''; this.jobId = ''; this.finalUrl = ''; this.audio = null; this.phase = 'connecting';
+      this.error = ''; this.warning = ''; this.message = ''; this.title = ''; this.characters = []; this.lines = []; this.currentIndex = -1; this.lineDurations = {}; this.fillerText = ''; this.jobId = ''; this.finalUrl = ''; this.audio = null; this.phase = 'connecting'; this.pendingPreview = null; if (this.previewFrame !== null) { window.cancelAnimationFrame(this.previewFrame); this.previewFrame = null }
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
       const socket = new WebSocket(`${protocol}//${location.host}/ws`); socket.binaryType = 'arraybuffer'; this.socket = socket
       socket.onopen = () => socket.send(JSON.stringify({ type: 'start', ...payload }))
@@ -17,7 +42,8 @@ export const usePlayerStore = defineStore('player', {
         onEvent?.(item)
         if (item.type === 'ready') this.audio = item.audio
         if (item.type === 'status') { this.phase = item.phase; this.message = item.message || ({ queued: '排队等待中…', script: '正在生成剧本…', voices: '正在匹配音色…', line: '正在生成故事…', finalizing: '正在整理完整音频…' } as Record<string, string>)[item.phase] || item.phase }
-        if (item.type === 'script_ready') { this.title = item.title; this.characters = item.characters || []; this.lines = item.lines.map((line: any) => ({...line, text: ''})) }
+        if (item.type === 'script_preview') this.scheduleScriptPreview(item)
+        if (item.type === 'script_ready') this.applyScriptReady(item)
         if (item.type === 'line_start') { this.phase = 'line'; this.message = `正在讲第 ${item.index} / ${item.total} 句…`; this.currentIndex = item.index - 1; const line = this.lines[this.currentIndex]; if (line) line.text = item.text }
         if (item.type === 'filler_start') { this.fillerText = item.text; this.message = item.kind === 'thinking' ? '正在构思故事…' : '正在准备开场…' }
         if (item.type === 'filler_end' || item.type === 'filler_abort') this.fillerText = ''

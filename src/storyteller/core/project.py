@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+from time import perf_counter
 from datetime import datetime
 from pathlib import Path
 
@@ -19,6 +21,7 @@ from .utils import generate_id
 _PROJECT_FILE = "project.json"
 _TITLE_MAX_CHARS = 60
 _INVALID_DIR_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+logger = logging.getLogger(__name__)
 
 
 def slug_title(title):
@@ -57,6 +60,7 @@ class ProjectManager:
         return state
 
     def save_project(self, state):
+        started = perf_counter()
         project_dir = self._dir_for_id(state.project_id)
         if project_dir is None:
             # Brand-new project: its directory does not exist yet.
@@ -76,6 +80,11 @@ class ProjectManager:
         (project_dir / _PROJECT_FILE).write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
+        )
+        logger.info(
+            "event=project_saved project_id=%s state=%s duration_ms=%d path=%s",
+            state.project_id, state.state,
+            int((perf_counter() - started) * 1000), project_dir,
         )
         if self._id_index is not None:
             dirs = self._id_index.setdefault(state.project_id, [])
@@ -361,6 +370,9 @@ def _character_to_dict(char):
         "id": char.id,
         "name": char.name,
         "description": char.description,
+        "gender": char.gender,
+        "age": char.age,
+        "voice_preferences": list(char.voice_preferences or []),
         "voice_config": _voice_to_dict(char.voice_config),
     }
 
@@ -370,6 +382,9 @@ def _character_from_dict(data):
         id=data["id"],
         name=data["name"],
         description=data["description"],
+        gender=data.get("gender"),
+        age=data.get("age"),
+        voice_preferences=list(data.get("voice_preferences", []) or []),
         voice_config=_voice_from_dict(data.get("voice_config")),
     )
 
