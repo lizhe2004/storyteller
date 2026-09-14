@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections import deque
+from dataclasses import replace
 import wave
 import math
 import struct
-from queue import Empty, Queue
-from threading import Event, Lock
+from threading import Condition, Lock
 from pathlib import Path
 
 from ...core.exceptions import TTSError
@@ -116,23 +117,28 @@ class MockTTSProvider(BaseProvider, TTSProvider):
 
 
 class MockStreamingTTSSession(StreamingTTSSession):
-    """Controllable in-memory session used to exercise streaming consumers."""
+    """Controllable in-memory session with a bounded, thread-safe audio buffer.
+
+    ``finish()`` stops accepting text but lets already-admitted audio drain.
+    ``cancel()`` is terminal: it discards queued audio and causes concurrent
+    senders waiting for buffer capacity to fail without enqueueing audio.
+    """
 
     _QUEUE_SIZE = 16
 
     def __init__(self, provider, voice, *, directives=None, context=None):
         self._provider = provider
-        self._voice = voice
+        self._voice = replace(voice)
         self._directives = directives
         self._context = context
-        self._audio = Queue(maxsize=self._QUEUE_SIZE)
-        self._closed = Event()
+        self._audio = deque()
+        self._closed = False
         self._cancelled = False
-        self._state_lock = Lock()
+        self._state_changed = Condition(Lock())
 
     def send_text(self, text: str) -> None:
-        with self._state_lock:
-            if self._closed.is_set():
+        with self._state_changed:
+            if self._closed:
                 raise TTSError("Streaming TTS session is closed")
 
         try:
@@ -147,30 +153,40 @@ class MockStreamingTTSSession(StreamingTTSSession):
         except Exception as exc:
             raise TTSError("Mock streaming TTS failed: {}".format(exc)) from exc
 
-        self._audio.put(chunk)
+        with self._state_changed:
+            while len(self._audio) >= self._QUEUE_SIZE:
+                if self._closed:
+                    raise TTSError("Streaming TTS session is closed")
+                self._state_changed.wait()
+
+            if self._closed:
+                raise TTSError("Streaming TTS session is closed")
+            self._audio.append(chunk)
+            self._state_changed.notify_all()
 
     def iter_audio(self):
         while True:
-            if self._closed.is_set() and self._audio.empty():
-                return
-            try:
-                yield self._audio.get(timeout=0.05)
-            except Empty:
-                if self._closed.is_set():
-                    return
+            with self._state_changed:
+                while not self._audio:
+                    if self._closed:
+                        return
+                    self._state_changed.wait()
+                chunk = self._audio.popleft()
+                self._state_changed.notify_all()
+            yield chunk
 
     def finish(self) -> None:
-        self._closed.set()
+        with self._state_changed:
+            if not self._closed:
+                self._closed = True
+                self._state_changed.notify_all()
 
     def cancel(self) -> None:
-        with self._state_lock:
+        with self._state_changed:
             self._cancelled = True
-            while True:
-                try:
-                    self._audio.get_nowait()
-                except Empty:
-                    break
-            self._closed.set()
+            self._closed = True
+            self._audio.clear()
+            self._state_changed.notify_all()
 
 
 class MockStreamingTTS(MockTTSProvider, StreamingTTSProvider):

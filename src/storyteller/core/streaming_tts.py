@@ -22,12 +22,12 @@ class StreamingTTSSession(ABC):
 
     @abstractmethod
     def finish(self) -> None:
-        """Signal that no more text will be submitted."""
+        """Stop accepting text while allowing already-accepted audio to drain."""
         raise NotImplementedError
 
     @abstractmethod
     def cancel(self) -> None:
-        """Stop synthesis and discard any pending audio."""
+        """Stop synthesis, discard pending audio, and prevent later enqueueing."""
         raise NotImplementedError
 
 

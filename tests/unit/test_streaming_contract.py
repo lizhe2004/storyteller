@@ -5,7 +5,11 @@ import pytest
 from storyteller.core.models import VoiceConfig
 from storyteller.core.tts import CHUNK_AUDIO, STREAM_CHANNELS, STREAM_SAMPLE_RATE, STREAM_SAMPLE_WIDTH, StreamChunk
 from storyteller.core.exceptions import TTSError
-from storyteller.providers.mock.tts import MockStreamingTTS, MockTTSProvider
+from storyteller.providers.mock.tts import (
+    MockStreamingTTS,
+    MockStreamingTTSSession,
+    MockTTSProvider,
+)
 from storyteller.providers.registry import ProviderRegistry
 
 
@@ -79,3 +83,82 @@ def test_mock_streaming_session_translates_provider_failures_to_tts_error():
 
     with pytest.raises(TTSError, match="upstream unavailable"):
         session.send_text("失败")
+
+
+def test_mock_streaming_session_cancel_rejects_a_sender_blocked_by_full_audio_buffer(
+    monkeypatch,
+):
+    """Reintroducing an enqueue after cancel must fail this full-buffer race."""
+    class GatedChunkProvider(MockStreamingTTS):
+        def __init__(self):
+            super().__init__({})
+            self.chunk_started = threading.Event()
+            self.release_chunk = threading.Event()
+
+        def _stream_chunk(self, text, voice_config, **kwargs):
+            if text == "blocked":
+                self.chunk_started.set()
+                assert self.release_chunk.wait(timeout=1)
+            return super()._stream_chunk(text, voice_config, **kwargs)
+
+    monkeypatch.setattr(MockStreamingTTSSession, "_QUEUE_SIZE", 1)
+    provider = GatedChunkProvider()
+    session = provider.open_stream(VoiceConfig(provider="mock", voice_id="v"))
+    session.send_text("already queued")
+    sender_done = threading.Event()
+    sender_error = []
+
+    def submit_blocked_text():
+        try:
+            session.send_text("blocked")
+        except Exception as exc:
+            sender_error.append(exc)
+        finally:
+            sender_done.set()
+
+    sender = threading.Thread(target=submit_blocked_text)
+    sender.start()
+    assert provider.chunk_started.wait(timeout=1)
+
+    provider.release_chunk.set()
+    session.cancel()
+    assert sender_done.wait(timeout=1)
+    sender.join()
+
+    assert len(sender_error) == 1
+    assert isinstance(sender_error[0], TTSError)
+    assert list(session.iter_audio()) == []
+
+
+def test_mock_streaming_session_snapshots_voice_config_when_opened():
+    """Passing the caller's mutable VoiceConfig through later chunks must fail."""
+    provider = MockStreamingTTS({})
+    voice = VoiceConfig(
+        provider="mock",
+        voice_id="original",
+        language="zh-CN",
+        style="warm",
+        speed=0.8,
+        pitch=1.2,
+        volume=0.6,
+    )
+    session = provider.open_stream(voice)
+
+    voice.voice_id = "mutated"
+    voice.language = "en-US"
+    voice.style = "flat"
+    voice.speed = 1.5
+    voice.pitch = 0.7
+    voice.volume = 1.0
+    session.send_text("uses original voice")
+
+    assert provider.synth_calls[-1]["voice_config"] == VoiceConfig(
+        provider="mock",
+        voice_id="original",
+        language="zh-CN",
+        style="warm",
+        speed=0.8,
+        pitch=1.2,
+        volume=0.6,
+    )
+    assert provider.synth_calls[-1]["voice_config"] is not voice
