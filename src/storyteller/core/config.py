@@ -52,6 +52,19 @@ class Config:
     def __init__(self):
         self._config = self._deep_copy(self.DEFAULTS)
 
+    @classmethod
+    def from_dict(cls, values):
+        """Build a config from an isolated copy of nested values."""
+        if not isinstance(values, dict):
+            raise TypeError("config values must be a dict")
+        config = cls()
+        config._config = cls._deep_copy(values)
+        return config
+
+    def to_dict(self):
+        """Return an isolated copy of the raw configuration values."""
+        return self._deep_copy(self._config)
+
     @staticmethod
     def _deep_copy(obj):
         if isinstance(obj, dict):
