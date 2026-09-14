@@ -3,9 +3,13 @@ from __future__ import annotations
 import wave
 import math
 import struct
+from queue import Empty, Queue
+from threading import Event, Lock
 from pathlib import Path
 
+from ...core.exceptions import TTSError
 from ...core.models import VoiceConfig
+from ...core.streaming_tts import StreamingTTSProvider, StreamingTTSSession
 from ...core.tts import TTSProvider, StreamChunk, CHUNK_AUDIO, STREAM_SAMPLE_RATE
 from ...providers.base import BaseProvider
 
@@ -111,8 +115,85 @@ class MockTTSProvider(BaseProvider, TTSProvider):
         return Path(output_path)
 
 
-class MockStreamingTTS(MockTTSProvider):
+class MockStreamingTTSSession(StreamingTTSSession):
+    """Controllable in-memory session used to exercise streaming consumers."""
+
+    _QUEUE_SIZE = 16
+
+    def __init__(self, provider, voice, *, directives=None, context=None):
+        self._provider = provider
+        self._voice = voice
+        self._directives = directives
+        self._context = context
+        self._audio = Queue(maxsize=self._QUEUE_SIZE)
+        self._closed = Event()
+        self._cancelled = False
+        self._state_lock = Lock()
+
+    def send_text(self, text: str) -> None:
+        with self._state_lock:
+            if self._closed.is_set():
+                raise TTSError("Streaming TTS session is closed")
+
+        try:
+            chunk = self._provider._stream_chunk(
+                text,
+                self._voice,
+                directives=self._directives,
+                context=self._context,
+            )
+        except TTSError:
+            raise
+        except Exception as exc:
+            raise TTSError("Mock streaming TTS failed: {}".format(exc)) from exc
+
+        self._audio.put(chunk)
+
+    def iter_audio(self):
+        while True:
+            if self._closed.is_set() and self._audio.empty():
+                return
+            try:
+                yield self._audio.get(timeout=0.05)
+            except Empty:
+                if self._closed.is_set():
+                    return
+
+    def finish(self) -> None:
+        self._closed.set()
+
+    def cancel(self) -> None:
+        with self._state_lock:
+            self._cancelled = True
+            while True:
+                try:
+                    self._audio.get_nowait()
+                except Empty:
+                    break
+            self._closed.set()
+
+
+class MockStreamingTTS(MockTTSProvider, StreamingTTSProvider):
     supports_streaming = True
+
+    def open_stream(self, voice, *, directives=None, context=None):
+        return MockStreamingTTSSession(
+            self, voice, directives=directives, context=context,
+        )
+
+    def _stream_chunk(self, text, voice_config, *, directives=None, context=None):
+        self.synth_calls.append({
+            "text": text, "voice_config": voice_config, "output_path": None,
+            "kwargs": {"directives": directives, "context": context},
+        })
+        if self._error is not None:
+            raise self._error
+        samples = STREAM_SAMPLE_RATE // 10
+        pcm = bytearray()
+        for i in range(samples):
+            value = int(0.2 * 32767 * math.sin(2 * math.pi * 220 * i / STREAM_SAMPLE_RATE))
+            pcm.extend(struct.pack("<h", value))
+        return StreamChunk(CHUNK_AUDIO, bytes(pcm))
 
     def stream_synthesize(self, text, voice_config, *, directives=None, context=None):
         self.synth_calls.append({

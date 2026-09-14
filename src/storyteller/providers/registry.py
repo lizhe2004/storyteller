@@ -4,6 +4,7 @@ from typing import Optional
 
 from ..core.exceptions import ProviderError
 from ..core.models import VoiceConfig
+from ..core.streaming_tts import StreamingTTSProvider
 
 
 class ProviderRegistry:
@@ -81,6 +82,16 @@ class ProviderRegistry:
     def get_stream_tts(self, name):
         tts = self.get_tts(name)
         if getattr(tts, "supports_streaming", False) and hasattr(tts, "stream_synthesize"):
+            return tts
+        return None
+
+    def get_streaming_tts(self, name) -> Optional[StreamingTTSProvider]:
+        """Return a provider supporting incremental text sessions, if available."""
+        tts = self.get_tts(name)
+        if (
+            getattr(tts, "supports_text_streaming", False)
+            and callable(getattr(tts, "open_stream", None))
+        ):
             return tts
         return None
 
