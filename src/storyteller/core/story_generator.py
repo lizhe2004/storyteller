@@ -27,6 +27,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "2. 严格以JSON格式输出，不要包含任何其他文字。格式如下：\n"
     '{\n'
     '  "title": "故事标题",\n'
+    '  "opening": "开场白",\n'
     '  "characters": [\n'
     '    {"id": "narrator", "name": "旁白", "description": "故事旁白，叙述场景、动作和说话人"},\n'
     '    {"id": "角色id", "name": "角色名", "description": "角色性格/年龄/性别描述", '

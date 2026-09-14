@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from storyteller.core.story_generator import StoryGenerator
+from storyteller.core.story_generator import DEFAULT_SYSTEM_PROMPT, StoryGenerator
 from storyteller.core.config import Config
 from storyteller.core.exceptions import LLMError
 from storyteller.providers.mock.llm import MockLLMProvider, DEFAULT_SCRIPT
@@ -116,6 +116,10 @@ def test_generate_script_prompt_describes_ordered_opening_constraints():
 
     assert "标题、等待期故事开场白、角色信息、正文台词" in system_content
     assert "15～35个汉字" in system_content
+
+
+def test_generate_script_prompt_schema_includes_opening_between_title_and_characters():
+    assert '  "title": "故事标题",\n  "opening": "开场白",\n  "characters": [' in DEFAULT_SYSTEM_PROMPT
 
 
 def test_generate_script_sets_topic():
