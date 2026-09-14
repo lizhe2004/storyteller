@@ -5,8 +5,10 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from typing import Callable, Optional
 
 from ..core.observability import server_time
+from ..core.runtime_settings import RuntimeSettingsSnapshot
 
 PHASE_QUEUED = "queued"
 PHASE_SCRIPT = "script"
@@ -28,9 +30,16 @@ class JobParams:
 
 
 class Job:
-    def __init__(self, params):
+    def __init__(
+        self,
+        params,
+        config_snapshot: Optional[RuntimeSettingsSnapshot] = None,
+    ):
         self.id = "job_" + uuid.uuid4().hex
         self.params = params
+        self.config_snapshot: Optional[
+            RuntimeSettingsSnapshot
+        ] = config_snapshot
         self.phase = PHASE_QUEUED
         self.project_id = None
         self.script_ready = None
@@ -53,16 +62,50 @@ class Job:
 
 
 class JobManager:
-    def __init__(self, concurrency=2):
+    def __init__(
+        self,
+        concurrency=2,
+        config_snapshot_provider: Optional[
+            Callable[[], RuntimeSettingsSnapshot]
+        ] = None,
+    ):
         self.concurrency = max(1, int(concurrency))
-        self._slots = threading.BoundedSemaphore(self.concurrency)
+        self._config_snapshot_provider = config_snapshot_provider
+        self._active = 0
+        self._capacity = self.concurrency
+        self._capacity_condition = threading.Condition()
         self._executor = ThreadPoolExecutor(max_workers=max(4, self.concurrency * 2))
         self._jobs = {}
         self._order = []
         self._lock = threading.Lock()
 
+    def reconfigure(self, concurrency):
+        with self._capacity_condition:
+            self._capacity = max(1, int(concurrency))
+            self.concurrency = self._capacity
+            self._capacity_condition.notify_all()
+
+    def _acquire_slot(self, job):
+        with self._capacity_condition:
+            while self._active >= self._capacity:
+                if job.cancel_event.is_set():
+                    return False
+                self._capacity_condition.wait(timeout=0.5)
+            self._active += 1
+            return True
+
+    def _release_slot(self):
+        with self._capacity_condition:
+            self._active -= 1
+            self._capacity_condition.notify_all()
+
     def create(self, params):
-        job = Job(params)
+        config_snapshot = (
+            self._config_snapshot_provider()
+            if self._config_snapshot_provider is not None
+            else None
+        )
+        job = Job(params, config_snapshot=config_snapshot)
         with self._lock:
             self._jobs[job.id] = job
             self._order.append(job.id)
@@ -78,9 +121,12 @@ class JobManager:
             job.cancel_event.set()
         return job
 
-    def submit(self, job, target):
+    def submit(self, job, target, config_snapshot=None):
+        if config_snapshot is not None:
+            job.config_snapshot = config_snapshot
+
         def run():
-            acquired = self._slots.acquire(timeout=0.1)
+            acquired = self._acquire_slot(job)
             while not acquired:
                 if job.cancel_event.is_set():
                     job.phase = PHASE_CANCELED
@@ -91,9 +137,9 @@ class JobManager:
                                    if jid != job.id and self._jobs[jid].phase == PHASE_QUEUED)
                 job.emit({"type": "status", "phase": PHASE_QUEUED,
                           "queue_position": position})
-                acquired = self._slots.acquire(timeout=0.5)
+                acquired = self._acquire_slot(job)
             try:
                 target(job)
             finally:
-                self._slots.release()
+                self._release_slot()
         self._executor.submit(run)

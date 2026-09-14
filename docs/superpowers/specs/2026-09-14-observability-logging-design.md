@@ -25,7 +25,7 @@
 使用传统文本格式写入 `data_dir/logs/storyteller.log`，并使用滚动文件 handler 限制单文件大小和备份数量。每条记录使用统一格式，至少包含时间、级别、logger、事件和可用的任务链路字段：
 
 ```text
-2026-09-14 23:49:31,123 INFO storyteller.web job=job_xxx project=proj_xxx phase=voices event=llm_request_completed operation=voice_assignment duration_ms=19042
+2026-09-14 23:49:31,123 INFO storyteller.core.voice_matcher event=llm_request_completed job_id=job_xxx project_id=proj_xxx phase=voices duration_ms=19042 candidate_count=28 character_count=5
 ```
 
 字段仍采用 `key=value` 形式，便于人工阅读，也方便以后用 `rg`、日志采集器或简单脚本检索。
@@ -57,7 +57,7 @@
 
 ```text
 voice_matching_started
-llm_request_started(operation=voice_assignment)
+llm_request_started(provider=VolcengineLLM candidate_count=28 character_count=5)
 llm_request_completed(duration_ms=...)
 project_saved(duration_ms=...)
 script_exported(duration_ms=...)

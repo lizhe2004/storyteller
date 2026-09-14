@@ -55,3 +55,20 @@ def test_timed_event_logs_completion_and_failure():
     assert "event=llm_failed" in capture.messages[3]
     assert "provider=mock" in capture.messages[3]
     assert "duration_ms=" in capture.messages[3]
+    assert "exception_message=boom" in capture.messages[3]
+
+
+def test_timed_event_redacts_urls_from_exception_messages():
+    logger = logging.getLogger("test.observability.redaction")
+    capture = _Capture()
+    logger.addHandler(capture)
+    logger.setLevel(logging.INFO)
+    try:
+        with pytest.raises(RuntimeError):
+            with timed_event(logger, "tts", provider="aliyun"):
+                raise RuntimeError("HTTP 403 https://example.com/audio?token=secret")
+    finally:
+        logger.removeHandler(capture)
+
+    assert "exception_message=HTTP_403_[redacted_url]" in capture.messages[1]
+    assert "secret" not in capture.messages[1]

@@ -188,6 +188,7 @@ class RuntimeSettingsStore:
             }
             result["sources"] = _thaw(snapshot.sources)
             result["config_error"] = snapshot.config_error
+            result["data_dir"] = snapshot.values.get("data_dir")
             return result
 
     def update(self, patch: dict) -> RuntimeSettingsSnapshot:
@@ -278,6 +279,7 @@ class RuntimeSettingsStore:
     def _write(self, values: Dict[str, Any]) -> None:
         directory = self._settings_path.parent
         directory.mkdir(parents=True, exist_ok=True)
+        os.chmod(directory, 0o700)
         fd, temporary_name = tempfile.mkstemp(
             prefix=".settings-", suffix=".tmp", dir=str(directory)
         )

@@ -99,7 +99,8 @@ class MockLLMProvider(BaseProvider, LLMProvider):
             "kwargs": kwargs,
         })
         response = self.chat(
-            messages, temperature=temperature, max_tokens=max_tokens, **kwargs
+            messages, temperature=temperature, max_tokens=max_tokens,
+            **kwargs
         )
         for index in range(0, len(response), 4):
             yield response[index:index + 4]

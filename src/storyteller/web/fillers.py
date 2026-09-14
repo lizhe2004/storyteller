@@ -3,11 +3,15 @@ from __future__ import annotations
 import hashlib
 import re
 import random
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..core.voice_matcher import is_narration_voice
+from ..core.observability import log_event, timed_event
+
+logger = logging.getLogger(__name__)
 
 _INTRO = ("故事就要开始喽，准备好了吗？", "那我们开始啦，认真听哦。",
           "故事就要开始了，我们一起来听吧。")
@@ -26,14 +30,20 @@ def _clean(text, topic):
     return value
 
 
-def build_thinking_text(llm, topic):
+def build_thinking_text(llm, topic, log_context=None):
     system = ("你是儿童故事应用的主持人。请从用户主题提取关键诉求，"
               "用温暖口语复述并表示要去构思。只输出口播文本，无引号、markdown、"
               "emoji 或称呼前缀，1-2句，不超过50个汉字，严禁开始讲故事。")
     try:
-        return _clean(llm.chat([{"role": "system", "content": system},
-                                {"role": "user", "content": str(topic)}],
-                               temperature=0.3, max_tokens=150), topic)
+        with timed_event(logger, "thinking_text_generation", context=log_context,
+                         phase="script"):
+            response = llm.chat([{"role": "system", "content": system},
+                                 {"role": "user", "content": str(topic)}],
+                                temperature=0.3, max_tokens=150)
+        text = _clean(response, topic)
+        log_event(logger, logging.INFO, "thinking_text_ready", context=log_context,
+                  phase="script", text_length=len(text))
+        return text
     except Exception:
         return "好的，关于{}的故事，让我好好想一想……".format(str(topic)[:20])
 
@@ -67,9 +77,11 @@ class FillerClip:
 
 
 class FillerPrefetcher:
-    def __init__(self, registry, llm_name, tts_names, cache_dir, filler_voice=None):
+    def __init__(self, registry, llm_name, tts_names, cache_dir, filler_voice=None,
+                 log_context=None):
         self.registry, self.llm_name, self.tts_names = registry, llm_name, tts_names
         self.cache_dir = Path(cache_dir) / "fillers"
+        self.log_context = log_context or {}
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.host = choose_host_voice(registry, tts_names, filler_voice)
         self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="filler")
@@ -88,7 +100,10 @@ class FillerPrefetcher:
 
     def start(self, topic, on_thinking_text=None, on_thinking_ready=None):
         def prepare_thinking():
-            text = build_thinking_text(self.registry.get_llm(self.llm_name), topic)
+            text = build_thinking_text(
+                self.registry.get_llm(self.llm_name), topic,
+                log_context=self.log_context,
+            )
             if on_thinking_text:
                 on_thinking_text(text)
             clip = self._synth("thinking", text)

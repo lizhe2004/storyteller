@@ -1,9 +1,6 @@
 services:
   storyteller:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: audio-story-generator:latest
+    image: lizhe2004/audio-story-generator:latest
     env_file:
       - .env
     environment:

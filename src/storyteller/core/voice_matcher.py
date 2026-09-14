@@ -234,10 +234,11 @@ class VoiceMatcher:
     deterministic rule matching. mode="rule" skips the LLM.
     """
 
-    def __init__(self, registry, llm=None, mode="rule"):
+    def __init__(self, registry, llm=None, mode="rule", log_context=None):
         self.registry = registry
         self.llm = llm
         self.mode = mode
+        self.log_context = log_context or {}
 
     def match_voices(
         self,
@@ -412,12 +413,15 @@ class VoiceMatcher:
         with timed_event(
             logger,
             "llm_request",
-            operation="voice_assignment",
+            context=self.log_context,
             provider=type(self.llm).__name__,
             candidate_count=len(candidates),
             character_count=len(ordered),
         ):
-            response = self.llm.chat(messages, temperature=0.0)
+            response = self.llm.chat(
+                messages,
+                temperature=0.0,
+            )
         return candidates, response
 
     def _rule_pick(self, voices, used_ids, default_provider,

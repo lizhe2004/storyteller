@@ -37,6 +37,9 @@ def _script_preview_event(preview):
 
 class StreamOrchestrator:
     def __init__(self, config, projects=None, registry=None):
+        self._configure(config, projects=projects, registry=registry)
+
+    def _configure(self, config, projects=None, registry=None):
         self.config = config
         self.pipeline = Pipeline(config, project_manager=projects)
         if registry is None:
@@ -65,6 +68,8 @@ class StreamOrchestrator:
         return default if default in names else (names[0] if names else None)
 
     def run(self, job):
+        if job.config_snapshot is not None:
+            self._configure(job.config_snapshot.to_config())
         self._active_state = None
         try:
             self._run(job)
@@ -104,6 +109,8 @@ class StreamOrchestrator:
             self.registry, llm_name, tts_names,
             str(Path(self.config.get("data_dir")) / "web_cache"),
             self.config.get("web.filler_voice"),
+            log_context={"job_id": job.id, "project_id": state.project_id,
+                         "phase": "script"},
         )
         try:
             job.phase = "script"
@@ -133,11 +140,13 @@ class StreamOrchestrator:
                 job.script_preview = event
                 job.emit(event)
 
-            state.script = StoryGenerator(llm).generate_script_stream(
-                params.topic, params.length, params.complexity,
-                with_sound=bool(params.with_sound),
-                on_preview=emit_script_preview,
-            )
+            with timed_event(job_logger, "script_generation", phase="script",
+                             topic=params.topic):
+                state.script = StoryGenerator(llm).generate_script_stream(
+                    params.topic, params.length, params.complexity,
+                    with_sound=bool(params.with_sound),
+                    on_preview=emit_script_preview,
+                )
             state.state = "script_generated"
             self.projects.save_project(state)
             self.projects.rename_for_title(state)
@@ -159,7 +168,10 @@ class StreamOrchestrator:
             job.emit({"type": "status", "phase": "voices", "message": "正在匹配音色…"})
             with timed_event(job_logger, "voice_matching", phase="voices"):
                 VoiceMatcher(self.registry, llm=llm,
-                             mode=self.config.get("voice_matcher") or "rule").match_voices(
+                             mode=self.config.get("voice_matcher") or "rule",
+                             log_context={"job_id": job.id,
+                                          "project_id": state.project_id,
+                                          "phase": "voices"}).match_voices(
                                  state.script, allowed_providers=tts_names)
             state.state = "voice_configured"
             self.projects.save_project(state)

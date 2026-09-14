@@ -163,7 +163,7 @@ Done! Output: .storyteller/stories/proj_259076a9b8e1/story.mp3
 日志采用传统文本格式，关键字段使用 `key=value`，例如：
 
 ```text
-2026-09-14 23:49:31,123 INFO storyteller.core.voice_matcher event=llm_request_completed operation=voice_assignment duration_ms=19042 candidate_count=28
+2026-09-14 23:49:31,123 INFO storyteller.core.voice_matcher event=llm_request_completed job_id=job_xxx project_id=proj_xxx phase=voices duration_ms=19042 candidate_count=28 character_count=5
 ```
 
 排查音色阶段时，可搜索同一个任务的 `job_id`，重点查看：

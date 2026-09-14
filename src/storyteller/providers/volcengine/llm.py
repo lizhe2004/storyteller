@@ -57,7 +57,8 @@ class VolcengineLLM(BaseProvider, LLMProvider):
 
         try:
             with timed_event(logger, "llm_http_request", operation="chat",
-                             provider="volcengine", model=self.model):
+                             provider="volcengine",
+                             model=self.model):
                 response = self._session.post(
                     url, headers=headers, json=body, timeout=60
                 )
@@ -94,7 +95,8 @@ class VolcengineLLM(BaseProvider, LLMProvider):
         }
         try:
             with timed_event(logger, "llm_http_request", operation="chat_stream",
-                             provider="volcengine", model=self.model):
+                             provider="volcengine",
+                             model=self.model):
                 response = self._session.post(
                     url, headers=headers, json=body, stream=True, timeout=60
                 )

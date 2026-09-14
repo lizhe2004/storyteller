@@ -2,3 +2,100 @@ export interface StoryLine { line_id: string; line_type: string; character_id?: 
 export interface StoryCharacter { id: string; name: string; description?: string; voice?: { provider: string; voice_id: string; name?: string | null } | null }
 export interface StoryDetail { id: string; title: string; topic: string; state: string; characters: { id: string; name: string }[]; lines: StoryLine[] }
 export interface ReadyAudio { encoding: string; sample_rate: number; channels: number }
+export interface VoiceAnalysisJob { job_id: string; status: string; phase: string; total: number; completed: number; failed: number; skipped: number; current?: number; error_message?: string; samples?: VoiceAnalysisSample[]; voice_summaries?: any[]; suggestions?: any[] }
+export interface VoiceAnalysisSample { sample_id: string; voice_id: string; story_id: string; character_name?: string; text: string; audio_path: string; result?: { status?: string; normalized_result?: { observed_gender?: string; observed_age?: string; timbre?: string[]; energy?: string; speech_rate?: string; confidence?: number; evidence?: string } } | null }
+
+export type SettingsSource = 'admin' | 'environment' | 'default'
+export type SettingsSourceTree = SettingsSource | { [key: string]: SettingsSourceTree }
+
+export interface RedactedSetting {
+  configured: boolean
+  masked: string | null
+  count?: number
+  /** Never returned by the API; accepted only to keep rendering safely defensive. */
+  value?: string
+}
+
+export interface ProviderSettings {
+  type?: string | null
+  api_key?: RedactedSetting
+  model?: string | null
+  endpoint?: string | null
+  base_url?: string | null
+  resource_id?: string | null
+}
+
+export interface ProviderGroupSettings {
+  providers: string[]
+  default_provider?: string | null
+  provider_config: Record<string, ProviderSettings>
+}
+
+export interface SettingsResponse {
+  web: {
+    passwords: RedactedSetting
+    secret: RedactedSetting
+    token_ttl_days: number
+    host: string
+    port: number
+    concurrency: number
+    rate_limit_per_min: number
+    filler_voice?: string | null
+  }
+  llm: ProviderGroupSettings
+  tts: ProviderGroupSettings
+  sound: ProviderGroupSettings & { enabled: boolean; dir?: string | null }
+  sources: Record<'web' | 'llm' | 'tts' | 'sound', SettingsSourceTree>
+  config_error: string | null
+  data_dir?: string | null
+}
+
+export interface ProviderConfigPatch {
+  type?: string
+  api_key?: string
+  model?: string
+  endpoint?: string
+  base_url?: string
+  resource_id?: string
+}
+
+export interface ProviderGroupPatch {
+  providers?: string[]
+  default_provider?: string | null
+  provider_config?: Record<string, ProviderConfigPatch>
+}
+
+export interface SettingsPatch {
+  web?: {
+    passwords?: string[]
+    secret?: string
+    token_ttl_days?: number
+    concurrency?: number
+    rate_limit_per_min?: number
+    filler_voice?: string
+  }
+  llm?: ProviderGroupPatch
+  tts?: ProviderGroupPatch
+  sound?: ProviderGroupPatch & { enabled?: boolean; dir?: string }
+}
+
+export interface SettingsMutationResponse {
+  version: string
+  updated_at: string
+  effective_for: 'new_jobs'
+  message: string
+  settings: SettingsResponse
+}
+
+export interface ConnectionTestPayload {
+  provider: string
+  config: ProviderConfigPatch
+  timeout_seconds?: number
+  voice_id?: string
+}
+
+export interface ConnectionTestResult {
+  ok: boolean
+  provider: string
+  message: string
+}

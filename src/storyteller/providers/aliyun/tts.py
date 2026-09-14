@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from functools import lru_cache
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from ..base import BaseProvider
 
 _DEFAULT_ENDPOINT = "https://dashscope.aliyuncs.com"
 _API_PATH = "/api/v1/services/audio/tts/SpeechSynthesizer"
+logger = logging.getLogger(__name__)
 
 
 class AliyunTTS(BaseProvider, TTSProvider):
@@ -132,12 +134,28 @@ class AliyunTTS(BaseProvider, TTSProvider):
             response.raise_for_status()
             payload = response.json()
         except requests.RequestException as exc:
+            error_payload = _response_payload(response)
+            logger.error(
+                "event=tts_request_failed provider=aliyun model=%s "
+                "voice_id=%s request_input_json=%s http_status=%s "
+                "response_code=%s response_message=%s request_id=%s",
+                model,
+                voice_config.voice_id,
+                json.dumps(req_input, ensure_ascii=False, separators=(",", ":")),
+                getattr(response, "status_code", None),
+                error_payload.get("code"),
+                error_payload.get("message"),
+                error_payload.get("request_id"),
+            )
             raise TTSError(
                 "Aliyun TTS request failed: {}".format(
                     _error_detail(exc, response)
                 )
             ) from exc
         except ValueError as exc:
+            _log_request_failure(
+                "non_json_response", model, voice_config, req_input, response
+            )
             raise TTSError(
                 "Aliyun TTS returned a non-JSON response"
             ) from exc
@@ -148,6 +166,10 @@ class AliyunTTS(BaseProvider, TTSProvider):
             else None
         )
         if not audio_url:
+            _log_request_failure(
+                "missing_audio_url", model, voice_config, req_input, response,
+                payload=payload,
+            )
             raise TTSError("Aliyun TTS returned no audio URL")
 
         download = None
@@ -161,6 +183,10 @@ class AliyunTTS(BaseProvider, TTSProvider):
             # flows into pipeline error logs. The chained traceback
             # (from exc) stays local and keeps the detail for debugging.
             status_code = getattr(download, "status_code", None)
+            _log_request_failure(
+                "audio_download_failed", model, voice_config, req_input,
+                response, payload={"download_http_status": status_code},
+            )
             if status_code is not None:
                 detail = "HTTP {}".format(status_code)
             else:
@@ -227,6 +253,34 @@ def _error_detail(exc, response):
             if message:
                 return message
     return str(exc)
+
+
+def _response_payload(response):
+    if response is None:
+        return {}
+    try:
+        payload = response.json()
+    except (ValueError, AttributeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _log_request_failure(reason, model, voice_config, req_input, response,
+                         payload=None):
+    payload = payload if payload is not None else _response_payload(response)
+    logger.error(
+        "event=tts_request_diagnostic provider=aliyun reason=%s model=%s "
+        "voice_id=%s request_input_json=%s http_status=%s response_code=%s "
+        "response_message=%s request_id=%s",
+        reason,
+        model,
+        voice_config.voice_id,
+        json.dumps(req_input, ensure_ascii=False, separators=(",", ":")),
+        getattr(response, "status_code", None),
+        payload.get("code"),
+        payload.get("message"),
+        payload.get("request_id"),
+    )
 
 
 @lru_cache(maxsize=1)

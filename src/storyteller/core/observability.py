@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime
 import logging
+import re
 import time
 
 
@@ -17,6 +18,13 @@ def with_context(logger, **context):
 
 def _format_value(value):
     return str(value).replace(" ", "_").replace("\n", "\\n")
+
+
+def _safe_exception_message(exc):
+    """Keep useful provider errors while removing URLs and line breaks."""
+    message = str(exc or "")
+    message = re.sub(r"https?://\S+", "[redacted_url]", message)
+    return message.replace("\r", " ").replace("\n", " ")[:500]
 
 
 def log_event(logger, level, event, *, context=None, **fields):
@@ -42,7 +50,8 @@ def timed_event(logger, event, *, context=None, level=logging.INFO, **fields):
         duration = int((time.perf_counter() - started) * 1000)
         log_event(
             logger, logging.ERROR, "{}_failed".format(event), context=context,
-            duration_ms=duration, error_type=type(exc).__name__, **fields
+            duration_ms=duration, error_type=type(exc).__name__,
+            exception_message=_safe_exception_message(exc), **fields
         )
         raise
     else:

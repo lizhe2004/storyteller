@@ -4,6 +4,8 @@ import pytest
 
 from storyteller.core.config import Config
 from storyteller.core.runtime_settings import RuntimeSettingsStore
+from storyteller.web.app import create_app
+from storyteller.web.jobs import JobParams
 
 
 def _env_config():
@@ -180,3 +182,17 @@ def test_update_rejects_unknown_top_level_group_without_writing(tmp_path):
         store.update({"database": {"url": "example"}})
 
     assert not (tmp_path / "config" / "settings.json").exists()
+
+
+def test_web_app_state_contains_runtime_settings_store(tmp_path):
+    config = Config()
+    config.set("data_dir", str(tmp_path))
+
+    app = create_app(config, registry=object())
+
+    assert isinstance(app.state.runtime_settings, RuntimeSettingsStore)
+    assert app.state.runtime_settings.snapshot().to_config().get(
+        "data_dir"
+    ) == str(tmp_path)
+    job = app.state.jobs.create(JobParams(topic="snapshot-at-creation"))
+    assert job.config_snapshot is app.state.runtime_settings.snapshot()

@@ -32,7 +32,10 @@ class _FakeResponse:
     def iter_lines(self, decode_unicode=False):
         if decode_unicode:
             return iter(self.stream_lines)
-        return iter(line.encode("latin-1") for line in self.stream_lines)
+        return iter(
+            line if isinstance(line, bytes) else line.encode("latin-1")
+            for line in self.stream_lines
+        )
 
 
 class _FakeSession:
@@ -123,3 +126,29 @@ def test_volcengine_stream_decodes_utf8_sse_text():
     assert list(llm.chat_stream([{"role": "user", "content": "hi"}])) == [
         "你好，世界"
     ]
+
+
+def test_volcengine_stream_logs_only_provider_http_context(caplog):
+    config = _config()
+    llm = VolcengineLLM(config)
+    fake_response = _FakeResponse()
+    fake_response.stream_lines = [
+        b'data: {"choices":[{"delta":{"content":"ok"}}]}',
+        b'data: [DONE]',
+    ]
+    fake = _FakeSession(fake_response)
+    llm._session = fake
+
+    with caplog.at_level("INFO", logger="storyteller.providers.volcengine.llm"):
+        assert list(llm.chat_stream(
+            [{"role": "user", "content": "hi"}],
+        )) == ["ok"]
+
+    body = fake.calls[0]["json"]
+    assert "log_context" not in body
+    assert "operation" not in body
+    message = "\n".join(record.getMessage() for record in caplog.records)
+    assert "event=llm_http_request_started" in message
+    assert "operation=chat_stream" in message
+    assert "phase=" not in message
+    assert "job_id=" not in message

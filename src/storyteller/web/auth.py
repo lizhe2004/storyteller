@@ -6,9 +6,18 @@ import threading
 import time
 from collections import defaultdict, deque
 
+from fastapi import HTTPException, Request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 SESSION_COOKIE = "storyteller_session"
+
+
+def require_login(request: Request):
+    """Reject requests without a valid Web session cookie."""
+    if not request.app.state.issuer.verify(
+        request.cookies.get(SESSION_COOKIE)
+    ):
+        raise HTTPException(status_code=401, detail="未登录")
 
 
 def check_password(password, passwords):
@@ -38,6 +47,10 @@ class RateLimiter:
         self.per_minute = int(per_minute)
         self._hits = defaultdict(deque)
         self._lock = threading.Lock()
+
+    def reconfigure(self, per_minute):
+        with self._lock:
+            self.per_minute = int(per_minute)
 
     def allow(self, key):
         if self.per_minute <= 0:

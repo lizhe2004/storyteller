@@ -67,7 +67,8 @@ class OpenAICompatibleLLM(BaseProvider, LLMProvider):
 
         try:
             with timed_event(logger, "llm_http_request", operation="chat",
-                             provider=self.provider_name, model=self.model):
+                             provider=self.provider_name,
+                             model=self.model):
                 response = self._session.post(
                     url, headers=headers, json=body, timeout=60
                 )
@@ -106,7 +107,8 @@ class OpenAICompatibleLLM(BaseProvider, LLMProvider):
         }
         try:
             with timed_event(logger, "llm_http_request", operation="chat_stream",
-                             provider=self.provider_name, model=self.model):
+                             provider=self.provider_name,
+                             model=self.model):
                 response = self._session.post(
                     url, headers=headers, json=body, stream=True, timeout=60
                 )

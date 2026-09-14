@@ -288,6 +288,35 @@ def test_synthesize_surfaces_http_error_message(tmp_path):
         tts.synthesize("你好", _voice(), tmp_path / "out.mp3")
 
 
+def test_synthesize_logs_safe_full_request_on_api_error(tmp_path, caplog):
+    tts = AliyunTTS(_config())
+    tts._session = _FakeSession(
+        _FakeResponse(
+            402,
+            {
+                "code": "FreeQuotaExhausted",
+                "message": "free quota exhausted",
+                "request_id": "req-quota",
+            },
+        ),
+        _FakeResponse(200, content=b"x"),
+    )
+
+    with caplog.at_level("ERROR", logger="storyteller.providers.aliyun.tts"):
+        with pytest.raises(TTSError):
+            tts.synthesize("你好 世界", _voice(), tmp_path / "out.mp3")
+
+    message = "\n".join(record.getMessage() for record in caplog.records)
+    assert "event=tts_request_failed" in message
+    assert '"text":"你好 世界"' in message
+    assert '"voice":"longanhuan_v3.6"' in message
+    assert '"format":"mp3"' in message
+    assert "model=qwen-audio-3.0-tts-flash" in message
+    assert "response_code=FreeQuotaExhausted" in message
+    assert "request_id=req-quota" in message
+    assert "test-key" not in message
+
+
 def test_synthesize_raises_when_audio_url_missing(tmp_path):
     tts = AliyunTTS(_config())
     tts._session = _FakeSession(
