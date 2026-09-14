@@ -52,7 +52,70 @@ def test_generate_script_stream_does_not_emit_duplicate_preview_snapshots():
 
     generator.generate_script_stream("测试", on_preview=previews.append)
 
-    assert previews == [{"title": "测试", "characters": [], "lines": []}]
+    assert previews == [{"title": "测试", "opening": "", "characters": [], "lines": []}]
+
+
+def test_generate_script_stream_emits_opening_deltas_and_preview_field():
+    class _ChunkedLLM:
+        def chat_stream(self, messages, **kwargs):
+            yield '{"title":"T","opening":"夜幕'
+            yield '降临","characters":[],"lines":[]}'
+
+    previews = []
+    opening_deltas = []
+    generator = StoryGenerator(_ChunkedLLM())
+
+    script = generator.generate_script_stream(
+        "测试", on_preview=previews.append, on_opening_delta=opening_deltas.append
+    )
+
+    assert opening_deltas == ["夜幕", "降临"]
+    assert [preview["opening"] for preview in previews] == ["夜幕", "夜幕降临"]
+    assert script.title == "T"
+    assert not hasattr(script, "opening")
+
+
+def test_generate_script_stream_reports_rewritten_opening_prefix_without_affecting_script(
+    monkeypatch, caplog
+):
+    snapshots = iter([
+        {"title": "T", "opening": "夜幕", "characters": [], "lines": []},
+        {"title": "T", "opening": "星光", "characters": [], "lines": []},
+        {"title": "T", "opening": "最终", "characters": [], "lines": []},
+    ])
+
+    class _Parser:
+        def parse(self, text):
+            return next(snapshots)
+
+    class _ChunkedLLM:
+        def chat_stream(self, messages, **kwargs):
+            yield "first"
+            yield "second"
+            yield '{"title":"T","opening":"最终","characters":[],"lines":[]}'
+
+    monkeypatch.setattr("storyteller.core.story_generator.JSONParser", _Parser)
+    opening_deltas = []
+    generator = StoryGenerator(_ChunkedLLM())
+
+    with caplog.at_level("WARNING", logger="storyteller.core.story_generator"):
+        script = generator.generate_script_stream(
+            "测试", on_opening_delta=opening_deltas.append
+        )
+
+    assert opening_deltas == ["夜幕"]
+    assert "opening protocol error" in caplog.text
+    assert script.title == "T"
+    assert not hasattr(script, "opening")
+
+
+def test_generate_script_prompt_describes_ordered_opening_constraints():
+    generator, llm = _make_generator()
+    generator.generate_script(topic="测试")
+    system_content = llm.calls[-1]["messages"][0]["content"]
+
+    assert "标题、等待期故事开场白、角色信息、正文台词" in system_content
+    assert "15～35个汉字" in system_content
 
 
 def test_generate_script_sets_topic():

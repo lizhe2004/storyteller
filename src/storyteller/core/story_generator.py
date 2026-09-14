@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
+from typing import Callable, Optional
 
 from partialjson.json_parser import JSONParser
 
@@ -9,6 +11,9 @@ from .exceptions import LLMError
 from .llm import LLMProvider
 from .models import Character, Script, ScriptLine, SoundEffect
 from .utils import generate_id
+
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -63,6 +68,10 @@ DEFAULT_SYSTEM_PROMPT = (
     "11. direction 是给配音的提示，不是台词本身：不要写台词内容，"
     "不加引号，不超过20个字，避免“开心/难过”这类笼统词，尽量具体可演。\n"
     "12. 旁白行不要写 direction。\n"
+    "13. 按以下顺序生成：标题、等待期故事开场白、角色信息、正文台词。"
+    "优先尽快输出等待期故事开场白；它用于在正式角色音色匹配期间播放，"
+    "控制在15～35个汉字以内，不属于正文台词，也不会进入最终故事音频。"
+    "生成过程中允许系统按已经产生的文字增量合成语音，因此不要改写已经输出的开头。\n"
 )
 
 
@@ -154,6 +163,7 @@ class StoryGenerator:
         complexity="simple",
         with_sound=False,
         on_preview=None,
+        on_opening_delta: Optional[Callable[[str], None]] = None,
         **kwargs,
     ):
         """Generate a script while reporting partial JSON snapshots.
@@ -172,20 +182,31 @@ class StoryGenerator:
         ]
         chunks = []
         last_preview = None
+        last_opening_text = ""
+        opening_protocol_error = False
         try:
             for chunk in self.llm.chat_stream(messages, **kwargs):
                 if not chunk:
                     continue
                 chunks.append(str(chunk))
-                if on_preview is None:
+                if on_preview is None and on_opening_delta is None:
                     continue
                 try:
                     preview = JSONParser().parse("".join(chunks))
                 except (TypeError, ValueError, SyntaxError):
                     continue
                 if isinstance(preview, dict):
+                    opening = str(preview.get("opening") or "")
+                    if opening and not opening_protocol_error:
+                        if opening.startswith(last_opening_text) and len(opening) > len(last_opening_text):
+                            if on_opening_delta is not None:
+                                on_opening_delta(opening[len(last_opening_text):])
+                            last_opening_text = opening
+                        elif opening != last_opening_text:
+                            logger.warning("opening protocol error: already-sent prefix was rewritten")
+                            opening_protocol_error = True
                     snapshot = _script_preview_from_json(preview)
-                    if snapshot != last_preview:
+                    if on_preview is not None and snapshot != last_preview:
                         on_preview(snapshot)
                         last_preview = snapshot
         except Exception as exc:
@@ -312,6 +333,7 @@ def _script_preview_from_json(data):
         })
     return {
         "title": str(data.get("title") or ""),
+        "opening": str(data.get("opening") or ""),
         "characters": characters,
         "lines": lines,
     }
