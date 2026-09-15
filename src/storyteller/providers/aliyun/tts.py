@@ -171,6 +171,7 @@ class AliyunStreamingTTSSession(StreamingTTSSession):
                 elif self._spill_has_audio():
                     chunk = StreamChunk(CHUNK_AUDIO, self._read_spilled_audio())
                 elif self._failure is not None:
+                    self._close_spill()
                     raise self._failure
                 else:
                     self._close_spill()
@@ -308,6 +309,7 @@ class AliyunStreamingTTSSession(StreamingTTSSession):
                 self._failure = error
             self._accepting = False
             self._completed = True
+            self._close_spill()
             self._completion.set()
             self._changed.notify_all()
 

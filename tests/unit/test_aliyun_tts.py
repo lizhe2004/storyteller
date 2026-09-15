@@ -9,6 +9,7 @@ import pytest
 from storyteller.core.config import Config
 from storyteller.core.exceptions import TTSError
 from storyteller.core.models import VoiceConfig
+from storyteller.providers.aliyun import tts as aliyun_tts_module
 from storyteller.providers.aliyun.tts import AliyunTTS, load_voice_catalog
 
 _ENDPOINT = "https://dashscope.aliyuncs.com"
@@ -561,6 +562,55 @@ def test_realtime_session_finishes_before_draining_more_than_bounded_audio_chunk
 
     assert len(audio) > 0
     assert created["synthesizer"].calls == [("streaming_complete",)]
+
+
+def test_realtime_session_failure_closes_overflow_spill_before_iterator_raises(
+    monkeypatch,
+):
+    """Provider failure must remove overflow storage while queued audio drains."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    created = {}
+    input_pcm = struct.pack("<3h", 1, 2, 3)
+
+    real_temporary_file = aliyun_tts_module.tempfile.TemporaryFile
+
+    def tracked_temporary_file(*args, **kwargs):
+        spill = real_temporary_file(*args, **kwargs)
+        created["spill"] = spill
+        return spill
+
+    monkeypatch.setattr(
+        aliyun_tts_module.tempfile,
+        "TemporaryFile",
+        tracked_temporary_file,
+    )
+
+    class FailingLongAudioSynthesizer:
+        def __init__(self, callback):
+            self.callback = callback
+
+        def streaming_call(self, text):
+            pass
+
+        def streaming_complete(self):
+            self.callback.on_data(input_pcm)
+            self.callback.on_data(input_pcm)
+            self.callback.on_error("provider failed")
+
+    def factory(**kwargs):
+        return FailingLongAudioSynthesizer(kwargs["callback"])
+
+    tts._realtime_synthesizer_factory = factory
+    session = tts.open_stream(_voice())
+    session._QUEUE_SIZE = 1
+
+    with pytest.raises(TTSError, match="provider failed"):
+        session.finish()
+
+    assert created["spill"].closed
+    assert session._spill is None
+    with pytest.raises(TTSError, match="provider failed"):
+        list(session.iter_audio())
 
 
 def test_realtime_session_redacts_callback_credentials_and_signed_urls():
