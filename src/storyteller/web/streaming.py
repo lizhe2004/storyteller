@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 import logging
+import threading
 
 from ..core.exceptions import TTSError
-from ..core.pipeline import Pipeline
+from ..core.pipeline import Pipeline, human_time
 from ..core.story_generator import StoryGenerator
-from ..core.voice_matcher import VoiceMatcher
 from ..core.tts import CHUNK_AUDIO, STREAM_SAMPLE_RATE
-from .fillers import FillerPrefetcher
-from .tts_chunks import audio_file_to_standard_pcm, iter_pcm_frames, pcm_to_mp3_file, pcm_duration_ms
-from ..core.pipeline import human_time
+from ..core.voice_matcher import VoiceMatcher
+from .fillers import cached_start_notice, choose_host_voice, start_notice_text
+from .tts_chunks import audio_file_to_standard_pcm, iter_pcm_frames, pcm_duration_ms, pcm_to_mp3_file
+from .tts_scheduler import TTSScheduler
 from ..core.observability import log_event, timed_event, with_context
 
 logger = logging.getLogger(__name__)
@@ -29,10 +30,56 @@ def _script_preview_event(preview):
     return {
         "type": "script_preview",
         "title": preview.get("title") or "",
+        "opening": preview.get("opening") or "",
         "total": len(lines),
         "characters": characters,
         "lines": lines,
     }
+
+
+class _AudioPump:
+    """Drain one scheduled session on a dedicated reader without blocking text input."""
+
+    def __init__(self, session, job, on_first_audio=None):
+        self.session = session
+        self.job = job
+        self.on_first_audio = on_first_audio
+        self.pcm = bytearray()
+        self.error = None
+        self.started = False
+        self._thread = threading.Thread(target=self._drain, name="web-tts-audio", daemon=True)
+
+    def start(self):
+        self._thread.start()
+
+    def finish(self):
+        self.session.finish()
+        self._thread.join()
+        if self.error is not None:
+            raise self.error
+        return bytes(self.pcm)
+
+    def cancel(self):
+        try:
+            self.session.cancel()
+        finally:
+            self._thread.join(timeout=1)
+
+    def _drain(self):
+        try:
+            for chunk in self.session.iter_audio():
+                if chunk.kind != CHUNK_AUDIO:
+                    continue
+                if len(chunk.data) % 2:
+                    raise ValueError("PCM frame must have even byte length")
+                if not self.started:
+                    self.started = True
+                    if self.on_first_audio is not None:
+                        self.on_first_audio()
+                self.job.emit_bytes(chunk.data)
+                self.pcm.extend(chunk.data)
+        except Exception as exc:  # surfaced by finish() in the orchestration thread
+            self.error = exc
 
 
 class StreamOrchestrator:
@@ -66,6 +113,43 @@ class StreamOrchestrator:
         names = self.registry.list_llm_names()
         default = self.config.get("llm.default_provider")
         return default if default in names else (names[0] if names else None)
+
+    def _open_session(self, scheduler, voice, *, directives=None, context=None):
+        return scheduler.open(
+            voice.provider,
+            self.registry.get_tts_model(voice),
+            voice,
+            directives=directives,
+            context=context,
+        )
+
+    def _play_start_notice(self, job, scheduler, host):
+        text = start_notice_text()
+        job.emit({"type": "start_notice", "text": text})
+        if not host:
+            job.emit({"type": "warning", "message": "无可用主持人音色，跳过开播提示"})
+            return
+        _, voice = host
+        pump = None
+        try:
+            pump = _AudioPump(self._open_session(scheduler, voice), job)
+            pump.start()
+            pump.session.send_text(text)
+            pump.finish()
+            return
+        except Exception as exc:
+            if pump is not None:
+                pump.cancel()
+            job.emit({"type": "warning", "message": "开播提示实时语音失败：{}".format(exc)})
+        try:
+            clip = cached_start_notice(
+                self.registry, host,
+                Path(self.config.get("data_dir") or ".storyteller") / "web_cache",
+            )
+            if clip:
+                self._send_pcm_file(job, clip.mp3_path)
+        except Exception as exc:
+            job.emit({"type": "warning", "message": "开播提示不可用：{}".format(exc)})
 
     def run(self, job):
         if job.config_snapshot is not None:
@@ -105,118 +189,115 @@ class StreamOrchestrator:
         job.project_id = state.project_id
         job_logger = with_context(job_logger, project_id=state.project_id)
         log_event(job_logger, logging.INFO, "project_created", topic=params.topic)
-        fillers = FillerPrefetcher(
-            self.registry, llm_name, tts_names,
-            str(Path(self.config.get("data_dir")) / "web_cache"),
-            self.config.get("web.filler_voice"),
-            log_context={"job_id": job.id, "project_id": state.project_id,
-                         "phase": "script"},
-        )
+
+        scheduler = TTSScheduler(self.registry, self.config)
+        host = choose_host_voice(self.registry, tts_names, self.config.get("web.filler_voice"))
+        opening_pump = None
+        opening_aborted = False
+
+        def abort_opening(exc=None):
+            nonlocal opening_aborted, opening_pump
+            if opening_aborted:
+                return
+            opening_aborted = True
+            if opening_pump is not None:
+                opening_pump.cancel()
+            if exc is not None:
+                job.emit({"type": "warning", "message": "开场实时语音失败：{}".format(exc)})
+            job.emit({"type": "opening_audio_abort"})
+
+        def emit_opening_delta(text):
+            nonlocal opening_pump
+            if opening_aborted or not text:
+                return
+            job.emit({"type": "opening_text_delta", "text": text})
+            if opening_pump is None:
+                if not host:
+                    abort_opening()
+                    return
+                try:
+                    opening_pump = _AudioPump(
+                        self._open_session(scheduler, host[1]), job,
+                        on_first_audio=lambda: job.emit({"type": "opening_audio_start"}),
+                    )
+                    opening_pump.start()
+                except Exception as exc:
+                    abort_opening(exc)
+                    return
+            try:
+                opening_pump.session.send_text(text)
+            except Exception as exc:
+                abort_opening(exc)
+
+        job.phase = "script"
+        job.emit({"type": "status", "phase": "script", "message": "正在生成剧本…"})
+        llm = self.registry.get_llm(llm_name)
+
+        def emit_script_preview(preview):
+            event = _script_preview_event(preview)
+            job.script_preview = event
+            job.emit(event)
+
         try:
-            job.phase = "script"
-            job.emit({"type": "status", "phase": "script", "message": "正在生成剧本…"})
-            thinking_started = False
-            thinking_audio_sent = False
-            thinking_closed = False
-            def emit_thinking_text(text):
-                nonlocal thinking_started
-                if thinking_closed:
-                    return
-                thinking_started = True
-                job.emit({"type": "filler_start", "kind": "thinking", "text": text})
-            def emit_thinking_audio(clip):
-                nonlocal thinking_audio_sent
-                if thinking_closed or thinking_audio_sent:
-                    return
-                pcm = self._send_pcm_file(job, clip.mp3_path)
-                thinking_audio_sent = True
-                job.emit({"type": "filler_end", "kind": "thinking", "duration_ms": pcm_duration_ms(pcm)})
-            fillers.start(params.topic, on_thinking_text=emit_thinking_text,
-                          on_thinking_ready=emit_thinking_audio)
-            llm = self.registry.get_llm(llm_name)
-
-            def emit_script_preview(preview):
-                event = _script_preview_event(preview)
-                job.script_preview = event
-                job.emit(event)
-
-            with timed_event(job_logger, "script_generation", phase="script",
-                             topic=params.topic):
+            with timed_event(job_logger, "script_generation", phase="script", topic=params.topic):
                 state.script = StoryGenerator(llm).generate_script_stream(
                     params.topic, params.length, params.complexity,
                     with_sound=bool(params.with_sound),
                     on_preview=emit_script_preview,
+                    on_opening_delta=emit_opening_delta,
                 )
-            state.state = "script_generated"
-            self.projects.save_project(state)
-            self.projects.rename_for_title(state)
-            self.pipeline._export_script(state)
-            if job.cancel_event.is_set():
-                job.phase = "canceled"; job.emit({"type": "canceled"}); return
+        except Exception:
+            if opening_pump is not None:
+                opening_pump.cancel()
+            raise
 
-            thinking_sent = False
-            thinking = fillers.get("thinking", timeout=0)
-            if thinking and not thinking_audio_sent:
-                pcm = self._send_pcm_file(job, thinking.mp3_path)
-                thinking_audio_sent = True
-                job.emit({"type": "filler_end", "kind": "thinking", "duration_ms": pcm_duration_ms(pcm)})
-                thinking_sent = True
-            else:
-                thinking_sent = thinking_audio_sent
+        if opening_pump is not None and not opening_aborted:
+            try:
+                opening_pcm = opening_pump.finish()
+                job.emit({"type": "opening_audio_end", "duration_ms": pcm_duration_ms(opening_pcm)})
+            except Exception as exc:
+                abort_opening(exc)
 
-            job.phase = "voices"
-            job.emit({"type": "status", "phase": "voices", "message": "正在匹配音色…"})
-            with timed_event(job_logger, "voice_matching", phase="voices"):
-                VoiceMatcher(self.registry, llm=llm,
-                             mode=self.config.get("voice_matcher") or "rule",
-                             log_context={"job_id": job.id,
-                                          "project_id": state.project_id,
-                                          "phase": "voices"}).match_voices(
-                                 state.script, allowed_providers=tts_names)
-            state.state = "voice_configured"
-            self.projects.save_project(state)
-            self.pipeline._export_script(state)
-            if not thinking_sent and not thinking_started:
-                thinking = fillers.get("thinking", timeout=0)
-                if thinking:
-                    job.emit({"type": "filler_start", "kind": "thinking", "text": thinking.text})
-                    thinking_started = True
-                    pcm = self._send_pcm_file(job, thinking.mp3_path)
-                    thinking_audio_sent = True
-                    job.emit({"type": "filler_end", "kind": "thinking", "duration_ms": pcm_duration_ms(pcm)})
-                    thinking_sent = True
-            if thinking_started and not thinking_sent:
-                thinking_closed = True
-                job.emit({"type": "filler_abort", "kind": "thinking"})
+        state.state = "script_generated"
+        self.projects.save_project(state)
+        self.projects.rename_for_title(state)
+        self.pipeline._export_script(state)
+        if job.cancel_event.is_set():
+            job.phase = "canceled"; job.emit({"type": "canceled"}); return
 
-            char_map = {c.id: c.voice_config for c in state.script.characters if c.voice_config}
-            narrator = self.pipeline._find_narrator_voice(state.script, char_map)
-            names = {c.id: c.name for c in state.script.characters}
-            script_ready = {"type": "script_ready", "title": state.script.title,
-                            "total": len(state.script.lines),
-                            "characters": [{"id": c.id, "name": c.name,
-                                            "description": c.description,
-                                            "voice": ({"provider": c.voice_config.provider,
-                                                       "voice_id": c.voice_config.voice_id,
-                                                       "name": c.voice_config.name}
-                                                      if c.voice_config else None)}
-                                           for c in state.script.characters],
-                            "lines": [{"line_id": l.line_id, "line_type": l.line_type,
-                                       "character_id": l.character_id,
-                                       "speaker": names.get(l.character_id) or ("旁白" if l.line_type == "narration" else "未知角色"),
-                                       "text": l.text}
-                                      for l in state.script.lines]}
-            job.script_ready = script_ready
-            job.emit(script_ready)
-            log_event(job_logger, logging.INFO, "script_ready_sent",
-                      phase="voices", line_count=len(state.script.lines))
-            intro = fillers.get("intro", timeout=0)
-            if intro:
-                job.emit({"type": "filler_start", "kind": "intro", "text": intro.text})
-                pcm = self._send_pcm_file(job, intro.mp3_path)
-                job.emit({"type": "filler_end", "kind": "intro", "duration_ms": pcm_duration_ms(pcm)})
-        finally:
-            fillers.shutdown()
+        job.phase = "voices"
+        job.emit({"type": "status", "phase": "voices", "message": "正在匹配音色…"})
+        with timed_event(job_logger, "voice_matching", phase="voices"):
+            VoiceMatcher(self.registry, llm=llm,
+                         mode=self.config.get("voice_matcher") or "rule",
+                         log_context={"job_id": job.id, "project_id": state.project_id,
+                                      "phase": "voices"}).match_voices(
+                             state.script, allowed_providers=tts_names)
+        state.state = "voice_configured"
+        self.projects.save_project(state)
+        self.pipeline._export_script(state)
+
+        char_map = {c.id: c.voice_config for c in state.script.characters if c.voice_config}
+        narrator = self.pipeline._find_narrator_voice(state.script, char_map)
+        names = {c.id: c.name for c in state.script.characters}
+        script_ready = {"type": "script_ready", "title": state.script.title,
+                        "total": len(state.script.lines),
+                        "characters": [{"id": c.id, "name": c.name,
+                                        "description": c.description,
+                                        "voice": ({"provider": c.voice_config.provider,
+                                                   "voice_id": c.voice_config.voice_id,
+                                                   "name": c.voice_config.name}
+                                                  if c.voice_config else None)}
+                                       for c in state.script.characters],
+                        "lines": [{"line_id": l.line_id, "line_type": l.line_type,
+                                   "character_id": l.character_id,
+                                   "speaker": names.get(l.character_id) or ("旁白" if l.line_type == "narration" else "未知角色"),
+                                   "text": l.text}
+                                  for l in state.script.lines]}
+        job.script_ready = script_ready
+        job.emit(script_ready)
+        log_event(job_logger, logging.INFO, "script_ready_sent", phase="voices", line_count=len(state.script.lines))
+        self._play_start_notice(job, scheduler, host)
 
         if job.cancel_event.is_set():
             job.phase = "canceled"; job.emit({"type": "canceled"}); return
@@ -243,31 +324,38 @@ class StreamOrchestrator:
             job.emit({"type": "line_start", "line_id": line.line_id, "index": index,
                       "total": job.total, "speaker": names.get(line.character_id) or line.line_type,
                       "text": line.text, "has_sound": has_cues})
+            # The parser currently yields formal lines only after the script is complete;
+            # this is therefore the first safe point to submit their text after voice assignment.
+            job.emit({"type": "line_text_delta", "line_id": line.line_id, "index": index,
+                      "text": line.text})
             out = self.pipeline._audio_path(state.project_id, line.line_id, "mp3")
             directives, context = self.pipeline.line_context_directives(state.script.lines, index - 1)
+            tts_timing = line.processing.setdefault("tts", {})
+            tts_timing["started_at"] = human_time()
+            streamed = False
+            pump = None
             try:
-                stream = self.registry.get_stream_tts(voice.provider)
-                tts_timing = line.processing.setdefault("tts", {})
-                tts_timing["started_at"] = human_time()
-                streamed = stream is not None and not has_cues
-                with timed_event(
-                    job_logger,
-                    "tts_line",
-                    phase="line",
-                    line_id=line.line_id,
-                    provider=voice.provider,
-                    index=index,
-                ):
-                    if streamed:
-                        buf = bytearray()
-                        for chunk in stream.stream_synthesize(line.text, voice, directives=directives, context=context):
-                            if chunk.kind != CHUNK_AUDIO:
-                                continue
-                            if len(chunk.data) % 2:
-                                raise ValueError("PCM frame must have even byte length")
-                            job.emit_bytes(chunk.data); buf.extend(chunk.data)
-                        pcm_to_mp3_file(bytes(buf), out)
-                    else:
+                with timed_event(job_logger, "tts_line", phase="line", line_id=line.line_id,
+                                 provider=voice.provider, index=index):
+                    if not has_cues:
+                        try:
+                            pump = _AudioPump(
+                                self._open_session(scheduler, voice, directives=directives, context=context),
+                                job,
+                            )
+                            pump.start()
+                            pump.session.send_text(line.text)
+                            pcm = pump.finish()
+                            if not pcm:
+                                raise TTSError("实时 TTS 没有返回音频")
+                            pcm_to_mp3_file(pcm, out)
+                            streamed = True
+                        except Exception as exc:
+                            if pump is not None:
+                                pump.cancel()
+                            job.emit({"type": "warning", "line_id": line.line_id,
+                                      "message": "实时语音降级：{}".format(exc)})
+                    if not streamed:
                         self.registry.get_tts(voice.provider).synthesize(
                             line.text, voice, out, directives=directives, context=context)
                 tts_timing["ended_at"] = human_time()
@@ -290,7 +378,7 @@ class StreamOrchestrator:
                 duration_ms = len(AudioSegment.from_file(str(out)))
                 job.emit({"type": "line_end", "line_id": line.line_id, "duration_ms": duration_ms})
             except Exception as exc:
-                if "tts_timing" in locals() and tts_timing.get("started_at") and not tts_timing.get("ended_at"):
+                if tts_timing.get("started_at") and not tts_timing.get("ended_at"):
                     tts_timing["ended_at"] = human_time()
                 job.emit({"type": "warning", "line_id": line.line_id, "message": str(exc)})
         if not line_paths:

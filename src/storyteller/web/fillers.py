@@ -1,55 +1,21 @@
 from __future__ import annotations
 
 import hashlib
-import re
-import random
-import logging
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 from ..core.voice_matcher import is_narration_voice
-from ..core.observability import log_event, timed_event
-
-logger = logging.getLogger(__name__)
-
-_INTRO = ("故事就要开始喽，准备好了吗？", "那我们开始啦，认真听哦。",
-          "故事就要开始了，我们一起来听吧。")
+START_NOTICE = "故事就要开始喽，准备好了吗？"
 
 
-def _clean(text, topic):
-    value = (text or "").strip().strip('“”"\'「」\n\t')
-    value = re.sub(r"^(好的，?|嗯，?|OK，?)", "", value).strip()
-    value = re.sub(r"\s+", "", value)
-    if not value:
-        value = "好的，关于{}的故事，让我好好想一想……".format(str(topic)[:20])
-    if len(value) > 50:
-        cut = value[:50]
-        pos = max(cut.rfind("，"), cut.rfind("。"))
-        value = cut[:pos] if pos > 12 else cut
-    return value
-
-
-def build_thinking_text(llm, topic, log_context=None):
-    system = ("你是儿童故事应用的主持人。请从用户主题提取关键诉求，"
-              "用温暖口语复述并表示要去构思。只输出口播文本，无引号、markdown、"
-              "emoji 或称呼前缀，1-2句，不超过50个汉字，严禁开始讲故事。")
-    try:
-        with timed_event(logger, "thinking_text_generation", context=log_context,
-                         phase="script"):
-            response = llm.chat([{"role": "system", "content": system},
-                                 {"role": "user", "content": str(topic)}],
-                                temperature=0.3, max_tokens=150)
-        text = _clean(response, topic)
-        log_event(logger, logging.INFO, "thinking_text_ready", context=log_context,
-                  phase="script", text_length=len(text))
-        return text
-    except Exception:
-        return "好的，关于{}的故事，让我好好想一想……".format(str(topic)[:20])
+def start_notice_text():
+    """Return the fixed notice played between the opening and story lines."""
+    return START_NOTICE
 
 
 def intro_text():
-    return random.choice(_INTRO)
+    """Compatibility name for callers that still import the former intro text."""
+    return start_notice_text()
 
 
 def choose_host_voice(registry, tts_names, filler_voice=None):
@@ -76,54 +42,16 @@ class FillerClip:
     mp3_path: str
 
 
-class FillerPrefetcher:
-    def __init__(self, registry, llm_name, tts_names, cache_dir, filler_voice=None,
-                 log_context=None):
-        self.registry, self.llm_name, self.tts_names = registry, llm_name, tts_names
-        self.cache_dir = Path(cache_dir) / "fillers"
-        self.log_context = log_context or {}
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self.host = choose_host_voice(registry, tts_names, filler_voice)
-        self._executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="filler")
-        self._futures = {}
-
-    def _synth(self, kind, text):
-        if not self.host:
-            return None
-        provider, voice = self.host
-        key = hashlib.sha256("|".join((provider, voice.voice_id,
-                                        str(voice.speed), str(voice.pitch), text)).encode()).hexdigest()
-        path = self.cache_dir / (key + ".mp3")
-        if not path.exists():
-            self.registry.get_tts(provider).synthesize(text, voice, path)
-        return FillerClip(kind, text, str(path))
-
-    def start(self, topic, on_thinking_text=None, on_thinking_ready=None):
-        def prepare_thinking():
-            text = build_thinking_text(
-                self.registry.get_llm(self.llm_name), topic,
-                log_context=self.log_context,
-            )
-            if on_thinking_text:
-                on_thinking_text(text)
-            clip = self._synth("thinking", text)
-            if clip and on_thinking_ready:
-                on_thinking_ready(clip)
-            return clip
-        self._futures["thinking"] = self._executor.submit(prepare_thinking)
-        self._futures["intro"] = self._executor.submit(
-            lambda: self._synth("intro", intro_text()))
-
-    def get(self, kind, timeout=None):
-        future = self._futures.get(kind)
-        if future is None:
-            return None
-        try:
-            return future.result(timeout=timeout)
-        except Exception:
-            return None
-
-    def shutdown(self):
-        for future in self._futures.values():
-            future.cancel()
-        self._executor.shutdown(wait=False)
+def cached_start_notice(registry, host, cache_dir):
+    """Return a cached full-file fallback when a realtime session is unavailable."""
+    if not host:
+        return None
+    provider, voice = host
+    text = start_notice_text()
+    key = hashlib.sha256("|".join((provider, voice.voice_id,
+                                    str(voice.speed), str(voice.pitch), text)).encode()).hexdigest()
+    path = Path(cache_dir) / "fillers" / (key + ".mp3")
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        registry.get_tts(provider).synthesize(text, voice, path)
+    return FillerClip("start_notice", text, str(path))
