@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import struct
+import tempfile
 import threading
 from collections import deque
 from functools import lru_cache
@@ -121,6 +122,9 @@ class AliyunStreamingTTSSession(StreamingTTSSession):
         self._api_key = api_key
         self._audio = deque()
         self._changed = threading.Condition(threading.Lock())
+        self._submission = threading.Lock()
+        self._spill = None
+        self._spill_read_offset = 0
         self._resampler = _PCM22050To24000Resampler()
         self._completion = threading.Event()
         self._accepting = True
@@ -132,65 +136,88 @@ class AliyunStreamingTTSSession(StreamingTTSSession):
     def send_text(self, text):
         if not isinstance(text, str) or not text:
             raise TTSError("Aliyun realtime TTS text must be a non-empty string")
-        with self._changed:
-            self._raise_if_unavailable()
         try:
-            self._synthesizer.streaming_call(text)
+            submit = self._synthesizer.streaming_call
         except Exception:
             error = TTSError("Aliyun realtime TTS send failed")
             self._record_failure(error)
-            raise error
-        with self._changed:
-            if self._failure is not None:
-                raise self._failure
+            raise error from None
+        with self._submission:
+            with self._changed:
+                self._raise_if_unavailable()
+            try:
+                submit(text)
+            except Exception:
+                error = TTSError("Aliyun realtime TTS send failed")
+                self._record_failure(error)
+                raise error from None
+            with self._changed:
+                if self._failure is not None:
+                    raise self._failure
 
     def iter_audio(self):
         while True:
             with self._changed:
-                while not self._audio and not self._completed and self._failure is None:
+                while (
+                    not self._audio
+                    and not self._spill_has_audio()
+                    and not self._completed
+                    and self._failure is None
+                ):
                     self._changed.wait()
                 if self._audio:
                     chunk = self._audio.popleft()
                     self._changed.notify_all()
+                elif self._spill_has_audio():
+                    chunk = StreamChunk(CHUNK_AUDIO, self._read_spilled_audio())
                 elif self._failure is not None:
                     raise self._failure
                 else:
+                    self._close_spill()
                     return
             yield chunk
 
     def finish(self):
-        with self._changed:
-            if self._cancelled:
+        with self._submission:
+            with self._changed:
+                if self._cancelled:
+                    if self._failure is not None:
+                        raise self._failure
+                    return
                 if self._failure is not None:
                     raise self._failure
-                return
-            if self._failure is not None:
-                raise self._failure
-            should_complete = not self._finishing and not self._completed
+                should_complete = not self._finishing and not self._completed
+                if should_complete:
+                    self._accepting = False
+                    self._finishing = True
             if should_complete:
-                self._accepting = False
-                self._finishing = True
-        if should_complete:
-            try:
-                self._synthesizer.streaming_complete()
-            except Exception:
-                self._record_failure(TTSError("Aliyun realtime TTS finish failed"))
+                try:
+                    self._synthesizer.streaming_complete()
+                except Exception:
+                    self._record_failure(
+                        TTSError("Aliyun realtime TTS finish failed")
+                    )
         self._completion.wait()
         with self._changed:
             if self._failure is not None:
                 raise self._failure
 
     def cancel(self):
-        with self._changed:
-            if self._cancelled:
-                return
-            self._accepting = False
-            self._cancelled = True
-            self._completed = True
-            self._audio.clear()
-            self._completion.set()
-            self._changed.notify_all()
-        cancel = getattr(self._synthesizer, "streaming_cancel", None)
+        try:
+            cancel = getattr(self._synthesizer, "streaming_cancel", None)
+        except Exception:
+            cancel = None
+        with self._submission:
+            with self._changed:
+                if self._cancelled:
+                    return
+                self._accepting = False
+                self._cancelled = True
+                self._completed = True
+                self._audio.clear()
+                self._close_spill()
+                self._completion.set()
+                self._changed.notify_all()
         if callable(cancel):
             try:
                 cancel()
@@ -238,14 +265,42 @@ class AliyunStreamingTTSSession(StreamingTTSSession):
 
     def _enqueue(self, audio):
         with self._changed:
-            while len(self._audio) >= self._QUEUE_SIZE:
-                if self._cancelled or self._failure is not None:
-                    return
-                self._changed.wait()
             if self._cancelled or self._failure is not None:
                 return
-            self._audio.append(StreamChunk(CHUNK_AUDIO, audio))
+            if self._spill is None and len(self._audio) < self._QUEUE_SIZE:
+                self._audio.append(StreamChunk(CHUNK_AUDIO, audio))
+            else:
+                # DashScope may invoke callbacks synchronously from
+                # streaming_complete().  Blocking that callback at capacity
+                # would deadlock the documented finish-before-drain pattern.
+                # Keep the in-memory queue bounded and spill overflow in FIFO
+                # order so callbacks, completion, and the iterator progress
+                # independently without losing audio.
+                if self._spill is None:
+                    self._spill = tempfile.TemporaryFile(mode="w+b")
+                self._spill.seek(0, 2)
+                self._spill.write(struct.pack("<I", len(audio)))
+                self._spill.write(audio)
+                self._spill.flush()
             self._changed.notify_all()
+
+    def _spill_has_audio(self):
+        if self._spill is None:
+            return False
+        self._spill.seek(0, 2)
+        return self._spill.tell() > self._spill_read_offset
+
+    def _read_spilled_audio(self):
+        self._spill.seek(self._spill_read_offset)
+        size = struct.unpack("<I", self._spill.read(4))[0]
+        data = self._spill.read(size)
+        self._spill_read_offset += 4 + size
+        return data
+
+    def _close_spill(self):
+        if self._spill is not None:
+            self._spill.close()
+            self._spill = None
 
     def _record_failure(self, error):
         with self._changed:
@@ -269,7 +324,7 @@ def _create_dashscope_synthesizer(**kwargs):
         import dashscope
         from dashscope.audio.tts_v2 import AudioFormat, SpeechSynthesizer
     except Exception:
-        raise TTSError("Aliyun realtime TTS requires the DashScope SDK")
+        raise TTSError("Aliyun realtime TTS requires the DashScope SDK") from None
 
     audio_format = getattr(AudioFormat, kwargs.pop("format"))
     api_key = kwargs.pop("api_key")
@@ -279,7 +334,7 @@ def _create_dashscope_synthesizer(**kwargs):
         try:
             return SpeechSynthesizer(format=audio_format, **kwargs)
         except Exception:
-            raise TTSError("Aliyun realtime TTS connection failed")
+            raise TTSError("Aliyun realtime TTS connection failed") from None
         finally:
             dashscope.api_key = previous_api_key
 
@@ -293,7 +348,11 @@ def _realtime_error(message, api_key):
         r"\1=[redacted]",
         detail,
     )
-    detail = re.sub(r"https?://[^\s]+\?[^\s]+", "[signed-url-redacted]", detail)
+    detail = re.sub(
+        r"(?:https?|wss?)://[^\s]+\?[^\s]+",
+        "[signed-url-redacted]",
+        detail,
+    )
     return TTSError("Aliyun realtime TTS failed: {}".format(detail[:512]))
 
 
@@ -385,7 +444,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         except TTSError:
             raise
         except Exception:
-            raise TTSError("Aliyun realtime TTS connection failed")
+            raise TTSError("Aliyun realtime TTS connection failed") from None
         session = AliyunStreamingTTSSession(synthesizer, self.api_key)
         callback._session = session
         return session

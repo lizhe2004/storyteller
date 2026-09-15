@@ -1,6 +1,7 @@
 import json
 import struct
 import threading
+import traceback
 from pathlib import Path
 
 import pytest
@@ -520,6 +521,48 @@ def test_realtime_session_cancel_releases_callback_blocked_by_bounded_audio_queu
     assert list(session.iter_audio()) == []
 
 
+def test_realtime_session_finishes_before_draining_more_than_bounded_audio_chunks():
+    """A full callback buffer must not make finish-before-drain deadlock."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    created = {}
+    input_pcm = struct.pack("<3h", 1, 2, 3)
+
+    class LongAudioSynthesizer(_FakeRealtimeSynthesizer):
+        def streaming_complete(self):
+            self.calls.append(("streaming_complete",))
+            for _ in range(4):
+                self.callback.on_data(input_pcm)
+            self.callback.on_complete()
+
+    def factory(**kwargs):
+        synthesizer = LongAudioSynthesizer(kwargs["callback"])
+        created["synthesizer"] = synthesizer
+        return synthesizer
+
+    tts._realtime_synthesizer_factory = factory
+    session = tts.open_stream(_voice())
+    session._QUEUE_SIZE = 1
+    finished = threading.Event()
+    finisher = threading.Thread(
+        target=lambda: (session.finish(), finished.set()), daemon=True
+    )
+    finisher.start()
+
+    try:
+        assert finished.wait(timeout=1)
+        with session._changed:
+            assert len(session._audio) == session._QUEUE_SIZE
+            assert session._spill is not None
+        audio = b"".join(chunk.data for chunk in session.iter_audio())
+    finally:
+        if not finished.is_set():
+            session.cancel()
+        finisher.join(timeout=1)
+
+    assert len(audio) > 0
+    assert created["synthesizer"].calls == [("streaming_complete",)]
+
+
 def test_realtime_session_redacts_callback_credentials_and_signed_urls():
     """SDK diagnostics must not expose API credentials through pipeline errors."""
     tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
@@ -539,3 +582,98 @@ def test_realtime_session_redacts_callback_credentials_and_signed_urls():
     assert "test-key" not in message
     assert "sig=secret" not in message
     assert "[redacted]" in message
+
+
+def test_realtime_session_redacts_websocket_signed_urls_from_callback_errors():
+    """Changing URL schemes must not bypass realtime diagnostics redaction."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+
+    def factory(**kwargs):
+        return _FakeRealtimeSynthesizer(
+            kwargs["callback"],
+            error=(
+                "wss://audio.example.com/pcm?signature=WSS_SECRET "
+                "ws://fallback.example.com/pcm?token=WS_SECRET"
+            ),
+        )
+
+    tts._realtime_synthesizer_factory = factory
+    session = tts.open_stream(_voice())
+    with pytest.raises(TTSError) as exc_info:
+        session.send_text("不会泄露")
+
+    message = str(exc_info.value)
+    assert "WSS_SECRET" not in message
+    assert "WS_SECRET" not in message
+    assert "audio.example.com" not in message
+    assert "fallback.example.com" not in message
+    assert message.count("[signed-url-redacted]") == 2
+
+
+def test_realtime_provider_exception_hides_sdk_context_from_traceback():
+    """A sanitized connection failure must not print the SDK's secret message."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+
+    def factory(**kwargs):
+        raise RuntimeError(
+            "api_key=test-key wss://audio.example.com/pcm?signature=SECRET"
+        )
+
+    tts._realtime_synthesizer_factory = factory
+    with pytest.raises(TTSError) as exc_info:
+        tts.open_stream(_voice())
+
+    rendered = "".join(
+        traceback.format_exception(
+            exc_info.type, exc_info.value, exc_info.tb
+        )
+    )
+    assert "test-key" not in rendered
+    assert "SECRET" not in rendered
+    assert "audio.example.com" not in rendered
+    assert exc_info.value.__suppress_context__ is True
+
+
+def test_realtime_session_rejects_send_that_started_after_cancellation():
+    """A send that loses the cancel race must not reach the DashScope SDK."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    submitted = []
+    call_accessed = threading.Event()
+    release_call_access = threading.Event()
+
+    class CancelRaceSynthesizer:
+        @property
+        def streaming_call(self):
+            call_accessed.set()
+            assert release_call_access.wait(timeout=1)
+            return self._submit
+
+        def _submit(self, text):
+            submitted.append(text)
+
+        def streaming_cancel(self):
+            pass
+
+    def factory(**kwargs):
+        return CancelRaceSynthesizer()
+
+    tts._realtime_synthesizer_factory = factory
+    session = tts.open_stream(_voice())
+    sender_error = []
+
+    def send_text():
+        try:
+            session.send_text("late text")
+        except Exception as exc:
+            sender_error.append(exc)
+
+    sender = threading.Thread(target=send_text)
+    sender.start()
+    assert call_accessed.wait(timeout=1)
+    session.cancel()
+    release_call_access.set()
+    sender.join(timeout=1)
+
+    assert len(sender_error) == 1
+    assert isinstance(sender_error[0], TTSError)
+    assert submitted == []
