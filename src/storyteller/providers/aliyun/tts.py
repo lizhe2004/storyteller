@@ -396,6 +396,16 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         # Default model for voices absent from the packaged catalog
         # (e.g. cloned voices). Catalog voices carry their own model.
         self.model = provider_config.get("model")
+        # Comma-separated model-name substrings to hide from voice matching
+        # (e.g. "qwen-audio-3.0-tts-flash" when its free quota is exhausted).
+        # Matches are substring/contains and case-insensitive; only list_voices
+        # is affected, so an already-assigned voice in an old project still
+        # synthesizes (and will surface the provider's own quota error).
+        self._excluded_model_substrings = tuple(
+            s.strip().lower()
+            for s in (provider_config.get("exclude_models") or "").split(",")
+            if s.strip()
+        )
         self.realtime_endpoint = (
             provider_config.get("realtime_endpoint") or ""
         ).rstrip("/")
@@ -422,6 +432,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         return "Qwen-Audio-TTS 语音合成（阿里云百炼）"
 
     def list_voices(self, **kwargs):
+        excluded = self._excluded_model_substrings
         return [
             VoiceConfig(
                 provider="aliyun",
@@ -434,6 +445,8 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
                 description=record.get("description"),
             )
             for record in load_voice_catalog()
+            if not excluded
+            or not _matches_any(record.get("model", ""), excluded)
         ]
 
     def open_stream(self, voice, *, directives=None, context=None):
@@ -606,6 +619,14 @@ def _encoding_for_path(output_path):
             return "opus"
         return suffix
     return "mp3"
+
+
+def _matches_any(value, substrings):
+    """Case-insensitive substring match against any of ``substrings``."""
+    if not value:
+        return False
+    lowered = value.lower()
+    return any(s and s in lowered for s in substrings)
 
 
 def _clamp(value, low, high):

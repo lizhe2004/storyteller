@@ -176,6 +176,7 @@ class Config:
     # Per-provider config keys shared by the llm/tts/sound groups.
     _PROVIDER_CONFIG_KEYS = (
         "type", "api_key", "model", "endpoint", "base_url", "resource_id",
+        "exclude_models",
     )
 
     @staticmethod

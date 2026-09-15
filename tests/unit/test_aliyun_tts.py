@@ -10,7 +10,11 @@ from storyteller.core.config import Config
 from storyteller.core.exceptions import TTSError
 from storyteller.core.models import VoiceConfig
 from storyteller.providers.aliyun import tts as aliyun_tts_module
-from storyteller.providers.aliyun.tts import AliyunTTS, load_voice_catalog
+from storyteller.providers.aliyun.tts import (
+    AliyunTTS,
+    load_voice_catalog,
+    load_voice_index,
+)
 
 _ENDPOINT = "https://dashscope.aliyuncs.com"
 _PATH = "/api/v1/services/audio/tts/SpeechSynthesizer"
@@ -141,6 +145,26 @@ def test_aliyun_tts_lists_catalog_voices():
     assert by_id["longpaopao_v3.6"].gender == "female"
     assert by_id["longpaopao_v3.6"].age == "child"
     assert by_id["longpaopao_v3.6"].category == "儿童陪伴"
+
+
+def test_excluded_models_are_hidden_from_list_voices():
+    # flash has no free quota left; exclude_models hides every flash voice
+    # (substring, case-insensitive) while leaving plus voices intact.
+    config = _config(exclude_models="qwen-audio-3.0-tts-flash")
+    voices = AliyunTTS(config).list_voices()
+    ids = {v.voice_id for v in voices}
+    assert "longanfengyue" not in ids  # flash voice
+    assert "longanlingxin" in ids     # plus voice
+    assert all(
+        "flash" not in load_voice_index()[v.voice_id]["model"].lower()
+        for v in voices
+    )
+
+
+def test_exclude_models_supports_multiple_and_whitespace():
+    config = _config(exclude_models=" qwen-audio-3.0-tts-flash , qwen-audio-3.0-tts-plus ")
+    voices = AliyunTTS(config).list_voices()
+    assert voices == []
 
 
 def test_synthesize_posts_then_downloads_audio_url(tmp_path):
