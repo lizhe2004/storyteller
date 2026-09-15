@@ -11,6 +11,9 @@ from storyteller.providers.mock.tts import (
     MockTTSProvider,
 )
 from storyteller.providers.registry import ProviderRegistry
+from storyteller.providers.aliyun.tts import AliyunTTS
+from storyteller.providers.volcengine.tts import VolcengineTTS
+from storyteller.core.streaming_tts import StreamingTTSProvider
 
 
 class SessionFlagOnlyTTS(MockTTSProvider):
@@ -19,6 +22,12 @@ class SessionFlagOnlyTTS(MockTTSProvider):
 
 def test_wire_constants():
     assert (STREAM_SAMPLE_RATE, STREAM_CHANNELS, STREAM_SAMPLE_WIDTH) == (24000, 1, 2)
+
+
+def test_realtime_providers_advertise_incremental_session_contract():
+    """Removing the provider contract would silently disable realtime scheduling."""
+    assert issubclass(VolcengineTTS, StreamingTTSProvider)
+    assert issubclass(AliyunTTS, StreamingTTSProvider)
 
 
 def test_registry_capability_detection():

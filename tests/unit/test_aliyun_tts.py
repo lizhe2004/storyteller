@@ -1,4 +1,6 @@
 import json
+import struct
+import threading
 from pathlib import Path
 
 import pytest
@@ -55,6 +57,31 @@ class _FakeSession:
     def get(self, url, **kwargs):
         self.calls.append({"method": "GET", "url": url, **kwargs})
         return self._download
+
+
+class _FakeRealtimeSynthesizer:
+    def __init__(self, callback, audio_chunks=(), error=None):
+        self.callback = callback
+        self.audio_chunks = list(audio_chunks)
+        self.error = error
+        self.calls = []
+        self.completed = False
+        self.cancelled = False
+
+    def streaming_call(self, text):
+        self.calls.append(("streaming_call", text))
+        if self.error:
+            self.callback.on_error(self.error)
+
+    def streaming_complete(self):
+        self.calls.append(("streaming_complete",))
+        for chunk in self.audio_chunks:
+            self.callback.on_data(chunk)
+        self.completed = True
+        self.callback.on_complete()
+
+    def streaming_cancel(self):
+        self.cancelled = True
 
 
 def _synth_ok(audio_url=_AUDIO_URL):
@@ -354,3 +381,161 @@ def test_download_failure_does_not_leak_signed_url(tmp_path):
 def test_constructor_raises_on_missing_key():
     with pytest.raises(TTSError):
         AliyunTTS(_config(api_key=None))
+
+
+def test_realtime_session_forwards_text_completes_and_resamples_callback_pcm():
+    """Bypassing the callback bridge or 22.05kHz conversion breaks the stream contract."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    created = {}
+    input_pcm = struct.pack("<147h", *range(147))
+
+    def factory(**kwargs):
+        created.update(kwargs)
+        synthesizer = _FakeRealtimeSynthesizer(kwargs["callback"], [input_pcm])
+        created["synthesizer"] = synthesizer
+        return synthesizer
+
+    tts._realtime_synthesizer_factory = factory
+    session = tts.open_stream(_voice())
+    session.send_text("第一段")
+    session.send_text("第二段")
+    session.finish()
+
+    synthesizer = created["synthesizer"]
+    assert synthesizer.calls == [
+        ("streaming_call", "第一段"),
+        ("streaming_call", "第二段"),
+        ("streaming_complete",),
+    ]
+    assert synthesizer.completed is True
+    assert created["format"] == "PCM_22050HZ_MONO_16BIT"
+    output_pcm = b"".join(chunk.data for chunk in session.iter_audio())
+    assert len(output_pcm) == 320
+    assert output_pcm != input_pcm
+
+
+def test_realtime_session_translates_callback_errors_and_can_cancel():
+    """Leaking a DashScope callback error would expose an SDK-specific failure."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    created = {}
+
+    def factory(**kwargs):
+        synthesizer = _FakeRealtimeSynthesizer(
+            kwargs["callback"], error="service unavailable"
+        )
+        created["synthesizer"] = synthesizer
+        return synthesizer
+
+    tts._realtime_synthesizer_factory = factory
+    session = tts.open_stream(_voice())
+    with pytest.raises(TTSError, match="service unavailable"):
+        session.send_text("会失败")
+
+    session.cancel()
+    assert created["synthesizer"].cancelled is True
+
+
+def test_realtime_session_requires_realtime_configuration_before_constructing_sdk():
+    """An ordinary HTTP-only Aliyun provider must never construct the SDK client."""
+    tts = AliyunTTS(_config())
+
+    def unexpected_factory(**kwargs):
+        raise AssertionError("realtime synthesizer factory must not be called")
+
+    tts._realtime_synthesizer_factory = unexpected_factory
+    with pytest.raises(TTSError, match="not configured"):
+        tts.open_stream(_voice())
+
+
+def test_realtime_session_finish_waits_for_callback_completion():
+    """Returning from finish before DashScope completes truncates trailing audio."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    created = {}
+
+    class DelayedCompletingSynthesizer:
+        def __init__(self, callback):
+            self.callback = callback
+            self.complete_called = threading.Event()
+
+        def streaming_call(self, text):
+            pass
+
+        def streaming_complete(self):
+            self.complete_called.set()
+
+    def factory(**kwargs):
+        synthesizer = DelayedCompletingSynthesizer(kwargs["callback"])
+        created["synthesizer"] = synthesizer
+        return synthesizer
+
+    tts._realtime_synthesizer_factory = factory
+    session = tts.open_stream(_voice())
+    finisher = threading.Thread(target=session.finish)
+    finisher.start()
+
+    synthesizer = created["synthesizer"]
+    assert synthesizer.complete_called.wait(timeout=1)
+    assert finisher.is_alive()
+    synthesizer.callback.on_complete()
+    finisher.join(timeout=1)
+    assert not finisher.is_alive()
+
+
+def test_realtime_session_cancel_releases_callback_blocked_by_bounded_audio_queue():
+    """An unbounded or uncleared callback queue would leak memory or deadlock finish."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    created = {}
+    input_pcm = struct.pack("<3h", 1, 2, 3)
+
+    class BufferFillingSynthesizer(_FakeRealtimeSynthesizer):
+        def __init__(self, callback):
+            super().__init__(callback)
+            self.second_callback_started = threading.Event()
+
+        def streaming_complete(self):
+            self.callback.on_data(input_pcm)
+            self.second_callback_started.set()
+            self.callback.on_data(input_pcm)
+            self.callback.on_complete()
+
+    def factory(**kwargs):
+        synthesizer = BufferFillingSynthesizer(kwargs["callback"])
+        created["synthesizer"] = synthesizer
+        return synthesizer
+
+    tts._realtime_synthesizer_factory = factory
+    session = tts.open_stream(_voice())
+    session._QUEUE_SIZE = 1
+    finisher = threading.Thread(target=session.finish)
+    finisher.start()
+
+    synthesizer = created["synthesizer"]
+    assert synthesizer.second_callback_started.wait(timeout=1)
+    with session._changed:
+        assert len(session._audio) == 1
+    session.cancel()
+    finisher.join(timeout=1)
+
+    assert not finisher.is_alive()
+    assert list(session.iter_audio()) == []
+
+
+def test_realtime_session_redacts_callback_credentials_and_signed_urls():
+    """SDK diagnostics must not expose API credentials through pipeline errors."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+
+    def factory(**kwargs):
+        return _FakeRealtimeSynthesizer(
+            kwargs["callback"],
+            error="api_key=test-key https://audio.example.com/x.pcm?sig=secret",
+        )
+
+    tts._realtime_synthesizer_factory = factory
+    session = tts.open_stream(_voice())
+    with pytest.raises(TTSError) as exc_info:
+        session.send_text("不会泄露")
+
+    message = str(exc_info.value)
+    assert "test-key" not in message
+    assert "sig=secret" not in message
+    assert "[redacted]" in message
