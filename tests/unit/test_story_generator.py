@@ -75,6 +75,73 @@ def test_generate_script_stream_emits_opening_deltas_and_preview_field():
     assert not hasattr(script, "opening")
 
 
+def test_generate_script_stream_calls_opening_complete_when_characters_arrives():
+    """Opening is finalized as soon as the first non-opening key appears; the
+    FINISH signal can be sent then without waiting for all lines to stream in."""
+    class _ChunkedLLM:
+        def chat_stream(self, messages, **kwargs):
+            yield '{"title":"T","opening":"夜幕'
+            yield '降临","charact'
+            yield 'ers":[{"id":"narrator","name":"旁白"}],"lines":['
+            yield '{"line_id":"l1","line_type":"narration","text":"第一句"}]}'
+
+    opening_deltas = []
+    complete_calls = []
+    generator = StoryGenerator(_ChunkedLLM())
+
+    script = generator.generate_script_stream(
+        "测试",
+        on_opening_delta=opening_deltas.append,
+        on_opening_complete=lambda: complete_calls.append(1),
+    )
+
+    assert opening_deltas == ["夜幕", "降临"]
+    assert complete_calls == [1]  # fired exactly once, before the final script parse
+    assert script.title == "T"
+
+
+def test_generate_script_stream_opening_complete_fires_even_with_empty_opening():
+    class _ChunkedLLM:
+        def chat_stream(self, messages, **kwargs):
+            yield '{"title":"T","opening":"","characters":[],"lines":[]}'
+
+    complete_calls = []
+    generator = StoryGenerator(_ChunkedLLM())
+    script = generator.generate_script_stream(
+        "测试", on_opening_complete=lambda: complete_calls.append(1),
+    )
+    assert complete_calls == [1]
+    assert script.title == "T"
+
+
+def test_generate_script_stream_opening_complete_is_idempotent_across_later_snapshots(monkeypatch):
+    snapshots = iter([
+        {"title": "T", "opening": "开场", "characters": []},
+        {"title": "T", "opening": "开场", "characters": [{"id": "c1"}], "lines": [{"text": "a"}]},
+        {"title": "T", "opening": "开场", "characters": [{"id": "c1"}], "lines": [{"text": "a"}, {"text": "b"}]},
+    ])
+
+    class _Parser:
+        def parse(self, text):
+            return next(snapshots)
+
+    class _ChunkedLLM:
+        def chat_stream(self, messages, **kwargs):
+            yield '{"title":"T","opening":"开场","characters":[]'
+            yield ',"lines":[{"text":"a"}]'
+            yield '}'
+
+    monkeypatch.setattr("storyteller.core.story_generator.JSONParser", _Parser)
+    complete_calls = []
+    generator = StoryGenerator(_ChunkedLLM())
+    generator.generate_script_stream(
+        "测试", on_opening_delta=(lambda t: None),
+        on_opening_complete=lambda: complete_calls.append(1),
+    )
+    assert complete_calls == [1]
+
+
+
 def test_generate_script_stream_reports_rewritten_opening_prefix_without_affecting_script(
     monkeypatch, caplog
 ):

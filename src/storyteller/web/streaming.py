@@ -427,6 +427,24 @@ class StreamOrchestrator:
                 job.emit({"type": "warning",
                           "message": "开场实时语音失败，尝试整句兜底：{}".format(exc)})
 
+        def finalize_opening():
+            # Idempotent FINISH of the realtime opening session. Called as soon as
+            # the opening text is known in full (characters arrive) and again after
+            # the whole script, whichever comes first.
+            nonlocal opening_committed, opening_pump, opening_lease
+            if opening_committed or opening_failed or opening_pump is None:
+                return
+            try:
+                opening_pcm = opening_pump.finish()
+                if not opening_pcm:
+                    raise TTSError("实时 TTS 没有返回音频")
+                opening_lease.commit()
+                job.emit({"type": "opening_audio_end",
+                          "duration_ms": pcm_duration_ms(opening_pcm)})
+                opening_committed = True
+            except Exception as exc:
+                fail_opening(exc)
+
         def mark_opening_started():
             nonlocal opening_streamed
             opening_streamed = True
@@ -434,7 +452,7 @@ class StreamOrchestrator:
 
         def emit_opening_delta(text):
             nonlocal opening_pump, opening_lease, opening_text
-            if not text:
+            if not text or opening_committed:
                 return
             opening_text += text
             # StoryGenerator reports opening deltas before its first preview.  Emit a
@@ -481,6 +499,7 @@ class StreamOrchestrator:
                     with_sound=bool(params.with_sound),
                     on_preview=emit_script_preview,
                     on_opening_delta=emit_opening_delta,
+                    on_opening_complete=finalize_opening,
                 )
         except Exception:
             if opening_pump is not None:
@@ -488,16 +507,7 @@ class StreamOrchestrator:
             publisher.cancel()
             raise
 
-        if opening_pump is not None and not opening_failed:
-            try:
-                opening_pcm = opening_pump.finish()
-                if not opening_pcm:
-                    raise TTSError("实时 TTS 没有返回音频")
-                opening_lease.commit()
-                job.emit({"type": "opening_audio_end", "duration_ms": pcm_duration_ms(opening_pcm)})
-                opening_committed = True
-            except Exception as exc:
-                fail_opening(exc)
+        finalize_opening()
 
         if not opening_committed:
             if opening_streamed:

@@ -165,6 +165,7 @@ class StoryGenerator:
         with_sound=False,
         on_preview=None,
         on_opening_delta: Optional[Callable[[str], None]] = None,
+        on_opening_complete: Optional[Callable[[], None]] = None,
         **kwargs,
     ):
         """Generate a script while reporting partial JSON snapshots.
@@ -173,6 +174,12 @@ class StoryGenerator:
         ``partialjson``. They are for display only. The returned ``Script``
         is parsed from the complete response and is the only authoritative
         value for downstream processing.
+
+        ``on_opening_delta`` reports each new suffix of the opening field.
+        ``on_opening_complete`` fires once, as soon as a non-opening key
+        (``characters``/``lines``) appears in the stream: the opening is
+        ordered first in the prompt, so that is when it is known in full and a
+        realtime TTS session may stop accepting more text.
         """
         system_content = self.system_prompt
         if with_sound:
@@ -185,12 +192,13 @@ class StoryGenerator:
         last_preview = None
         last_opening_text = ""
         opening_protocol_error = False
+        opening_complete_fired = False
         try:
             for chunk in self.llm.chat_stream(messages, **kwargs):
                 if not chunk:
                     continue
                 chunks.append(str(chunk))
-                if on_preview is None and on_opening_delta is None:
+                if on_preview is None and on_opening_delta is None and on_opening_complete is None:
                     continue
                 try:
                     preview = JSONParser().parse("".join(chunks))
@@ -206,6 +214,10 @@ class StoryGenerator:
                         elif opening != last_opening_text:
                             logger.warning("opening protocol error: already-sent prefix was rewritten")
                             opening_protocol_error = True
+                    if not opening_complete_fired and on_opening_complete is not None:
+                        if "characters" in preview or "lines" in preview:
+                            on_opening_complete()
+                            opening_complete_fired = True
                     snapshot = _script_preview_from_json(preview)
                     if on_preview is not None and snapshot != last_preview:
                         on_preview(snapshot)
