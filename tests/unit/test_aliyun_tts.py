@@ -483,6 +483,32 @@ def test_realtime_session_finish_waits_for_callback_completion():
     assert not finisher.is_alive()
 
 
+def test_realtime_session_finish_times_out_without_completion(monkeypatch):
+    """A DashScope SDK that never calls on_complete must not hang the job."""
+    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+
+    class NeverCompletingSynthesizer:
+        def __init__(self, callback):
+            self.callback = callback
+
+        def streaming_call(self, text):
+            pass
+
+        def streaming_complete(self):
+            return  # terminal callback is never delivered
+
+    tts._realtime_synthesizer_factory = lambda **kwargs: NeverCompletingSynthesizer(
+        kwargs["callback"]
+    )
+    session = tts.open_stream(_voice())
+    monkeypatch.setattr(type(session), "_FINISH_TIMEOUT_SECONDS", 0.05)
+    session.send_text("第一句")
+    with pytest.raises(TTSError, match="timed out"):
+        session.finish()
+    with pytest.raises(TTSError):  # the audio iterator is unblocked, not hung
+        list(session.iter_audio())
+
+
 def test_realtime_session_cancel_releases_callback_blocked_by_bounded_audio_queue():
     """An unbounded or uncleared callback queue would leak memory or deadlock finish."""
     tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))

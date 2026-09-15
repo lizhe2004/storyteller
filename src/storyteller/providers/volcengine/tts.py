@@ -75,6 +75,9 @@ def _open_realtime_transport(endpoint, headers):
 class VolcengineStreamingTTSSession(StreamingTTSSession):
     """One Volcengine bidirectional TTS session over an injected transport."""
 
+    # Bound the wait for the terminal SESSION_FINISHED after FINISH is sent.
+    _FINISH_TIMEOUT_SECONDS = 30.0
+
     def __init__(self, transport, voice, *, directives=None, context=None):
         self._transport = transport
         self._voice = voice
@@ -155,7 +158,11 @@ class VolcengineStreamingTTSSession(StreamingTTSSession):
                 raise
             raise error from exc
         self._start_reader()
-        self._reader_done.wait()
+        if not self._reader_done.wait(self._FINISH_TIMEOUT_SECONDS):
+            error = TTSError("Volcengine realtime TTS finish timed out")
+            # Closing the transport unblocks the reader; it then records the failure.
+            self._record_failure(error)
+            raise error
         with self._changed:
             if self._failure is not None:
                 raise self._failure
@@ -251,7 +258,19 @@ class VolcengineStreamingTTSSession(StreamingTTSSession):
     def _read_until_terminal(self):
         try:
             while True:
-                event, payload = _parse_realtime_frame(self._receive())
+                try:
+                    frame = self._transport.recv()
+                except Exception as exc:
+                    # A read deadline on a quiet connection is not a failure: the
+                    # opening session stays open across whole-script generation.
+                    # Keep reading; finish() bounds the terminal-frame wait.
+                    if self._is_idle_timeout(exc):
+                        with self._changed:
+                            if self._cancelled or self._finished or self._failure is not None:
+                                return
+                        continue
+                    raise TTSError("Volcengine realtime TTS receive failed") from exc
+                event, payload = _parse_realtime_frame(frame)
                 if event == _EVENT_TTS_AUDIO:
                     if payload:
                         with self._changed:
@@ -289,6 +308,12 @@ class VolcengineStreamingTTSSession(StreamingTTSSession):
             self._finished = True
             self._changed.notify_all()
         self._close_transport()
+
+    @staticmethod
+    def _is_idle_timeout(exc):
+        # websocket-client raises WebSocketTimeoutException on a read deadline.
+        # Match by name to keep the optional dependency import lazy/coupling-free.
+        return type(exc).__name__ == "WebSocketTimeoutException"
 
     def _raise_if_unavailable(self):
         if self._failure is not None:

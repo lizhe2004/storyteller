@@ -116,6 +116,10 @@ class AliyunStreamingTTSSession(StreamingTTSSession):
     """Bridge DashScope's callback API to the provider-neutral iterator."""
 
     _QUEUE_SIZE = 16
+    # Bound the wait for DashScope's on_complete/on_error callback after
+    # streaming_complete; a missing terminal callback must hang neither the job
+    # nor the scheduler slot.
+    _FINISH_TIMEOUT_SECONDS = 30.0
 
     def __init__(self, synthesizer, api_key):
         self._synthesizer = synthesizer
@@ -198,7 +202,17 @@ class AliyunStreamingTTSSession(StreamingTTSSession):
                     self._record_failure(
                         TTSError("Aliyun realtime TTS finish failed")
                     )
-        self._completion.wait()
+        if not self._completion.wait(self._FINISH_TIMEOUT_SECONDS):
+            error = TTSError("Aliyun realtime TTS finish timed out")
+            self._record_failure(error)
+            self._completion.set()
+            try:
+                cancel = getattr(self._synthesizer, "streaming_cancel", None)
+                if callable(cancel):
+                    cancel()
+            except Exception:
+                pass
+            raise error
         with self._changed:
             if self._failure is not None:
                 raise self._failure

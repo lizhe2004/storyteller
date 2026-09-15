@@ -388,6 +388,74 @@ def test_realtime_session_sends_start_task_finish_and_yields_pcm_audio():
     assert [chunk.data for chunk in session.iter_audio()] == [b"\x01\x00\x02\x00"]
 
 
+class _IdleThenReplayTransport(_FakeRealtimeTransport):
+    """Raises N read timeouts (quiet keepalive window) then serves queued frames."""
+
+    def __init__(self, responses, idle_reads):
+        super().__init__(responses)
+        self._idle_remaining = idle_reads
+
+    def recv(self):
+        if self._idle_remaining:
+            self._idle_remaining -= 1
+            raise _named_timeout()
+        return super().recv()
+
+
+def _named_timeout():
+    # The provider matches websocket-client's exception purely by class name.
+    return type("WebSocketTimeoutException", (Exception,), {})()
+
+
+class _IdleAfterHandshakeTransport(_FakeRealtimeTransport):
+    """Completes the handshake then never delivers a terminal SESSION_FINISHED."""
+
+    def __init__(self):
+        super().__init__([
+            _volc_response(50, session_id=b"connection-1"),
+            _volc_response(150),
+        ])
+
+    def recv(self):
+        if self._responses:
+            return self._responses.pop(0)
+        raise _named_timeout()
+
+
+def test_realtime_session_survives_idle_read_timeouts_before_audio():
+    """A quiet keepalive window during the long opening must not abort the session."""
+    transport = _IdleThenReplayTransport(
+        [
+            _volc_response(50, session_id=b"connection-1"),
+            _volc_response(150),
+            _volc_response(352, b"\x05\x00", audio=True),
+            _volc_response(152),
+        ],
+        0,
+    )
+    tts = VolcengineTTS(_config())
+    tts._realtime_transport_factory = lambda endpoint, headers: transport
+    session = tts.open_stream(tts.list_voices()[0])  # handshake pops 50/150
+    transport._idle_remaining = 3  # arm quiet reads during the streaming window
+    session.send_text("开场很长，剧本还在生成")
+    session.finish()
+    assert [chunk.data for chunk in session.iter_audio()] == [b"\x05\x00"]
+
+
+def test_realtime_finish_times_out_when_terminal_frame_never_arrives(monkeypatch):
+    from storyteller.providers.volcengine.tts import VolcengineStreamingTTSSession
+
+    transport = _IdleAfterHandshakeTransport()
+    tts = VolcengineTTS(_config())
+    tts._realtime_transport_factory = lambda endpoint, headers: transport
+    monkeypatch.setattr(VolcengineStreamingTTSSession, "_FINISH_TIMEOUT_SECONDS", 0.05)
+    session = tts.open_stream(tts.list_voices()[0])
+    session.send_text("服务器不再回包")
+    with pytest.raises(TTSError, match="timed out"):
+        session.finish()
+    assert transport.closed is True
+
+
 def test_realtime_session_surfaces_server_errors_and_cancel_closes_socket():
     """Treating a server error as normal completion would hide provider failures."""
     transport = _FakeRealtimeTransport(
