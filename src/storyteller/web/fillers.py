@@ -13,11 +13,6 @@ def start_notice_text():
     return START_NOTICE
 
 
-def intro_text():
-    """Compatibility name for callers that still import the former intro text."""
-    return start_notice_text()
-
-
 def choose_host_voice(registry, tts_names, filler_voice=None):
     if filler_voice and ":" in filler_voice:
         name, voice_id = filler_voice.split(":", 1)

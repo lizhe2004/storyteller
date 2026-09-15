@@ -111,6 +111,8 @@ def test_ws_streams_opening_start_notice_then_ordered_line_audio(tmp_path, monke
     assert "opening" not in script_ready
     assert position("ready") < position("script_preview") < position("opening_text_delta")
     assert position("script_preview") < position("opening_audio_start") < position("opening")
+    # Live opening: its audio already reached the client before the finalized script.
+    assert position("opening") < timeline.index("script_ready")
     assert position("opening") < position("opening_audio_end") < position("start_notice")
     assert position("start_notice") < position("notice") < position("line_start")
     assert position("line_start") < position("line_text_delta") < position("line-1") < position("line-2")
@@ -151,7 +153,7 @@ def test_ws_without_opening_still_starts_notice_and_formal_lines(tmp_path):
     assert event_types[-1] == "complete"
 
 
-def test_ws_opening_stream_failure_does_not_block_start_notice_or_lines(tmp_path, monkeypatch):
+def test_ws_opening_realtime_failure_falls_back_to_whole_file_tts(tmp_path, monkeypatch):
     cfg = Config()
     cfg.set("web.passwords", ["pw"]); cfg.set("web.secret", "x")
     cfg.set("web.rate_limit_per_min", 0); cfg.set("data_dir", str(tmp_path))
@@ -171,10 +173,8 @@ def test_ws_opening_stream_failure_does_not_block_start_notice_or_lines(tmp_path
         lambda self, *args, **kwargs: json.dumps(script, ensure_ascii=False),
     )
     original_open_stream = MockStreamingTTS.open_stream
-    original_stream_chunk = MockStreamingTTS._stream_chunk
-    attempts = []
-    received_audio = []
-    line_marker = b"\x0a\x00" * 240
+    original_synthesize = MockStreamingTTS.synthesize
+    attempts, synth_texts = [], []
 
     def fail_only_opening(self, voice, **kwargs):
         attempts.append(voice.voice_id)
@@ -182,16 +182,75 @@ def test_ws_opening_stream_failure_does_not_block_start_notice_or_lines(tmp_path
             raise TTSError("opening unavailable")
         return original_open_stream(self, voice, **kwargs)
 
+    def record_synthesis(self, text, voice, out, **kwargs):
+        synth_texts.append(text)
+        return original_synthesize(self, text, voice, out, **kwargs)
+
     monkeypatch.setattr(MockStreamingTTS, "open_stream", fail_only_opening)
+    monkeypatch.setattr(MockStreamingTTS, "synthesize", record_synthesis)
+    app = create_app(cfg)
+    timeline, event_types = [], []
+    with TestClient(app) as client:
+        token = app.state.issuer.issue()
+        with client.websocket_connect("/ws?token=" + token) as ws:
+            ws.send_json({"type": "start", "topic": "小恐龙", "tts_providers": ["mock"]})
+            while True:
+                message = ws.receive()
+                if message.get("bytes") is not None:
+                    timeline.append("bytes")
+                    continue
+                event = json.loads(message["text"])
+                event_types.append(event["type"])
+                timeline.append(event["type"])
+                if event["type"] in ("complete", "error", "canceled"):
+                    break
+
+    # Whole-file TTS produced the full opening; notice/lines stayed realtime.
+    assert script["opening"] in synth_texts
+    assert "opening_audio_abort" not in event_types
+    assert "opening_audio_end" in event_types
+    start_audio = timeline.index("opening_audio_start")
+    start_notice = timeline.index("start_notice")
+    assert "bytes" in timeline[start_audio:start_notice]  # fallback opening is heard first
+    assert event_types.index("opening_audio_end") < event_types.index("start_notice")
+    assert event_types.index("start_notice") < event_types.index("line_start")
+    assert len(attempts) >= 3
+    assert event_types[-1] == "complete"
+
+
+def test_ws_opening_fallback_unavailable_aborts_opening_but_keeps_lines(tmp_path, monkeypatch):
+    cfg = Config()
+    cfg.set("web.passwords", ["pw"]); cfg.set("web.secret", "x")
+    cfg.set("web.rate_limit_per_min", 0); cfg.set("data_dir", str(tmp_path))
+    cfg.set("project_dir", str(tmp_path / "stories")); cfg.set("voice_matcher", "rule")
+    cfg.set("tts.providers", ["mock"]); cfg.set("tts.provider_config.mock", {"type": "mock"})
+    cfg.set("llm.providers", ["mock"]); cfg.set("llm.provider_config.mock", {"type": "mock"})
+    cfg.set("web.filler_voice", "mock:narrator_01")
+    script = {
+        "title": DEFAULT_SCRIPT["title"],
+        "opening": "夜幕降临，小橘发现公园里亮起了神秘的灯。",
+        "characters": DEFAULT_SCRIPT["characters"],
+        "lines": DEFAULT_SCRIPT["lines"],
+    }
     monkeypatch.setattr(
-        MockStreamingTTS,
-        "_stream_chunk",
-        lambda self, text, voice, **kwargs: (
-            original_stream_chunk(self, text, voice, **kwargs)
-            if text != script["lines"][0]["text"]
-            else StreamChunk(CHUNK_AUDIO, line_marker)
-        ),
+        MockLLMProvider,
+        "chat",
+        lambda self, *args, **kwargs: json.dumps(script, ensure_ascii=False),
     )
+    original_open_stream = MockStreamingTTS.open_stream
+    attempts = []
+
+    def fail_only_opening(self, voice, **kwargs):
+        attempts.append(voice.voice_id)
+        if len(attempts) == 1:
+            raise TTSError("opening unavailable")
+        return original_open_stream(self, voice, **kwargs)
+
+    def synth_fails(self, text, voice, out, **kwargs):
+        raise TTSError("opening fallback down")
+
+    monkeypatch.setattr(MockStreamingTTS, "open_stream", fail_only_opening)
+    monkeypatch.setattr(MockStreamingTTS, "synthesize", synth_fails)
     app = create_app(cfg)
     event_types = []
     with TestClient(app) as client:
@@ -201,7 +260,6 @@ def test_ws_opening_stream_failure_does_not_block_start_notice_or_lines(tmp_path
             while True:
                 message = ws.receive()
                 if message.get("bytes") is not None:
-                    received_audio.append(message["bytes"])
                     continue
                 event = json.loads(message["text"])
                 event_types.append(event["type"])
@@ -209,10 +267,75 @@ def test_ws_opening_stream_failure_does_not_block_start_notice_or_lines(tmp_path
                     break
 
     assert "opening_audio_abort" in event_types
-    assert event_types.index("opening_audio_abort") < event_types.index("start_notice")
     assert event_types.index("start_notice") < event_types.index("line_start")
-    assert line_marker in received_audio
     assert len(attempts) >= 3  # notice and formal lines still use realtime sessions
+    assert event_types[-1] == "complete"
+
+
+def test_ws_partial_opening_audio_is_released_without_whole_file_retry(tmp_path, monkeypatch):
+    cfg = Config()
+    cfg.set("web.passwords", ["pw"]); cfg.set("web.secret", "x")
+    cfg.set("web.rate_limit_per_min", 0); cfg.set("data_dir", str(tmp_path))
+    cfg.set("project_dir", str(tmp_path / "stories")); cfg.set("voice_matcher", "rule")
+    cfg.set("tts.providers", ["mock"]); cfg.set("tts.provider_config.mock", {"type": "mock"})
+    cfg.set("llm.providers", ["mock"]); cfg.set("llm.provider_config.mock", {"type": "mock"})
+    cfg.set("web.filler_voice", "mock:narrator_01")
+    script = dict(DEFAULT_SCRIPT, opening="夜幕降临，小橘发现公园里亮起了神秘的灯。")
+    monkeypatch.setattr(
+        MockLLMProvider,
+        "chat",
+        lambda self, *args, **kwargs: json.dumps(script, ensure_ascii=False),
+    )
+    original_open_stream = MockStreamingTTS.open_stream
+    original_synthesize = MockStreamingTTS.synthesize
+    attempts, synth_texts = [], []
+
+    class PartialOpeningSession:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def send_text(self, text):
+            self._inner.send_text(text)
+
+        def finish(self):
+            self._inner.finish()
+
+        def cancel(self):
+            self._inner.cancel()
+
+        def iter_audio(self):
+            iterator = self._inner.iter_audio()
+            yield next(iterator)
+            raise TTSError("opening cut short")
+
+    def fail_first_session(self, voice, **kwargs):
+        attempts.append(voice.voice_id)
+        session = original_open_stream(self, voice, **kwargs)
+        return PartialOpeningSession(session) if len(attempts) == 1 else session
+
+    def record_synthesis(self, text, voice, out, **kwargs):
+        synth_texts.append(text)
+        return original_synthesize(self, text, voice, out, **kwargs)
+
+    monkeypatch.setattr(MockStreamingTTS, "open_stream", fail_first_session)
+    monkeypatch.setattr(MockStreamingTTS, "synthesize", record_synthesis)
+    app = create_app(cfg)
+    event_types = []
+    with TestClient(app) as client:
+        token = app.state.issuer.issue()
+        with client.websocket_connect("/ws?token=" + token) as ws:
+            ws.send_json({"type": "start", "topic": "小恐龙", "tts_providers": ["mock"]})
+            while True:
+                message = ws.receive()
+                if message.get("bytes") is None:
+                    event = json.loads(message["text"])
+                    event_types.append(event["type"])
+                    if event["type"] in ("complete", "error", "canceled"):
+                        break
+
+    assert "opening_audio_abort" in event_types
+    assert script["opening"] not in synth_texts  # already-played opening is not re-spoken
+    assert event_types.index("start_notice") < event_types.index("line_start")
     assert event_types[-1] == "complete"
 
 
