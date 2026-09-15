@@ -1,6 +1,7 @@
 import base64
 import json
 import struct
+import threading
 
 import pytest
 
@@ -66,6 +67,41 @@ class _FakeRealtimeTransport:
 
     def close(self):
         self.closed = True
+
+
+class _GatedTaskRequestTransport(_FakeRealtimeTransport):
+    """Fake transport that pauses a TaskRequest before it is recorded."""
+
+    def __init__(self, responses):
+        super().__init__(responses)
+        self.task_request_started = threading.Event()
+        self.release_task_request = threading.Event()
+        self.cancel_sent = threading.Event()
+
+    def send(self, frame):
+        event = _volc_event(frame)
+        if event == 200:
+            self.task_request_started.set()
+            assert self.release_task_request.wait(timeout=1)
+        super().send(frame)
+        if event == 101:
+            self.cancel_sent.set()
+
+
+class _GatedAudioTransport(_FakeRealtimeTransport):
+    """Fake transport that pauses the reader after receiving audio."""
+
+    def __init__(self, responses):
+        super().__init__(responses)
+        self.audio_received = threading.Event()
+        self.release_audio = threading.Event()
+
+    def recv(self):
+        frame = super().recv()
+        if _volc_event(frame) == 352:
+            self.audio_received.set()
+            assert self.release_audio.wait(timeout=1)
+        return frame
 
 
 def _volc_response(event, payload=b"{}", session_id=b"session-1", *, audio=False):
@@ -424,3 +460,78 @@ def test_realtime_session_rejects_failure_status_in_session_finished():
         session.finish()
 
     assert transport.closed is True
+
+
+def test_realtime_connection_failed_preserves_provider_status_and_message():
+    """Collapsing ConnectionFailed into an event mismatch hides the cause."""
+    transport = _FakeRealtimeTransport(
+        [
+            _volc_response(
+                51,
+                json.dumps(
+                    {"status_code": 40100000, "message": "unauthorized"}
+                ).encode("utf-8"),
+                session_id=b"connection-1",
+            ),
+        ]
+    )
+    tts = VolcengineTTS(_config())
+    tts._realtime_transport_factory = lambda endpoint, headers: transport
+
+    with pytest.raises(TTSError, match="40100000.*unauthorized"):
+        tts.open_stream(tts.list_voices()[0])
+
+    assert transport.closed is True
+
+
+def test_realtime_cancel_linearizes_with_task_request_send():
+    """A cancellation cannot be overtaken by an already-gated TaskRequest."""
+    transport = _GatedTaskRequestTransport(
+        [
+            _volc_response(50, session_id=b"connection-1"),
+            _volc_response(150),
+        ]
+    )
+    tts = VolcengineTTS(_config())
+    tts._realtime_transport_factory = lambda endpoint, headers: transport
+    session = tts.open_stream(tts.list_voices()[0])
+
+    sender = threading.Thread(target=lambda: session.send_text("racing text"))
+    canceller = threading.Thread(target=session.cancel)
+    sender.start()
+    assert transport.task_request_started.wait(timeout=1)
+    canceller.start()
+    transport.release_task_request.set()
+    sender.join(timeout=1)
+    canceller.join(timeout=1)
+
+    assert not sender.is_alive()
+    assert not canceller.is_alive()
+    assert [_volc_event(frame) for frame in transport.sent] == [1, 100, 200, 101]
+
+
+def test_realtime_cancel_discards_audio_received_before_reader_enqueue():
+    """Audio that reaches the reader after cancellation must never be queued."""
+    transport = _GatedAudioTransport(
+        [
+            _volc_response(50, session_id=b"connection-1"),
+            _volc_response(150),
+            _volc_response(352, b"\x01\x00", audio=True),
+            _volc_response(152),
+        ]
+    )
+    tts = VolcengineTTS(_config())
+    tts._realtime_transport_factory = lambda endpoint, headers: transport
+    session = tts.open_stream(tts.list_voices()[0])
+
+    reader = threading.Thread(target=lambda: list(session.iter_audio()))
+    reader.start()
+    assert transport.audio_received.wait(timeout=1)
+    session.cancel()
+    transport.release_audio.set()
+    reader.join(timeout=1)
+
+    assert not reader.is_alive()
+    assert session._reader_done.wait(timeout=1)
+    assert list(session._audio) == []
+    assert list(session.iter_audio()) == []

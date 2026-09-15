@@ -30,6 +30,7 @@ _VOICE_CATALOG = Path(__file__).with_name("voices.json")
 
 _EVENT_START_CONNECTION = 1
 _EVENT_CONNECTION_STARTED = 50
+_EVENT_CONNECTION_FAILED = 51
 _EVENT_START_SESSION = 100
 _EVENT_CANCEL_SESSION = 101
 _EVENT_FINISH_SESSION = 102
@@ -100,23 +101,22 @@ class VolcengineStreamingTTSSession(StreamingTTSSession):
             raise
 
     def send_text(self, text):
-        with self._changed:
-            self._raise_if_unavailable()
         if not isinstance(text, str) or not text:
             raise TTSError("Volcengine realtime TTS text must be a non-empty string")
-        try:
-            self._send(
-                _EVENT_TASK_REQUEST,
-                {"req_params": {"text": text}},
-                self._session_id,
-            )
-        except TTSError:
+        send_error = None
+        with self._changed:
+            self._raise_if_unavailable()
+            try:
+                self._send(
+                    _EVENT_TASK_REQUEST,
+                    {"req_params": {"text": text}},
+                    self._session_id,
+                )
+            except TTSError as exc:
+                send_error = exc
+        if send_error is not None:
             self._record_failure(TTSError("Volcengine realtime TTS send failed"))
-            raise
-        except Exception as exc:
-            error = TTSError("Volcengine realtime TTS send failed")
-            self._record_failure(error)
-            raise error from exc
+            raise send_error
 
     def iter_audio(self):
         self._start_reader()
@@ -216,7 +216,11 @@ class VolcengineStreamingTTSSession(StreamingTTSSession):
             raise TTSError("Volcengine realtime TTS transport failed") from exc
 
     def _expect_event(self, expected_event):
-        event, _payload = _parse_realtime_frame(self._receive())
+        event, payload = _parse_realtime_frame(self._receive())
+        if event == _EVENT_CONNECTION_FAILED:
+            raise _realtime_failure(
+                "Volcengine realtime TTS connection failed", payload,
+            )
         if event != expected_event:
             raise TTSError(
                 "Volcengine realtime TTS protocol error: expected event {}, got {}".format(
@@ -251,6 +255,8 @@ class VolcengineStreamingTTSSession(StreamingTTSSession):
                 if event == _EVENT_TTS_AUDIO:
                     if payload:
                         with self._changed:
+                            if self._cancelled:
+                                return
                             self._audio.append(StreamChunk(CHUNK_AUDIO, payload))
                             self._changed.notify_all()
                     continue
@@ -578,7 +584,13 @@ def _realtime_json(payload, payload_size):
 
 def _realtime_failure(prefix, payload):
     message = payload.get("message") if isinstance(payload, dict) else None
-    return TTSError("{}: {}".format(prefix, message or "unknown"))
+    status = None
+    if isinstance(payload, dict):
+        status = payload.get("status_code", payload.get("code"))
+    detail = message or "unknown"
+    if status is not None:
+        detail = "status {}: {}".format(status, detail)
+    return TTSError("{}: {}".format(prefix, detail))
 
 
 def _realtime_status_failed(payload):

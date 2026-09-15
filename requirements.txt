@@ -4,3 +4,4 @@ requests>=2.28
 pydub>=0.25
 python-dotenv>=1.0
 partialjson>=1.2.0
+websocket-client>=1.0
