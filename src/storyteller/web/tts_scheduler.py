@@ -280,7 +280,18 @@ class TTSScheduler:
             logger, logging.INFO, "tts_session_started", provider=provider,
             model=model, voice_id=voice.voice_id,
         )
-        return ScheduledTTSSession(session, group, limits, provider, model)
+        try:
+            return ScheduledTTSSession(session, group, limits, provider, model)
+        except Exception:
+            try:
+                session.cancel()
+            except Exception:
+                logger.exception(
+                    "Failed to cancel TTS provider session after scheduler startup failure"
+                )
+            finally:
+                group.release()
+            raise
 
     def _group_for(self, provider, model, limits):
         key = (provider, model)

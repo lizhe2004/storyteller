@@ -23,16 +23,30 @@ class RecordingSession:
         self.finish_calls = 0
 
     def send_text(self, text):
+        if self.provider.fail_next_send:
+            self.provider.fail_next_send = False
+            raise RuntimeError("send failed")
         if self.provider.block_first_send and not self.sent:
             self.provider.first_send_started.set()
             assert self.provider.release_first_send.wait(timeout=1)
         self.sent.append(text)
 
     def iter_audio(self):
+        if self.provider.fail_next_audio:
+            self.provider.fail_next_audio = False
+
+            def fail_during_iteration():
+                raise RuntimeError("audio iteration failed")
+                yield  # pragma: no cover
+
+            return fail_during_iteration()
         return iter(())
 
     def finish(self):
         self.finish_calls += 1
+        if self.provider.fail_next_finish:
+            self.provider.fail_next_finish = False
+            raise RuntimeError("finish failed")
         self._close()
 
     def cancel(self):
@@ -56,8 +70,15 @@ class RecordingProvider:
         self.block_first_send = False
         self.first_send_started = threading.Event()
         self.release_first_send = threading.Event()
+        self.fail_next_open = False
+        self.fail_next_send = False
+        self.fail_next_finish = False
+        self.fail_next_audio = False
 
     def open_stream(self, voice, *, directives=None, context=None):
+        if self.fail_next_open:
+            self.fail_next_open = False
+            raise RuntimeError("open failed")
         key = (voice.provider, voice.voice_id)
         self.active[key] = self.active.get(key, 0) + 1
         self.max_active[key] = max(self.max_active.get(key, 0), self.active[key])
@@ -301,3 +322,76 @@ def test_finish_is_idempotent_after_the_session_has_drained():
 
     session.finish()
     session.finish()
+
+
+def test_provider_open_failure_releases_the_same_key_slot_for_retry():
+    """Keeping a failed provider open in the FIFO gate must block a retry."""
+    provider = RecordingProvider()
+    provider.fail_next_open = True
+    scheduler = _scheduler(SchedulerLimits(1, None, 2, 0.05), provider)
+
+    with pytest.raises(RuntimeError, match="open failed"):
+        scheduler.open("fake", "model-a", _voice())
+
+    recovered = scheduler.open("fake", "model-a", _voice())
+    recovered.finish()
+
+
+def test_worker_send_failure_releases_the_same_key_slot_for_retry():
+    """Omitting worker-failure release must make the next same-key open time out."""
+    provider = RecordingProvider()
+    provider.fail_next_send = True
+    scheduler = _scheduler(SchedulerLimits(1, None, 2, 0.05), provider)
+    session = scheduler.open("fake", "model-a", _voice())
+
+    session.send_text("will fail")
+    _wait_for(lambda: provider.sessions[0].cancel_calls == 1)
+
+    recovered = scheduler.open("fake", "model-a", _voice())
+    recovered.finish()
+
+
+def test_worker_finish_failure_releases_the_same_key_slot_for_retry():
+    """Omitting finish-failure release must make the next same-key open time out."""
+    provider = RecordingProvider()
+    provider.fail_next_finish = True
+    scheduler = _scheduler(SchedulerLimits(1, None, 2, 0.05), provider)
+    session = scheduler.open("fake", "model-a", _voice())
+
+    with pytest.raises(SchedulerError, match="session failed"):
+        session.finish()
+
+    recovered = scheduler.open("fake", "model-a", _voice())
+    recovered.finish()
+
+
+def test_audio_iteration_failure_releases_the_same_key_slot_for_retry():
+    """Omitting audio-failure release must make the next same-key open time out."""
+    provider = RecordingProvider()
+    provider.fail_next_audio = True
+    scheduler = _scheduler(SchedulerLimits(1, None, 2, 0.05), provider)
+    session = scheduler.open("fake", "model-a", _voice())
+
+    with pytest.raises(RuntimeError, match="audio iteration failed"):
+        list(session.iter_audio())
+
+    recovered = scheduler.open("fake", "model-a", _voice())
+    recovered.finish()
+
+
+def test_worker_start_failure_closes_provider_session_and_releases_slot(monkeypatch):
+    """Leaving an opened session behind after worker startup failure blocks reuse."""
+    provider = RecordingProvider()
+    scheduler = _scheduler(SchedulerLimits(1, None, 2, 0.05), provider)
+
+    def fail_to_start_worker(self):
+        raise RuntimeError("worker start failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(threading.Thread, "start", fail_to_start_worker)
+        with pytest.raises(RuntimeError, match="worker start failed"):
+            scheduler.open("fake", "model-a", _voice())
+
+    recovered = scheduler.open("fake", "model-a", _voice())
+    recovered.finish()
+    assert provider.sessions[0].cancel_calls == 1
