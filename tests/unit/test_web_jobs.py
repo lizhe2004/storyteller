@@ -1,9 +1,80 @@
 import threading
+from queue import Empty
+
+import pytest
 
 from storyteller.core.config import Config
+from storyteller.core.exceptions import TTSError
 from storyteller.core.runtime_settings import RuntimeSettingsStore
-from storyteller.web.jobs import JobManager, JobParams
+from storyteller.web.jobs import Job, JobManager, JobParams
+from storyteller.web import streaming
 from storyteller.web.streaming import StreamOrchestrator
+
+
+def _queued_audio(job):
+    frames = []
+    while True:
+        try:
+            item = job.queue.get_nowait()
+        except Empty:
+            return frames
+        if "_bytes" in item:
+            frames.append(item["_bytes"])
+
+
+def test_ordered_audio_publisher_releases_committed_phases_in_story_order():
+    """Direct producer writes would emit notice/line frames before opening."""
+    publisher_type = getattr(streaming, "_OrderedAudioPublisher", None)
+    assert publisher_type is not None
+    job = Job(JobParams(topic="ordered"))
+    publisher = publisher_type(job, ["opening", "start_notice", ("line", 1)])
+    opening = publisher.lease("opening")
+    notice = publisher.lease("start_notice")
+    line = publisher.lease(("line", 1))
+
+    notice.publish(b"NN")
+    line.publish(b"LL")
+    opening.publish(b"OO")
+    opening.commit()
+    assert _queued_audio(job) == [b"OO"]
+
+    notice.commit()
+    assert _queued_audio(job) == [b"NN"]
+    line.commit()
+    assert _queued_audio(job) == [b"LL"]
+
+
+def test_ordered_audio_publisher_discards_aborted_lease_and_late_frames():
+    """A realtime line failure must not leak partial frames into its fallback."""
+    publisher_type = getattr(streaming, "_OrderedAudioPublisher", None)
+    assert publisher_type is not None
+    job = Job(JobParams(topic="fallback"))
+    publisher = publisher_type(job, [("line", 1)])
+    realtime = publisher.lease(("line", 1))
+    realtime.publish(b"RR")
+    realtime.abort()
+
+    with pytest.raises(TTSError):
+        realtime.publish(b"XX")
+    fallback = publisher.lease(("line", 1))
+    fallback.publish(b"FF")
+    fallback.commit()
+
+    assert _queued_audio(job) == [b"FF"]
+
+
+def test_ordered_audio_publisher_cancellation_rejects_late_producer_frames():
+    """Cancellation must not let a reader thread publish after the job is terminal."""
+    publisher_type = getattr(streaming, "_OrderedAudioPublisher", None)
+    assert publisher_type is not None
+    job = Job(JobParams(topic="cancel"))
+    publisher = publisher_type(job, ["opening"])
+    opening = publisher.lease("opening")
+    publisher.cancel()
+
+    with pytest.raises(TTSError):
+        opening.publish(b"XX")
+    assert _queued_audio(job) == []
 
 
 def test_jobs_execute_with_the_snapshot_bound_at_submission(tmp_path):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 import logging
 import threading
@@ -40,9 +41,9 @@ def _script_preview_event(preview):
 class _AudioPump:
     """Drain one scheduled session on a dedicated reader without blocking text input."""
 
-    def __init__(self, session, job, on_first_audio=None):
+    def __init__(self, session, lease, on_first_audio=None):
         self.session = session
-        self.job = job
+        self.lease = lease
         self.on_first_audio = on_first_audio
         self.pcm = bytearray()
         self.error = None
@@ -61,6 +62,7 @@ class _AudioPump:
 
     def cancel(self):
         try:
+            self.lease.abort()
             self.session.cancel()
         finally:
             self._thread.join(timeout=1)
@@ -76,10 +78,141 @@ class _AudioPump:
                     self.started = True
                     if self.on_first_audio is not None:
                         self.on_first_audio()
-                self.job.emit_bytes(chunk.data)
+                self.lease.publish(chunk.data)
                 self.pcm.extend(chunk.data)
         except Exception as exc:  # surfaced by finish() in the orchestration thread
             self.error = exc
+
+
+class _AudioLease:
+    """A generation-scoped producer handle for one ordered audio phase."""
+
+    def __init__(self, publisher, key, generation):
+        self._publisher = publisher
+        self._key = key
+        self._generation = generation
+
+    def publish(self, data):
+        self._publisher.publish(self, data)
+
+    def commit(self):
+        self._publisher.commit(self)
+
+    def abort(self):
+        self._publisher.abort(self)
+
+
+class _OrderedAudioPublisher:
+    """Bounded, all-or-nothing PCM publication in opening/notice/line order."""
+
+    def __init__(self, job, phases, max_frames=64):
+        self._job = job
+        self._phases = list(phases)
+        self._tracks = {
+            key: {"generation": 0, "state": "waiting", "frames": deque()}
+            for key in self._phases
+        }
+        self._max_frames = max(1, int(max_frames))
+        self._cursor = 0
+        self._cancelled = False
+        self._lock = threading.Lock()
+
+    def lease(self, key):
+        with self._lock:
+            track = self._track(key)
+            if self._cancelled or self._job.cancel_event.is_set():
+                self._cancel_locked()
+                raise TTSError("音频发布已取消")
+            if track["state"] == "open":
+                raise TTSError("音频阶段已有活动生产者")
+            if track["state"] in ("committed", "released"):
+                raise TTSError("音频阶段已经完成")
+            track["generation"] += 1
+            track["state"] = "open"
+            track["frames"].clear()
+            return _AudioLease(self, key, track["generation"])
+
+    def add_phase(self, key):
+        with self._lock:
+            if key in self._tracks:
+                raise TTSError("重复的音频阶段")
+            self._phases.append(key)
+            self._tracks[key] = {"generation": 0, "state": "waiting", "frames": deque()}
+
+    def publish(self, lease, data):
+        if len(data) % 2:
+            raise ValueError("PCM frame must have even byte length")
+        with self._lock:
+            track = self._valid_track(lease)
+            if len(track["frames"]) >= self._max_frames:
+                raise TTSError("有序音频发布缓冲区已满")
+            track["frames"].append(data)
+
+    def commit(self, lease):
+        with self._lock:
+            track = self._valid_track(lease)
+            track["state"] = "committed"
+            self._flush_ready_locked()
+
+    def abort(self, lease):
+        with self._lock:
+            if self._cancelled:
+                return
+            track = self._tracks.get(lease._key)
+            if track is None or track["generation"] != lease._generation:
+                return
+            track["frames"].clear()
+            track["state"] = "aborted"
+
+    def skip(self, key):
+        """Finish a phase without audio, allowing the following phase to publish."""
+        with self._lock:
+            track = self._track(key)
+            if track["state"] == "released":
+                return
+            track["generation"] += 1
+            track["frames"].clear()
+            track["state"] = "skipped"
+            self._flush_ready_locked()
+
+    def cancel(self):
+        with self._lock:
+            self._cancel_locked()
+
+    def _track(self, key):
+        try:
+            return self._tracks[key]
+        except KeyError as exc:
+            raise TTSError("未知音频阶段") from exc
+
+    def _valid_track(self, lease):
+        if self._cancelled or self._job.cancel_event.is_set():
+            self._cancel_locked()
+            raise TTSError("音频发布已取消")
+        track = self._track(lease._key)
+        if track["generation"] != lease._generation or track["state"] != "open":
+            raise TTSError("音频生产者已终止")
+        return track
+
+    def _flush_ready_locked(self):
+        while self._cursor < len(self._phases):
+            track = self._tracks[self._phases[self._cursor]]
+            if track["state"] not in ("committed", "skipped"):
+                return
+            if track["state"] == "committed":
+                for frame in track["frames"]:
+                    self._job.emit_bytes(frame)
+            track["frames"].clear()
+            track["state"] = "released"
+            self._cursor += 1
+
+    def _cancel_locked(self):
+        self._cancelled = True
+        for track in self._tracks.values():
+            track["generation"] += 1
+            track["frames"].clear()
+            if track["state"] != "released":
+                track["state"] = "skipped"
 
 
 class StreamOrchestrator:
@@ -103,10 +236,10 @@ class StreamOrchestrator:
             log_dir=Path(self.config.get("data_dir") or "./.storyteller") / "logs",
         )
 
-    def _send_pcm_file(self, job, path):
+    def _send_pcm_file(self, lease, path):
         pcm = audio_file_to_standard_pcm(path)
         for frame in iter_pcm_frames(pcm):
-            job.emit_bytes(frame)
+            lease.publish(frame)
         return pcm
 
     def _llm_name(self):
@@ -123,33 +256,48 @@ class StreamOrchestrator:
             context=context,
         )
 
-    def _play_start_notice(self, job, scheduler, host):
+    def _play_start_notice(self, job, scheduler, host, publisher):
         text = start_notice_text()
         job.emit({"type": "start_notice", "text": text})
         if not host:
             job.emit({"type": "warning", "message": "无可用主持人音色，跳过开播提示"})
+            publisher.skip("start_notice")
             return
         _, voice = host
         pump = None
+        lease = None
         try:
-            pump = _AudioPump(self._open_session(scheduler, voice), job)
+            lease = publisher.lease("start_notice")
+            pump = _AudioPump(self._open_session(scheduler, voice), lease)
             pump.start()
             pump.session.send_text(text)
-            pump.finish()
+            pcm = pump.finish()
+            if not pcm:
+                raise TTSError("实时 TTS 没有返回音频")
+            lease.commit()
             return
         except Exception as exc:
             if pump is not None:
                 pump.cancel()
+            elif lease is not None:
+                lease.abort()
             job.emit({"type": "warning", "message": "开播提示实时语音失败：{}".format(exc)})
+        fallback = None
         try:
             clip = cached_start_notice(
                 self.registry, host,
                 Path(self.config.get("data_dir") or ".storyteller") / "web_cache",
             )
             if clip:
-                self._send_pcm_file(job, clip.mp3_path)
+                fallback = publisher.lease("start_notice")
+                self._send_pcm_file(fallback, clip.mp3_path)
+                fallback.commit()
+                return
         except Exception as exc:
+            if fallback is not None:
+                fallback.abort()
             job.emit({"type": "warning", "message": "开播提示不可用：{}".format(exc)})
+        publisher.skip("start_notice")
 
     def run(self, job):
         if job.config_snapshot is not None:
@@ -192,32 +340,46 @@ class StreamOrchestrator:
 
         scheduler = TTSScheduler(self.registry, self.config)
         host = choose_host_voice(self.registry, tts_names, self.config.get("web.filler_voice"))
+        publisher = _OrderedAudioPublisher(job, ["opening", "start_notice"])
         opening_pump = None
+        opening_lease = None
         opening_aborted = False
+        opening_text = ""
 
         def abort_opening(exc=None):
-            nonlocal opening_aborted, opening_pump
+            nonlocal opening_aborted, opening_pump, opening_lease
             if opening_aborted:
                 return
             opening_aborted = True
             if opening_pump is not None:
                 opening_pump.cancel()
+            elif opening_lease is not None:
+                opening_lease.abort()
+            publisher.skip("opening")
             if exc is not None:
                 job.emit({"type": "warning", "message": "开场实时语音失败：{}".format(exc)})
             job.emit({"type": "opening_audio_abort"})
 
         def emit_opening_delta(text):
-            nonlocal opening_pump
+            nonlocal opening_pump, opening_lease, opening_text
             if opening_aborted or not text:
                 return
+            opening_text += text
+            # StoryGenerator reports opening deltas before its first preview.  Emit a
+            # minimal preview here so opening audio can never overtake the preview.
+            if not job.script_preview or job.script_preview.get("opening") != opening_text:
+                event = _script_preview_event({"opening": opening_text})
+                job.script_preview = event
+                job.emit(event)
             job.emit({"type": "opening_text_delta", "text": text})
             if opening_pump is None:
                 if not host:
                     abort_opening()
                     return
                 try:
+                    opening_lease = publisher.lease("opening")
                     opening_pump = _AudioPump(
-                        self._open_session(scheduler, host[1]), job,
+                        self._open_session(scheduler, host[1]), opening_lease,
                         on_first_audio=lambda: job.emit({"type": "opening_audio_start"}),
                     )
                     opening_pump.start()
@@ -249,20 +411,30 @@ class StreamOrchestrator:
         except Exception:
             if opening_pump is not None:
                 opening_pump.cancel()
+            publisher.cancel()
             raise
 
         if opening_pump is not None and not opening_aborted:
             try:
                 opening_pcm = opening_pump.finish()
+                if not opening_pcm:
+                    raise TTSError("实时 TTS 没有返回音频")
+                opening_lease.commit()
                 job.emit({"type": "opening_audio_end", "duration_ms": pcm_duration_ms(opening_pcm)})
             except Exception as exc:
                 abort_opening(exc)
+        elif not opening_aborted:
+            publisher.skip("opening")
+
+        for index, _ in enumerate(state.script.lines, 1):
+            publisher.add_phase(("line", index))
 
         state.state = "script_generated"
         self.projects.save_project(state)
         self.projects.rename_for_title(state)
         self.pipeline._export_script(state)
         if job.cancel_event.is_set():
+            publisher.cancel()
             job.phase = "canceled"; job.emit({"type": "canceled"}); return
 
         job.phase = "voices"
@@ -297,9 +469,10 @@ class StreamOrchestrator:
         job.script_ready = script_ready
         job.emit(script_ready)
         log_event(job_logger, logging.INFO, "script_ready_sent", phase="voices", line_count=len(state.script.lines))
-        self._play_start_notice(job, scheduler, host)
+        self._play_start_notice(job, scheduler, host, publisher)
 
         if job.cancel_event.is_set():
+            publisher.cancel()
             job.phase = "canceled"; job.emit({"type": "canceled"}); return
         job.phase = "line"; job.total = len(state.script.lines)
         sound_provider = sound_library = None
@@ -314,10 +487,12 @@ class StreamOrchestrator:
         refs, line_paths = set(), []
         for index, line in enumerate(state.script.lines, 1):
             if job.cancel_event.is_set():
+                publisher.cancel()
                 state.state = "generating_audio"; self.projects.save_project(state)
                 job.phase = "canceled"; job.emit({"type": "canceled"}); return
             voice = self.pipeline.voice_for_line(line, char_map, narrator)
             if not voice:
+                publisher.skip(("line", index))
                 job.emit({"type": "warning", "line_id": line.line_id, "message": "无可用音色"}); continue
             has_cues = with_sound and bool(line.sound_effects or line.background_music)
             job.line_index = index
@@ -334,25 +509,30 @@ class StreamOrchestrator:
             tts_timing["started_at"] = human_time()
             streamed = False
             pump = None
+            lease = None
             try:
                 with timed_event(job_logger, "tts_line", phase="line", line_id=line.line_id,
                                  provider=voice.provider, index=index):
                     if not has_cues:
                         try:
+                            lease = publisher.lease(("line", index))
                             pump = _AudioPump(
                                 self._open_session(scheduler, voice, directives=directives, context=context),
-                                job,
+                                lease,
                             )
                             pump.start()
                             pump.session.send_text(line.text)
                             pcm = pump.finish()
                             if not pcm:
                                 raise TTSError("实时 TTS 没有返回音频")
+                            lease.commit()
                             pcm_to_mp3_file(pcm, out)
                             streamed = True
                         except Exception as exc:
                             if pump is not None:
                                 pump.cancel()
+                            elif lease is not None:
+                                lease.abort()
                             job.emit({"type": "warning", "line_id": line.line_id,
                                       "message": "实时语音降级：{}".format(exc)})
                     if not streamed:
@@ -372,7 +552,9 @@ class StreamOrchestrator:
                         finally:
                             line.processing["mixing"] = {"started_at": mix_started, "ended_at": human_time()}
                 if not streamed:
-                    self._send_pcm_file(job, out)
+                    fallback = publisher.lease(("line", index))
+                    self._send_pcm_file(fallback, out)
+                    fallback.commit()
                 line.audio_path = str(out); line_paths.append(str(out))
                 from pydub import AudioSegment
                 duration_ms = len(AudioSegment.from_file(str(out)))
@@ -380,6 +562,7 @@ class StreamOrchestrator:
             except Exception as exc:
                 if tts_timing.get("started_at") and not tts_timing.get("ended_at"):
                     tts_timing["ended_at"] = human_time()
+                publisher.skip(("line", index))
                 job.emit({"type": "warning", "line_id": line.line_id, "message": str(exc)})
         if not line_paths:
             raise TTSError("没有成功生成任何音频行")
