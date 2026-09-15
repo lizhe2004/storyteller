@@ -15,6 +15,24 @@ def test_config_defaults():
     assert config.get("sound.dir") == "./.storyteller/sounds"
 
 
+def test_tts_scheduler_defaults_and_model_override_are_configurable():
+    """Removing scheduler defaults or model-specific nesting must break lookup."""
+    config = Config()
+    assert config.get("tts.scheduler.default_max_concurrent_sessions") == 1
+    assert config.get("tts.scheduler.default_max_text_chunks_per_second") is None
+    assert config.get("tts.scheduler.default_queue_size") == 16
+    assert config.get("tts.scheduler.default_queue_timeout_seconds") == 5.0
+
+    config.set(
+        "tts.scheduler.limits.aliyun.qwen-plus",
+        {"max_concurrent_sessions": 3, "queue_size": 4},
+    )
+    assert config.get(
+        "tts.scheduler.limits.aliyun.qwen-plus.max_concurrent_sessions"
+    ) == 3
+    assert config.get("tts.scheduler.limits.aliyun.qwen-plus.queue_size") == 4
+
+
 def test_config_get_nested():
     config = Config()
     config.set("a.b.c", "value")

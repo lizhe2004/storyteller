@@ -29,6 +29,13 @@ class Config:
         "tts": {
             "providers": [],
             "provider_config": {},
+            "scheduler": {
+                "default_max_concurrent_sessions": 1,
+                "default_max_text_chunks_per_second": None,
+                "default_queue_size": 16,
+                "default_queue_timeout_seconds": 5.0,
+                "limits": {},
+            },
         },
         "sound": {
             "enabled": False,

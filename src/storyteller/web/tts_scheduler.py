@@ -1,0 +1,348 @@
+"""Per-provider/model scheduling for incremental TTS sessions."""
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass
+import logging
+import threading
+import time
+from typing import Optional
+
+from ..core.exceptions import TTSError
+from ..core.observability import log_event
+from ..core.streaming_tts import StreamingTTSSession
+
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class SchedulerLimits:
+    max_concurrent_sessions: int
+    max_text_chunks_per_second: Optional[float]
+    queue_size: int
+    queue_timeout_seconds: float
+
+
+class SchedulerError(TTSError):
+    """Base error raised by the streaming TTS scheduler."""
+
+
+class SchedulerQueueTimeout(SchedulerError):
+    """A session or text chunk waited longer than its configured limit."""
+
+
+class _RateLimiter:
+    def __init__(self, chunks_per_second, clock, sleep):
+        self._interval = 1.0 / chunks_per_second if chunks_per_second else None
+        self._clock = clock
+        self._sleep = sleep
+        self._next_allowed = None
+        self._lock = threading.Lock()
+
+    def wait(self):
+        if self._interval is None:
+            return
+        with self._lock:
+            now = self._clock()
+            if self._next_allowed is None:
+                self._next_allowed = now + self._interval
+                return
+            delay = self._next_allowed - now
+            if delay > 0:
+                self._sleep(delay)
+                now = self._clock()
+            self._next_allowed = max(now, self._next_allowed) + self._interval
+
+
+class _SchedulerGroup:
+    def __init__(self, limits, clock, sleep):
+        self.limits = limits
+        self._active = 0
+        self._waiters = deque()
+        self._changed = threading.Condition(threading.Lock())
+        self.rate_limiter = _RateLimiter(
+            limits.max_text_chunks_per_second, clock, sleep,
+        )
+
+    def acquire(self, timeout_seconds):
+        token = object()
+        deadline = time.monotonic() + timeout_seconds
+        with self._changed:
+            self._waiters.append(token)
+            while True:
+                if self._waiters[0] is token and self._active < self.limits.max_concurrent_sessions:
+                    self._waiters.popleft()
+                    self._active += 1
+                    self._changed.notify_all()
+                    return
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self._waiters.remove(token)
+                    self._changed.notify_all()
+                    raise SchedulerQueueTimeout("Timed out waiting for a TTS session slot")
+                self._changed.wait(remaining)
+
+    def release(self):
+        with self._changed:
+            if self._active:
+                self._active -= 1
+                self._changed.notify_all()
+
+
+class ScheduledTTSSession(StreamingTTSSession):
+    """A provider session whose text submission is bounded and scheduled."""
+
+    _STOP = object()
+    _CANCELLED = object()
+
+    def __init__(self, session, group, limits, provider, model):
+        self._session = session
+        self._group = group
+        self._limits = limits
+        self._provider = provider
+        self._model = model
+        self._texts = deque()
+        self._text_changed = threading.Condition(threading.Lock())
+        self._accepting = True
+        self._cancelled = False
+        self._released = False
+        self._failure = None
+        self._worker = threading.Thread(
+            target=self._run, name="tts-scheduler", daemon=True,
+        )
+        self._worker.start()
+
+    def send_text(self, text):
+        with self._text_changed:
+            self._raise_if_unavailable()
+        self._group.rate_limiter.wait()
+        self._enqueue_text(text)
+        log_event(
+            logger, logging.INFO, "tts_text_chunk_sent", provider=self._provider,
+            model=self._model, text_length=len(text),
+        )
+
+    def iter_audio(self):
+        try:
+            for chunk in self._session.iter_audio():
+                yield chunk
+        except Exception as exc:
+            self._fail(exc)
+            raise
+
+    def finish(self):
+        with self._text_changed:
+            if self._cancelled:
+                if self._failure is not None:
+                    raise SchedulerError("Scheduled TTS session failed") from self._failure
+                return
+            self._accepting = False
+            self._text_changed.notify_all()
+        self._worker.join()
+        with self._text_changed:
+            if self._failure is not None:
+                raise SchedulerError("Scheduled TTS session failed") from self._failure
+
+    def cancel(self):
+        with self._text_changed:
+            if self._cancelled:
+                return
+            self._accepting = False
+            self._cancelled = True
+            self._texts.clear()
+            self._text_changed.notify_all()
+        try:
+            self._session.cancel()
+        finally:
+            self._release()
+        log_event(
+            logger, logging.INFO, "tts_session_finished", provider=self._provider,
+            model=self._model, status="cancelled",
+        )
+
+    def _run(self):
+        try:
+            while True:
+                text = self._take_text()
+                if text is self._CANCELLED:
+                    return
+                if text is self._STOP:
+                    self._session.finish()
+                    self._release()
+                    log_event(
+                        logger, logging.INFO, "tts_session_finished",
+                        provider=self._provider, model=self._model, status="finished",
+                    )
+                    return
+                self._session.send_text(text)
+        except Exception as exc:
+            self._fail(exc)
+
+    def _enqueue_text(self, text):
+        deadline = time.monotonic() + self._limits.queue_timeout_seconds
+        with self._text_changed:
+            self._raise_if_unavailable()
+            while len(self._texts) >= self._limits.queue_size:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise SchedulerQueueTimeout(
+                        "Timed out waiting for TTS text buffer capacity"
+                    )
+                self._text_changed.wait(remaining)
+                self._raise_if_unavailable()
+            self._texts.append(text)
+            self._text_changed.notify_all()
+
+    def _take_text(self):
+        with self._text_changed:
+            while True:
+                if self._cancelled:
+                    return self._CANCELLED
+                if self._texts:
+                    text = self._texts.popleft()
+                    self._text_changed.notify_all()
+                    return text
+                if not self._accepting:
+                    return self._STOP
+                self._text_changed.wait()
+
+    def _fail(self, exc):
+        with self._text_changed:
+            if self._failure is not None:
+                return
+            self._failure = exc
+            self._accepting = False
+            self._cancelled = True
+            self._texts.clear()
+            self._text_changed.notify_all()
+        try:
+            self._session.cancel()
+        finally:
+            self._release()
+        log_event(
+            logger, logging.ERROR, "tts_session_finished", provider=self._provider,
+            model=self._model, status="failed", error_type=type(exc).__name__,
+        )
+
+    def _release(self):
+        with self._text_changed:
+            if self._released:
+                return
+            self._released = True
+        self._group.release()
+
+    def _raise_if_unavailable(self):
+        if self._failure is not None:
+            raise SchedulerError("Scheduled TTS session failed") from self._failure
+        if not self._accepting:
+            raise SchedulerError("Scheduled TTS session is closed")
+
+
+class TTSScheduler:
+    """Open incremental TTS sessions subject to per-provider/model limits."""
+
+    _SAFE_DEFAULTS = SchedulerLimits(1, None, 16, 5.0)
+
+    def __init__(self, registry, config, *, clock=None, sleep=None):
+        self._registry = registry
+        self._config = config
+        self._clock = clock or time.monotonic
+        self._sleep = sleep or time.sleep
+        self._groups = {}
+        self._groups_lock = threading.Lock()
+
+    def open(self, provider, model, voice, *, directives=None, context=None):
+        limits = self._limits_for(provider, model)
+        group = self._group_for(provider, model, limits)
+        started = time.monotonic()
+        log_event(
+            logger, logging.INFO, "tts_session_queued", provider=provider,
+            model=model, voice_id=voice.voice_id,
+        )
+        group.acquire(limits.queue_timeout_seconds)
+        wait_ms = int((time.monotonic() - started) * 1000)
+        log_event(
+            logger, logging.INFO, "tts_queue_wait_finished", provider=provider,
+            model=model, voice_id=voice.voice_id, queue_wait_ms=wait_ms,
+        )
+        try:
+            stream_provider = self._registry.get_streaming_tts(provider)
+            if stream_provider is None:
+                raise SchedulerError("TTS provider does not support text streaming: {}".format(provider))
+            session = stream_provider.open_stream(
+                voice, directives=directives, context=context,
+            )
+        except Exception:
+            group.release()
+            raise
+        log_event(
+            logger, logging.INFO, "tts_session_started", provider=provider,
+            model=model, voice_id=voice.voice_id,
+        )
+        return ScheduledTTSSession(session, group, limits, provider, model)
+
+    def _group_for(self, provider, model, limits):
+        key = (provider, model)
+        with self._groups_lock:
+            group = self._groups.get(key)
+            if group is None:
+                group = _SchedulerGroup(limits, self._clock, self._sleep)
+                self._groups[key] = group
+            return group
+
+    def _limits_for(self, provider, model):
+        defaults = self._SAFE_DEFAULTS
+        configured_defaults = {
+            "max_concurrent_sessions": self._config.get(
+                "tts.scheduler.default_max_concurrent_sessions",
+                defaults.max_concurrent_sessions,
+            ),
+            "max_text_chunks_per_second": self._config.get(
+                "tts.scheduler.default_max_text_chunks_per_second",
+                defaults.max_text_chunks_per_second,
+            ),
+            "queue_size": self._config.get(
+                "tts.scheduler.default_queue_size", defaults.queue_size,
+            ),
+            "queue_timeout_seconds": self._config.get(
+                "tts.scheduler.default_queue_timeout_seconds",
+                defaults.queue_timeout_seconds,
+            ),
+        }
+        configured = self._config.get(
+            "tts.scheduler.limits.{}.{}".format(provider, model), {},
+        ) or {}
+        configured_defaults.update(configured)
+        return SchedulerLimits(
+            _positive_int(configured_defaults["max_concurrent_sessions"], defaults.max_concurrent_sessions),
+            _positive_float_or_none(configured_defaults["max_text_chunks_per_second"]),
+            _positive_int(configured_defaults["queue_size"], defaults.queue_size),
+            _nonnegative_float(configured_defaults["queue_timeout_seconds"], defaults.queue_timeout_seconds),
+        )
+
+
+def _positive_int(value, fallback):
+    try:
+        value = int(value)
+    except (TypeError, ValueError):
+        return fallback
+    return value if value > 0 else fallback
+
+
+def _positive_float_or_none(value):
+    if value is None:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _nonnegative_float(value, fallback):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return value if value >= 0 else fallback

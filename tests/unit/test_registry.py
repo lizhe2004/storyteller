@@ -17,6 +17,8 @@ class FakeLLM(BaseProvider, LLMProvider):
 
 
 class FakeTTS(BaseProvider, TTSProvider):
+    model = "fake-model"
+
     @property
     def name(self):
         return "fake"
@@ -33,6 +35,13 @@ class FakeTTS(BaseProvider, TTSProvider):
 
     def synthesize(self, text, voice_config, output_path, **kwargs):
         return output_path
+
+
+class CatalogModelTTS(FakeTTS):
+    model = "provider-default"
+
+    def _model_for(self, voice_id):
+        return "catalog-{}".format(voice_id)
 
 
 # ========== BaseProvider ==========
@@ -80,6 +89,24 @@ def test_registry_register_and_get_tts():
     tts = registry.get_tts("fake")
     assert isinstance(tts, FakeTTS)
     assert tts.name == "fake"
+
+
+def test_registry_resolves_model_for_a_voice_config():
+    """Ignoring the provider model must collapse distinct scheduler limits."""
+    config = Config()
+    registry = ProviderRegistry(config)
+    registry.register_tts("fake", FakeTTS)
+
+    assert registry.get_tts_model(VoiceConfig(provider="fake", voice_id="v1")) == "fake-model"
+
+
+def test_registry_prefers_voice_catalog_model_over_provider_default():
+    """Using only a provider default must ignore model-specific voice limits."""
+    config = Config()
+    registry = ProviderRegistry(config)
+    registry.register_tts("fake", CatalogModelTTS)
+
+    assert registry.get_tts_model(VoiceConfig(provider="fake", voice_id="v1")) == "catalog-v1"
 
 
 def test_registry_get_unknown_tts_raises():

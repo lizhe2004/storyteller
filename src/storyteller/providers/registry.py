@@ -95,6 +95,23 @@ class ProviderRegistry:
             return tts
         return None
 
+    def get_tts_model(self, voice: VoiceConfig) -> str:
+        """Resolve the provider/model resource used by ``voice`` for scheduling."""
+        tts = self.get_tts(voice.provider)
+        for attribute in ("model_for_voice", "_model_for", "_resource_id_for"):
+            resolver = getattr(tts, attribute, None)
+            if callable(resolver):
+                model = resolver(voice.voice_id)
+                if model:
+                    return str(model)
+        model = getattr(tts, "model", None)
+        if model:
+            return str(model)
+        configured = self.config.get(
+            "tts.provider_config.{}.model".format(voice.provider)
+        )
+        return str(configured or "default")
+
     # ----- Sound -----
     def register_sound(self, name, factory):
         """Register a sound provider. factory is a class/callable taking
