@@ -309,7 +309,6 @@ class AliyunStreamingTTSSession(StreamingTTSSession):
                 self._failure = error
             self._accepting = False
             self._completed = True
-            self._close_spill()
             self._completion.set()
             self._changed.notify_all()
 

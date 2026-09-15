@@ -564,10 +564,10 @@ def test_realtime_session_finishes_before_draining_more_than_bounded_audio_chunk
     assert created["synthesizer"].calls == [("streaming_complete",)]
 
 
-def test_realtime_session_failure_closes_overflow_spill_before_iterator_raises(
+def test_realtime_session_failure_drains_overflow_spill_before_iterator_cleanup(
     monkeypatch,
 ):
-    """Provider failure must remove overflow storage while queued audio drains."""
+    """Closing spill on failure must not discard already accepted overflow PCM."""
     tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
     created = {}
     input_pcm = struct.pack("<3h", 1, 2, 3)
@@ -607,10 +607,15 @@ def test_realtime_session_failure_closes_overflow_spill_before_iterator_raises(
     with pytest.raises(TTSError, match="provider failed"):
         session.finish()
 
+    drained = []
+    with pytest.raises(TTSError, match="provider failed"):
+        for chunk in session.iter_audio():
+            drained.append(chunk.data)
+
+    assert len(drained) == 2
+    assert all(drained)
     assert created["spill"].closed
     assert session._spill is None
-    with pytest.raises(TTSError, match="provider failed"):
-        list(session.iter_audio())
 
 
 def test_realtime_session_redacts_callback_credentials_and_signed_urls():
