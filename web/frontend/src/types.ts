@@ -2,6 +2,16 @@ export interface StoryLine { line_id: string; line_type: string; character_id?: 
 export interface StoryCharacter { id: string; name: string; description?: string; voice?: { provider: string; voice_id: string; name?: string | null } | null }
 export interface StoryDetail { id: string; title: string; topic: string; state: string; characters: { id: string; name: string }[]; lines: StoryLine[] }
 export interface ReadyAudio { encoding: string; sample_rate: number; channels: number }
+
+/** Streamed host opening narration; a waiting-period filler, not part of `lines`. */
+export interface OpeningTextDeltaEvent { type: 'opening_text_delta'; text: string }
+export interface OpeningAudioStartEvent { type: 'opening_audio_start' }
+export interface OpeningAudioEndEvent { type: 'opening_audio_end'; duration_ms: number }
+export interface OpeningAudioAbortEvent { type: 'opening_audio_abort' }
+/** Fixed host clip played after the opening and voice matching, before the first line. */
+export interface StartNoticeEvent { type: 'start_notice'; text: string }
+/** Incremental formal-line text. `text` may be a suffix delta or the growing full text. */
+export interface LineTextDeltaEvent { type: 'line_text_delta'; line_id: string; index: number; text: string }
 export interface VoiceAnalysisJob { job_id: string; status: string; phase: string; total: number; completed: number; failed: number; skipped: number; current?: number; error_message?: string; samples?: VoiceAnalysisSample[]; voice_summaries?: any[]; suggestions?: any[] }
 export interface VoiceAnalysisSample { sample_id: string; voice_id: string; story_id: string; character_name?: string; text: string; audio_path: string; result?: { status?: string; normalized_result?: { observed_gender?: string; observed_age?: string; timbre?: string[]; energy?: string; speech_rate?: string; confidence?: number; evidence?: string } } | null }
 

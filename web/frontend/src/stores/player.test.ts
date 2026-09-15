@@ -2,6 +2,18 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePlayerStore } from './player'
 
+function scriptReady(store: ReturnType<typeof usePlayerStore>) {
+  store.applyScriptReady({
+    type: 'script_ready',
+    title: '深夜小木屋',
+    characters: [],
+    lines: [
+      { line_id: 'l1', line_type: 'narration', speaker: '旁白', text: '' },
+      { line_id: 'l2', line_type: 'dialogue', speaker: '小熊', text: '' },
+    ],
+  })
+}
+
 describe('player script display', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
@@ -16,5 +28,98 @@ describe('player script display', () => {
     })
 
     expect(store.lines[0].text).toBe('月亮升起来了。')
+  })
+})
+
+describe('player opening / start notice events', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+
+  it('accumulates opening text deltas into the host bubble', () => {
+    const store = usePlayerStore()
+
+    store.applyEvent({ type: 'opening_text_delta', text: '夜幕' })
+    expect(store.fillerText).toBe('夜幕')
+    store.applyEvent({ type: 'opening_text_delta', text: '降临' })
+    expect(store.fillerText).toBe('夜幕降临')
+  })
+
+  it('clears the host bubble when opening audio ends or aborts', () => {
+    const store = usePlayerStore()
+    store.applyEvent({ type: 'opening_text_delta', text: '夜幕降临，森林安静下来。' })
+    expect(store.fillerText).not.toBe('')
+
+    store.applyEvent({ type: 'opening_audio_end', duration_ms: 3200 })
+    expect(store.fillerText).toBe('')
+
+    store.applyEvent({ type: 'opening_text_delta', text: '又一段开场' })
+    store.applyEvent({ type: 'opening_audio_abort' })
+    expect(store.fillerText).toBe('')
+  })
+
+  it('shows the fixed start notice after opening and before lines', () => {
+    const store = usePlayerStore()
+
+    store.applyEvent({ type: 'opening_text_delta', text: '开场' })
+    store.applyEvent({ type: 'opening_audio_end', duration_ms: 1000 })
+    store.applyEvent({ type: 'start_notice', text: '故事就要开始喽' })
+
+    expect(store.fillerText).toBe('故事就要开始喽')
+  })
+
+  it('updates line text from line_text_delta and clears the bubble on the first line', () => {
+    const store = usePlayerStore()
+    scriptReady(store)
+    store.applyEvent({ type: 'start_notice', text: '故事就要开始喽' })
+
+    store.applyEvent({ type: 'line_start', line_id: 'l1', index: 1, total: 2, text: '风呼呼地吹。' })
+    expect(store.fillerText).toBe('')
+    expect(store.currentIndex).toBe(0)
+
+    // A suffix delta extends the line; a full-text delta that already contains it is idempotent.
+    store.applyEvent({ type: 'line_text_delta', line_id: 'l1', index: 1, text: '风呼呼地吹。' })
+    expect(store.lines[0].text).toBe('风呼呼地吹。')
+    store.applyEvent({ type: 'line_text_delta', line_id: 'l2', index: 2, text: '谁在外面？' })
+    expect(store.lines[1].text).toBe('谁在外面？')
+  })
+
+  it('reaches completion through the new event sequence without legacy thinking events', () => {
+    const store = usePlayerStore()
+
+    store.applyEvent({ type: 'ready', audio: { encoding: 'pcm_s16le', sample_rate: 24000, channels: 1 } })
+    store.applyEvent({ type: 'status', phase: 'script', message: '正在生成剧本…' })
+    store.applyEvent({ type: 'opening_text_delta', text: '很久很久以前，' })
+    store.applyEvent({ type: 'opening_audio_start' })
+    store.applyEvent({ type: 'opening_text_delta', text: '有一间小木屋。' })
+    store.applyEvent({ type: 'opening_audio_end', duration_ms: 2500 })
+    scriptReady(store)
+    store.applyEvent({ type: 'start_notice', text: '故事就要开始喽' })
+    store.applyEvent({ type: 'line_start', line_id: 'l1', index: 1, total: 2, text: '风呼呼地吹。' })
+    store.applyEvent({ type: 'line_text_delta', line_id: 'l1', index: 1, text: '风呼呼地吹。' })
+    store.applyEvent({ type: 'line_end', line_id: 'l1', duration_ms: 2000 })
+    store.applyEvent({ type: 'finalizing' })
+    store.applyEvent({
+      type: 'complete',
+      project_id: 'proj_1',
+      title: '深夜小木屋',
+      audio_url: '/api/stories/proj_1/audio',
+    })
+
+    expect(store.phase).toBe('completed')
+    expect(store.finalUrl).toBe('/api/stories/proj_1/audio')
+    expect(store.jobId).toBe('proj_1')
+    expect(store.fillerText).toBe('')
+  })
+
+  it('still completes formal lines when opening is missing/aborted', () => {
+    const store = usePlayerStore()
+
+    store.applyEvent({ type: 'opening_audio_abort' })
+    scriptReady(store)
+    store.applyEvent({ type: 'start_notice', text: '故事就要开始喽' })
+    store.applyEvent({ type: 'line_start', line_id: 'l1', index: 1, total: 1, text: '正式第一句。' })
+    store.applyEvent({ type: 'line_end', line_id: 'l1', duration_ms: 1500 })
+
+    expect(store.currentIndex).toBe(0)
+    expect(store.lines[0].text).toBe('正式第一句。')
   })
 })

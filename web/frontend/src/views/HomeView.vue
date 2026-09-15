@@ -50,7 +50,8 @@ function submit() {
   timeline.begin()
   busy.value = true
   player.start({ topic: topic.value, length: length.value, complexity: complexity.value, with_sound: withSound.value, tts_providers: selected.value }, b => timeline.append(b), e => {
-    if (e.type === 'filler_start') timeline.setUnit(`filler:${e.kind}`)
+    if (e.type === 'opening_audio_start') timeline.setUnit('filler:opening')
+    if (e.type === 'start_notice') timeline.setUnit('filler:notice')
     if (e.type === 'line_start') timeline.setUnit(`line:${e.line_id}`)
     if (e.type === 'complete') timeline.finish()
   })
