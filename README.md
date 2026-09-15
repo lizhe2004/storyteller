@@ -432,6 +432,41 @@ storyteller web --host 0.0.0.0 --port 8000
 或 token 鉴权，音频线缆标准为 PCM s16le / mono / 24kHz。前端工程见
 `web/frontend`，构建产物由 FastAPI 托管。
 
+### 实时 TTS 与调度器
+
+Web 播放时，开场旁白（opening）、固定开播提示（start notice）和正文每一句都走
+双向**实时 TTS**：开场会在剧本还没写完时抢先合成、边写边播；正文在音色确定后才
+提交文本。某 provider 不支持实时、实时会话失败或入队超时，会自动**降级为整行
+HTTP TTS**，不影响出片；CLI 完全不经过这条链路。
+
+- 火山实时语音使用内置的 `websocket-client`，无需额外安装。
+- 阿里云**实时**流式 TTS 需要 DashScope SDK（HTTP 非实时 TTS 不需要）：
+
+  ```bash
+  pip install -e ".[web,aliyun,dev]"
+  ```
+
+  未安装 `dashscope` 时阿里云在 Web 端自动走整行 HTTP TTS。
+
+调度器按 `(provider, model)` 维度维护独立 FIFO 队列、并发槽位、文本限速与背压，
+可用下列环境变量调参（均可选，括号内为默认值）：
+
+| 环境变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `STORYTELLER_TTS_SCHEDULER_MAX_CONCURRENT_SESSIONS` | `1` | 每个 (provider, model) 同时进行的实时会话数 |
+| `STORYTELLER_TTS_SCHEDULER_MAX_TEXT_CHUNKS_PER_SECOND` | 空（不限速） | 每会话每秒提交的文本块上限，`0`/留空表示不限 |
+| `STORYTELLER_TTS_SCHEDULER_QUEUE_SIZE` | `16` | 排队文本块缓冲深度，满了对上游施加背压 |
+| `STORYTELLER_TTS_SCHEDULER_QUEUE_TIMEOUT_SECONDS` | `5` | 入队最长等待，超时即走降级路径 |
+| `STORYTELLER_TTS_SCHEDULER_LIMITS_<PROVIDER>_<字段>` | — | 只覆盖某个 provider（名小写，可含下划线），字段同上 |
+
+例：给阿里云更大并发与更深队列——
+
+```bash
+STORYTELLER_TTS_SCHEDULER_LIMITS_ALIYUN_MAX_CONCURRENT_SESSIONS=2 \
+STORYTELLER_TTS_SCHEDULER_LIMITS_ALIYUN_QUEUE_SIZE=8 \
+storyteller web
+```
+
 ## 许可证
 
 MIT

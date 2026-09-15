@@ -86,6 +86,26 @@ docker compose up -d --force-recreate
 
 `STORYTELLER_TTS_PROVIDERS` 表示默认候选 TTS provider 集合；本次 CLI 调用仍可用 `--tts-providers` 覆盖。Web 端未指定时使用该配置。
 
+## 实时 TTS 与调度器
+
+Web 播放走双向实时 TTS（开场边写边播、正文按句推送）。镜像已内置火山（`websocket-client`）和阿里云（`dashscope`）实时 SDK；某个 provider 不支持实时、会话失败或入队超时会自动降级为整行 HTTP TTS，不影响最终成片，CLI 不经过此链路。
+
+调度器按 `(provider, model)` 维护独立 FIFO 队列、并发槽位与背压。可在 `.env` 追加下列变量后 `docker compose up -d --force-recreate`（均为可选，括号内为默认值）：
+
+```env
+# 每个 (provider, model) 的实时会话并发数（默认 1）
+STORYTELLER_TTS_SCHEDULER_MAX_CONCURRENT_SESSIONS=1
+# 每秒文本块限速；留空或 0 表示不限速
+STORYTELLER_TTS_SCHEDULER_MAX_TEXT_CHUNKS_PER_SECOND=
+# 排队文本块缓冲深度，满了对上游施加背压（默认 16）
+STORYTELLER_TTS_SCHEDULER_QUEUE_SIZE=16
+# 入队最长等待秒数，超时即走降级路径（默认 5）
+STORYTELLER_TTS_SCHEDULER_QUEUE_TIMEOUT_SECONDS=5
+# 只针对某个 provider 覆盖（PROVIDER 用小写 provider 名）
+STORYTELLER_TTS_SCHEDULER_LIMITS_ALIYUN_MAX_CONCURRENT_SESSIONS=2
+STORYTELLER_TTS_SCHEDULER_LIMITS_ALIYUN_QUEUE_SIZE=8
+```
+
 ## 直接使用 Docker 命令
 
 不使用 Compose 时：
