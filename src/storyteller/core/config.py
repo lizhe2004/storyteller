@@ -35,6 +35,7 @@ class Config:
                 "default_queue_size": 16,
                 "default_queue_timeout_seconds": 5.0,
                 "limits": {},
+                "provider_limits": {},
             },
         },
         "sound": {
@@ -116,6 +117,7 @@ class Config:
 
         cls._load_provider_group(config, "llm")
         cls._load_provider_group(config, "tts")
+        cls._load_tts_scheduler(config)
         cls._load_openai_compatible_tts(config)
         cls._load_provider_group(config, "sound")
         cls._load_sound(config)
@@ -259,6 +261,58 @@ class Config:
             config.set(
                 "tts.provider_config.{}".format(provider_name), provider_config
             )
+
+    # Realtime TTS scheduler knobs (web streaming only). Each FIELD token below
+    # is matched as a whole suffix, so a per-provider env like
+    # STORYTELLER_TTS_SCHEDULER_LIMITS_MY_TTS_QUEUE_SIZE parses as provider
+    # "my_tts" + field QUEUE_SIZE even when the provider name has underscores.
+    _SCHEDULER_FIELDS = (
+        ("MAX_CONCURRENT_SESSIONS", "max_concurrent_sessions"),
+        ("MAX_TEXT_CHUNKS_PER_SECOND", "max_text_chunks_per_second"),
+        ("QUEUE_SIZE", "queue_size"),
+        ("QUEUE_TIMEOUT_SECONDS", "queue_timeout_seconds"),
+    )
+
+    @staticmethod
+    def _coerce_scheduler(raw, field):
+        try:
+            if field == "max_text_chunks_per_second":
+                # Blank/0/negative means "no rate limit".
+                value = float(raw)
+                return value if value > 0 else None
+            if field in ("max_concurrent_sessions", "queue_size"):
+                return int(raw)
+            return float(raw)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _load_tts_scheduler(config):
+        for suffix, field in Config._SCHEDULER_FIELDS:
+            raw = os.getenv("STORYTELLER_TTS_SCHEDULER_" + suffix)
+            if raw is None or raw.strip() == "":
+                continue
+            value = Config._coerce_scheduler(raw, field)
+            if value is not None:
+                config.set("tts.scheduler.default_" + field, value)
+
+        prefix = "STORYTELLER_TTS_SCHEDULER_LIMITS_"
+        for env_key, raw in os.environ.items():
+            if not env_key.startswith(prefix) or not raw:
+                continue
+            body = env_key[len(prefix):]
+            for suffix, field in Config._SCHEDULER_FIELDS:
+                token = "_" + suffix
+                if not body.endswith(token):
+                    continue
+                provider = body[:-len(token)].lower()
+                value = Config._coerce_scheduler(raw, field)
+                if provider and value is not None:
+                    key = "tts.scheduler.provider_limits." + provider
+                    overrides = config.get(key) or {}
+                    overrides[field] = value
+                    config.set(key, overrides)
+                break
 
     # Keys derived from data_dir when left unset (None). An explicitly set
     # value always wins; None means "follow the data root".

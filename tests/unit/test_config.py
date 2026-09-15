@@ -33,6 +33,48 @@ def test_tts_scheduler_defaults_and_model_override_are_configurable():
     assert config.get("tts.scheduler.limits.aliyun.qwen-plus.queue_size") == 4
 
 
+def test_tts_scheduler_defaults_from_env(monkeypatch):
+    monkeypatch.setenv("STORYTELLER_TTS_SCHEDULER_MAX_CONCURRENT_SESSIONS", "3")
+    monkeypatch.setenv("STORYTELLER_TTS_SCHEDULER_MAX_TEXT_CHUNKS_PER_SECOND", "2.5")
+    monkeypatch.setenv("STORYTELLER_TTS_SCHEDULER_QUEUE_SIZE", "32")
+    monkeypatch.setenv("STORYTELLER_TTS_SCHEDULER_QUEUE_TIMEOUT_SECONDS", "8")
+    config = Config.from_env()
+    assert config.get("tts.scheduler.default_max_concurrent_sessions") == 3
+    assert config.get("tts.scheduler.default_max_text_chunks_per_second") == 2.5
+    assert config.get("tts.scheduler.default_queue_size") == 32
+    assert config.get("tts.scheduler.default_queue_timeout_seconds") == 8.0
+
+
+def test_tts_scheduler_blank_qps_stays_unlimited(monkeypatch):
+    monkeypatch.delenv(
+        "STORYTELLER_TTS_SCHEDULER_MAX_TEXT_CHUNKS_PER_SECOND", raising=False
+    )
+    config = Config.from_env()
+    assert config.get("tts.scheduler.default_max_text_chunks_per_second") is None
+
+
+def test_tts_scheduler_provider_limits_from_env(monkeypatch):
+    monkeypatch.setenv(
+        "STORYTELLER_TTS_SCHEDULER_LIMITS_ALIYUN_MAX_CONCURRENT_SESSIONS", "2"
+    )
+    monkeypatch.setenv("STORYTELLER_TTS_SCHEDULER_LIMITS_ALIYUN_QUEUE_SIZE", "8")
+    config = Config.from_env()
+    assert config.get("tts.scheduler.provider_limits.aliyun") == {
+        "max_concurrent_sessions": 2,
+        "queue_size": 8,
+    }
+
+
+def test_tts_scheduler_provider_limits_env_tolerates_underscored_provider(monkeypatch):
+    monkeypatch.setenv(
+        "STORYTELLER_TTS_SCHEDULER_LIMITS_MY_TTS_QUEUE_TIMEOUT_SECONDS", "1.5"
+    )
+    config = Config.from_env()
+    assert config.get(
+        "tts.scheduler.provider_limits.my_tts.queue_timeout_seconds"
+    ) == 1.5
+
+
 def test_config_get_nested():
     config = Config()
     config.set("a.b.c", "value")

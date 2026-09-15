@@ -324,6 +324,15 @@ class TTSScheduler:
         configured = self._config.get(
             "tts.scheduler.limits.{}.{}".format(provider, model), {},
         ) or {}
+        # Per-provider overrides (env-friendly) sit between global defaults and
+        # the finer-grained (provider, model) programmatic overrides.
+        provider_configured = self._config.get(
+            "tts.scheduler.provider_limits.{}".format(provider), {},
+        ) or {}
+        if isinstance(provider_configured, dict):
+            for key, value in provider_configured.items():
+                if value is not None:
+                    configured_defaults[key] = value
         configured_defaults.update(configured)
         return SchedulerLimits(
             _positive_int(configured_defaults["max_concurrent_sessions"], defaults.max_concurrent_sessions),

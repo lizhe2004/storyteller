@@ -22,7 +22,7 @@ COPY pyproject.toml requirements.txt ./
 COPY src/ ./src/
 COPY --from=frontend /build/src/storyteller/web/static/ ./src/storyteller/web/static/
 
-RUN pip install --no-cache-dir ".[web]"
+RUN pip install --no-cache-dir ".[web,aliyun]"
 
 RUN useradd --create-home --uid 10001 storyteller \
     && mkdir -p /data \

@@ -134,6 +134,33 @@ def _voice(voice_id="voice-a"):
     return VoiceConfig(provider="fake", voice_id=voice_id)
 
 
+def test_limits_resolve_with_defaults_provider_then_model_precedence():
+    config = Config()
+    config.set("tts.scheduler.default_queue_size", 10)
+    config.set(
+        "tts.scheduler.provider_limits.aliyun",
+        {"max_concurrent_sessions": 2, "queue_size": 20},
+    )
+    # Model id contains a dot; model overrides win but fall back to provider/defaults.
+    config.set(
+        "tts.scheduler.limits.aliyun.seed-tts-2.0",
+        {"max_concurrent_sessions": 4},
+    )
+    scheduler = TTSScheduler(FakeRegistry(RecordingProvider()), config)
+
+    dotted = scheduler._limits_for("aliyun", "seed-tts-2.0")
+    assert dotted.max_concurrent_sessions == 4   # model override wins
+    assert dotted.queue_size == 20               # inherited from provider level
+
+    other = scheduler._limits_for("aliyun", "seed-tts-1.0")
+    assert other.max_concurrent_sessions == 2    # provider level
+    assert other.queue_size == 20
+
+    bare = scheduler._limits_for("volcengine", "anything")
+    assert bare.max_concurrent_sessions == 1     # global defaults
+    assert bare.queue_size == 10
+
+
 def _wait_for(predicate):
     deadline = time.monotonic() + 1
     while time.monotonic() < deadline:
