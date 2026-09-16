@@ -28,9 +28,7 @@ class VolcengineSoundProvider(BaseProvider, SoundEffectProvider):
         sound_cfg = config.get("sound.provider_config.volcengine", {}) or {}
 
         self.api_key = sound_cfg.get("api_key")
-        self.endpoint = (
-            sound_cfg.get("endpoint") or _DEFAULT_ENDPOINT
-        ).rstrip("/")
+        self.endpoint = _DEFAULT_ENDPOINT
         self.model = sound_cfg.get("model") or _DEFAULT_MODEL
 
         if not self.api_key:

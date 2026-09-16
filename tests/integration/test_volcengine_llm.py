@@ -55,7 +55,6 @@ def _config():
         {
             "api_key": "test-key",
             "model": "doubao-test",
-            "endpoint": "https://ark.example.com/api/v3",
         },
     )
     return config
@@ -77,7 +76,7 @@ def test_volcengine_llm_builds_chat_request():
 
     assert result == "你好"
     call = fake.calls[0]
-    assert call["url"] == "https://ark.example.com/api/v3/chat/completions"
+    assert call["url"] == "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
     body = call["json"]
     assert body["model"] == "doubao-test"
     assert body["messages"][0]["role"] == "system"

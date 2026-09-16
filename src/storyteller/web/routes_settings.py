@@ -27,7 +27,8 @@ router = APIRouter(
 _HISTORY_LOCK = threading.RLock()
 _HISTORY_LIMIT = 100
 _PROVIDER_FIELDS = {
-    "type", "api_key", "model", "endpoint", "base_url", "resource_id"
+    "type", "api_key", "model", "models", "endpoint", "base_url",
+    "resource_id", "workspace_id"
 }
 _DIRECT_FIELDS = {
     "web": {
@@ -36,7 +37,7 @@ _DIRECT_FIELDS = {
     },
     "llm": {"providers", "default_provider"},
     "tts": {"providers", "default_provider"},
-    "sound": {"enabled", "dir", "providers", "default_provider"},
+    "sound": {"enabled", "dir", "providers"},
 }
 
 
@@ -48,9 +49,11 @@ class ProviderConfigPatch(_StrictModel):
     type: Optional[StrictStr] = None
     api_key: Optional[StrictStr] = None
     model: Optional[StrictStr] = None
+    models: Optional[StrictStr] = None
     endpoint: Optional[StrictStr] = None
     base_url: Optional[StrictStr] = None
     resource_id: Optional[StrictStr] = None
+    workspace_id: Optional[StrictStr] = None
 
 
 class WebSettingsPatch(_StrictModel):
@@ -74,7 +77,9 @@ class TTSSettingsPatch(_StrictModel):
     provider_config: Optional[Dict[StrictStr, ProviderConfigPatch]] = None
 
 
-class SoundSettingsPatch(ProviderGroupPatch):
+class SoundSettingsPatch(_StrictModel):
+    providers: Optional[List[StrictStr]] = None
+    provider_config: Optional[Dict[StrictStr, ProviderConfigPatch]] = None
     enabled: Optional[StrictBool] = None
     dir: Optional[StrictStr] = None
 

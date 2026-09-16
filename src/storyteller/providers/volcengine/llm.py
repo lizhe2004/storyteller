@@ -29,9 +29,7 @@ class VolcengineLLM(BaseProvider, LLMProvider):
         ) or {}
         self.api_key = provider_config.get("api_key")
         self.model = provider_config.get("model", "deepseek-v4-flash-260425")
-        self.endpoint = (
-            provider_config.get("endpoint") or _DEFAULT_ENDPOINT
-        ).rstrip("/")
+        self.endpoint = _DEFAULT_ENDPOINT
 
         if not self.api_key:
             raise LLMError(

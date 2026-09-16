@@ -153,12 +153,38 @@ def test_web_settings_update_refreshes_auth_runtime_objects(client, settings_app
     assert settings_app.state.limiter.per_minute == 3
 
 
+def test_patch_accepts_aliyun_workspace_and_model_allowlist(client, settings_app):
+    response = client.patch(
+        "/api/settings",
+        json={
+            "tts": {
+                "provider_config": {
+                    "mock": {
+                        "models": "qwen-audio-3.0-tts-plus",
+                        "workspace_id": "workspace-123",
+                    }
+                }
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    persisted = settings_app.state.runtime_settings.snapshot().to_config()
+    assert persisted.get("tts.provider_config.mock.models") == (
+        "qwen-audio-3.0-tts-plus"
+    )
+    assert persisted.get("tts.provider_config.mock.workspace_id") == (
+        "workspace-123"
+    )
+
+
 @pytest.mark.parametrize(
     "payload",
     [
         {"database": {"url": "example"}},
         {"web": {"unknown": "value"}},
         {"llm": {"provider_config": {"mock": {"token": "value"}}}},
+        {"sound": {"default_provider": "mock"}},
         {"web": {"port": "9001"}},
         {"sound": {"enabled": "yes"}},
     ],

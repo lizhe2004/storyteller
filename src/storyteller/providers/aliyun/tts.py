@@ -20,6 +20,9 @@ from ..base import BaseProvider
 
 _DEFAULT_ENDPOINT = "https://dashscope.aliyuncs.com"
 _API_PATH = "/api/v1/services/audio/tts/SpeechSynthesizer"
+_WORKSPACE_HTTP_ENDPOINT_TEMPLATE = (
+    "https://{workspace_id}.cn-beijing.maas.aliyuncs.com"
+)
 _REALTIME_WS_URL_TEMPLATE = (
     "wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference"
 )
@@ -391,17 +394,19 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             "tts.provider_config.aliyun", {}
         ) or {}
         self.api_key = provider_config.get("api_key")
+        self.workspace_id = (provider_config.get("workspace_id") or "").strip()
         endpoint = (
-            provider_config.get("endpoint") or _DEFAULT_ENDPOINT
+            _WORKSPACE_HTTP_ENDPOINT_TEMPLATE.format(
+                workspace_id=self.workspace_id
+            )
+            if self.workspace_id
+            else _DEFAULT_ENDPOINT
         ).rstrip("/")
         self.endpoint = (
             endpoint
             if endpoint.endswith(_API_PATH)
             else endpoint + _API_PATH
         )
-        # Default model for voices absent from the packaged catalog
-        # (e.g. cloned voices). Catalog voices carry their own model.
-        self.model = provider_config.get("model")
         # Optional allowlist of model names (exact match, comma-separated).
         # When set, list_voices only exposes catalog voices whose ``model``
         # is in this set, so voice matching never assigns a model that is not
@@ -413,7 +418,6 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             for s in (provider_config.get("models") or "").split(",")
             if s.strip()
         ) or None
-        self.workspace_id = (provider_config.get("workspace_id") or "").strip()
         self.websocket_api_url = (
             _REALTIME_WS_URL_TEMPLATE.format(workspace_id=self.workspace_id)
             if self.workspace_id
@@ -614,14 +618,12 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
 
     def _model_for(self, voice_id):
         record = load_voice_index().get(voice_id)
-        if record:
-            return record["model"]
-        if self.model:
-            return self.model
-        raise TTSError(
-            "No Aliyun TTS model for voice {!r} and no default model "
-            "configured".format(voice_id)
-        )
+        if not record:
+            raise TTSError(
+                "Unknown Aliyun voice {!r}; voice must exist in the "
+                "packaged catalog".format(voice_id)
+            )
+        return record["model"]
 
 
 def _encoding_for_path(output_path):

@@ -148,7 +148,6 @@ def _config():
         "tts.provider_config.volcengine",
         {
             "api_key": "test-key",
-            "endpoint": _ENDPOINT,
             "resource_id": "seed-tts-2.0",
         },
     )
@@ -183,7 +182,7 @@ def test_volcengine_tts_synthesize_writes_audio(tmp_path):
     assert out.read_bytes() == audio_bytes
 
     call = tts._session.calls[0]
-    assert call["url"] == _ENDPOINT
+    assert call["url"] == "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
     assert call["stream"] is True
     assert call["headers"]["X-Api-Key"] == "test-key"
     assert call["headers"]["X-Api-Resource-Id"] == "seed-tts-2.0"

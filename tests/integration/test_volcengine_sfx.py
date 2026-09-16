@@ -9,6 +9,7 @@ from storyteller.core.exceptions import TTSError
 from storyteller.providers.volcengine.sfx import VolcengineSoundProvider
 
 _ENDPOINT = "https://openspeech.example.com/api/v3/tts/create"
+_DEFAULT_ENDPOINT = "https://openspeech.bytedance.com/api/v3/tts/create"
 
 
 class _FakeResponse:
@@ -86,7 +87,7 @@ def test_generate_writes_inline_base64_audio(tmp_path):
     assert duration == 2.5
 
     call = session.post_calls[0]
-    assert call["url"] == _ENDPOINT
+    assert call["url"] == _DEFAULT_ENDPOINT
     assert call["timeout"] == 300
     assert call["headers"]["X-Api-Key"] == "sound-key"
     assert call["headers"]["X-Api-Request-Id"]

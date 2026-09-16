@@ -111,7 +111,7 @@ def test_config_from_env(monkeypatch):
     config = Config.from_env()
     assert config.get("log_level") == "debug"
     assert config.get("output_dir") == "/tmp/out"
-    assert config.get("llm.default_provider") == "test-llm"
+    assert config.get("llm.default_provider") is None
 
 
 def test_config_loads_llm_providers(monkeypatch):
@@ -131,6 +131,18 @@ def test_config_loads_tts_providers(monkeypatch):
     config = Config.from_env()
     assert config.get("tts.providers") == ["volcengine"]
     assert config.get("tts.provider_config.volcengine.api_key") == "ttskey"
+
+
+def test_volcengine_endpoint_env_is_not_loaded(monkeypatch):
+    monkeypatch.setenv(
+        "STORYTELLER_LLM_VOLCENGINE_ENDPOINT", "https://custom.example/llm"
+    )
+    monkeypatch.setenv(
+        "STORYTELLER_TTS_VOLCENGINE_ENDPOINT", "https://custom.example/tts"
+    )
+    config = Config.from_env()
+    assert config.get("llm.provider_config.volcengine.endpoint") is None
+    assert config.get("tts.provider_config.volcengine.endpoint") is None
 
 
 def test_config_loads_openai_compatible_provider(monkeypatch):
@@ -185,11 +197,11 @@ def test_config_loads_dotenv_from_cwd(tmp_path, monkeypatch):
 def test_tts_provider_auto_discovered_without_providers_list(monkeypatch):
     # Configuring per-provider vars is enough to become selectable;
     # no STORYTELLER_TTS_PROVIDERS edit required.
-    monkeypatch.setenv("STORYTELLER_TTS_ALIYUN_TYPE", "aliyun")
+    monkeypatch.delenv("STORYTELLER_TTS_ALIYUN_TYPE", raising=False)
     monkeypatch.setenv("STORYTELLER_TTS_ALIYUN_API_KEY", "dashscope-key")
     config = Config.from_env()
     assert config.get("tts.providers") == ["aliyun"]
-    assert config.get("tts.provider_config.aliyun.type") == "aliyun"
+    assert config.get("tts.provider_config.aliyun.type") is None
     assert config.get("tts.provider_config.aliyun.api_key") == "dashscope-key"
 
 
@@ -221,14 +233,18 @@ def test_llm_auto_discovery_parity(monkeypatch):
 
 def test_sound_group_loads_providers_default_and_config(monkeypatch):
     monkeypatch.setenv("STORYTELLER_SOUND_PROVIDERS", "volcengine")
-    monkeypatch.setenv("STORYTELLER_SOUND_DEFAULT_PROVIDER", "volcengine")
+    monkeypatch.setenv("STORYTELLER_SOUND_DEFAULT_PROVIDER", "should-be-ignored")
     monkeypatch.setenv("STORYTELLER_SOUND_VOLCENGINE_API_KEY", "sound-key")
     monkeypatch.setenv("STORYTELLER_SOUND_VOLCENGINE_MODEL", "seed-audio-1.0")
+    monkeypatch.setenv(
+        "STORYTELLER_SOUND_VOLCENGINE_ENDPOINT", "https://should-be-ignored"
+    )
     config = Config.from_env()
     assert config.get("sound.providers") == ["volcengine"]
-    assert config.get("sound.default_provider") == "volcengine"
+    assert config.get("sound.default_provider") is None
     assert config.get("sound.provider_config.volcengine.api_key") == "sound-key"
     assert config.get("sound.provider_config.volcengine.model") == "seed-audio-1.0"
+    assert config.get("sound.provider_config.volcengine.endpoint") is None
 
 
 def test_sound_reserved_names_are_not_providers(monkeypatch):

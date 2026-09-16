@@ -343,9 +343,7 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             "tts.provider_config.volcengine", {}
         ) or {}
         self.api_key = provider_config.get("api_key")
-        self.endpoint = (
-            provider_config.get("endpoint") or _DEFAULT_ENDPOINT
-        ).rstrip("/")
+        self.endpoint = _DEFAULT_ENDPOINT
         self.resource_id = (
             provider_config.get("resource_id") or _DEFAULT_RESOURCE_ID
         )

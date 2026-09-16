@@ -78,9 +78,7 @@ def test_register_aliyun_tts():
     config.set(
         "tts.provider_config.aliyun",
         {
-            "type": "aliyun",
             "api_key": "dashscope-key",
-            "model": "qwen-audio-3.0-tts-flash",
         },
     )
 
@@ -91,7 +89,6 @@ def test_register_aliyun_tts():
     tts = registry.get_tts("aliyun")
     assert tts is not None
     assert tts.name == "aliyun"
-    assert tts.model == "qwen-audio-3.0-tts-flash"
 
 
 def test_register_skips_unknown_defaults():

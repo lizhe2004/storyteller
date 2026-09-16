@@ -442,7 +442,7 @@ def _print_voice_table(voices):
 @click.option(
     "--sound-provider",
     default=None,
-    help="使用的音效 provider（默认取 STORYTELLER_SOUND_DEFAULT_PROVIDER）",
+    help="使用的音效 provider（未指定时取首个已配置 provider）",
 )
 def make_sound(prompt, name, kind, description, tags, audio_format,
                sound_dir, sound_provider):

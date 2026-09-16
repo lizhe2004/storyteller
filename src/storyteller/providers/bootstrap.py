@@ -83,7 +83,13 @@ def _register_tts(config, registry):
         ) or {}
         provider_type = provider_config.get("type")
 
-        if provider_type == "openai_compatible" and OpenAICompatibleTTS:
+        # Built-in provider names select their implementation directly.  The
+        # optional type field is reserved for custom/provider-compatible names.
+        if name.lower() == "aliyun" and AliyunTTS:
+            registry.register_tts(name, lambda c: AliyunTTS(c))
+        elif name.lower() == "volcengine" and VolcengineTTS:
+            registry.register_tts(name, lambda c: VolcengineTTS(c))
+        elif provider_type == "openai_compatible" and OpenAICompatibleTTS:
             registry.register_tts(
                 name,
                 lambda c, n=name: OpenAICompatibleTTS(c, n),

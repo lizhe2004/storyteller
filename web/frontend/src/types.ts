@@ -30,9 +30,11 @@ export interface ProviderSettings {
   type?: string | null
   api_key?: RedactedSetting
   model?: string | null
+  models?: string | null
   endpoint?: string | null
   base_url?: string | null
   resource_id?: string | null
+  workspace_id?: string | null
 }
 
 export interface ProviderGroupSettings {
@@ -64,9 +66,11 @@ export interface ProviderConfigPatch {
   type?: string
   api_key?: string
   model?: string
+  models?: string
   endpoint?: string
   base_url?: string
   resource_id?: string
+  workspace_id?: string
 }
 
 export interface ProviderGroupPatch {

@@ -108,7 +108,6 @@ def _config(**overrides):
     config = Config()
     pc = {
         "api_key": "test-key",
-        "endpoint": _ENDPOINT,
         "model": "qwen-audio-3.0-tts-flash",
         "workspace_id": "test-workspace",
     }
@@ -133,6 +132,15 @@ def test_aliyun_tts_has_name_and_display():
     tts = AliyunTTS(_config())
     assert tts.name == "aliyun"
     assert tts.display_name
+
+
+def test_workspace_id_derives_http_endpoint_when_endpoint_is_unset():
+    tts = AliyunTTS(_config(endpoint=None, workspace_id="workspace-123"))
+
+    assert tts.endpoint == (
+        "https://workspace-123.cn-beijing.maas.aliyuncs.com"
+        "/api/v1/services/audio/tts/SpeechSynthesizer"
+    )
 
 
 def test_aliyun_tts_lists_catalog_voices():
@@ -217,25 +225,11 @@ def test_model_comes_from_the_voices_catalog_record(tmp_path):
     assert body["model"] == "qwen-audio-3.0-tts-plus"
 
 
-def test_unknown_voice_falls_back_to_configured_model(tmp_path):
+def test_unknown_voice_fails_instead_of_falling_back_to_configured_model(tmp_path):
     tts = _make_tts()
-    tts.synthesize(
-        "你好",
-        _voice("my-cloned-voice"),
-        tmp_path / "out.mp3",
-    )
-    body = tts._session.calls[0]["json"]
-    assert body["model"] == "qwen-audio-3.0-tts-flash"
-    assert body["input"]["voice"] == "my-cloned-voice"
-
-
-def test_unknown_voice_without_configured_model_raises():
-    config = _config()
-    config.set("tts.provider_config.aliyun.model", None)
-    tts = AliyunTTS(config)
-    tts._session = _FakeSession(_synth_ok(), _FakeResponse(200, content=b"x"))
-    with pytest.raises(TTSError):
-        tts.synthesize("你好", _voice("mystery"), Path("out.mp3"))
+    with pytest.raises(TTSError, match="Unknown Aliyun voice"):
+        tts.synthesize("你好", _voice("my-cloned-voice"), tmp_path / "out.mp3")
+    assert tts._session.calls == []
 
 
 def test_speed_pitch_volume_map_to_input_params(tmp_path):
@@ -316,9 +310,7 @@ def test_ogg_output_maps_to_opus_48k(tmp_path):
 
 
 def test_workspace_endpoint_is_composed_once(tmp_path):
-    tts = AliyunTTS(
-        _config(endpoint="https://ws123.cn-beijing.maas.aliyuncs.com/")
-    )
+    tts = AliyunTTS(_config(workspace_id="ws123"))
     tts._session = _FakeSession(_synth_ok(), _FakeResponse(200, content=b"x"))
     tts.synthesize("你好", _voice(), tmp_path / "out.mp3")
     url = tts._session.calls[0]["url"]
@@ -327,9 +319,9 @@ def test_workspace_endpoint_is_composed_once(tmp_path):
     )
 
 
-def test_endpoint_already_including_path_is_not_doubled(tmp_path):
+def test_default_endpoint_is_used_without_workspace(tmp_path):
     full = _ENDPOINT + _PATH
-    tts = AliyunTTS(_config(endpoint=full))
+    tts = AliyunTTS(_config(workspace_id=""))
     tts._session = _FakeSession(_synth_ok(), _FakeResponse(200, content=b"x"))
     tts.synthesize("你好", _voice(), tmp_path / "out.mp3")
     assert tts._session.calls[0]["url"] == full

@@ -132,7 +132,7 @@ class Config:
         raw = os.getenv("STORYTELLER_WEB_PASSWORDS", "")
         config.set("web.passwords", [p.strip() for p in raw.split(",") if p.strip()])
         config.set("web.secret", os.getenv("STORYTELLER_WEB_SECRET") or None)
-        config.set("web.filler_voice", os.getenv("STORYTELLER_WEB_FILLER_VOICE") or None)
+        config.set("web.filler_voice", os.getenv("STORYTELLER_TTS_HOST_VOICE") or None)
         for env_key, cfg_key, default in (
             ("STORYTELLER_WEB_TOKEN_TTL_DAYS", "web.token_ttl_days", 30),
             ("STORYTELLER_WEB_PORT", "web.port", 8000),
@@ -195,12 +195,6 @@ class Config:
         providers_env = os.getenv(group_prefix + "PROVIDERS", "")
         providers = [p.strip() for p in providers_env.split(",") if p.strip()]
 
-        if kind != "tts":
-            config.set(
-                "{}.default_provider".format(kind),
-                os.getenv(group_prefix + "DEFAULT_PROVIDER"),
-            )
-
         # The suffix allowlist alone excludes reserved names (PROVIDERS,
         # DEFAULT_PROVIDER, ENABLED, DIR all lack a recognised suffix).
         discovered = set()
@@ -215,6 +209,18 @@ class Config:
                 continue
             name, suffix = parts
             if not name or suffix.lower() not in Config._PROVIDER_CONFIG_KEYS:
+                continue
+            if (
+                kind in ("llm", "tts")
+                and name.lower() == "volcengine"
+                and suffix.lower() == "endpoint"
+            ):
+                continue
+            if (
+                kind == "tts"
+                and name.lower() == "aliyun"
+                and suffix.lower() == "endpoint"
+            ):
                 continue
             discovered.add(name.lower())
 
@@ -234,7 +240,12 @@ class Config:
                 upper, provider.upper()
             )
             provider_config = {}
-            for key in Config._PROVIDER_CONFIG_KEYS:
+            provider_keys = Config._PROVIDER_CONFIG_KEYS
+            if kind == "sound":
+                provider_keys = tuple(
+                    key for key in provider_keys if key != "endpoint"
+                )
+            for key in provider_keys:
                 value = os.getenv(provider_prefix + key.upper())
                 if value:
                     provider_config[key] = value
