@@ -8,7 +8,7 @@ from storyteller.cli.main import cli
 
 
 _MOCK_ENV = {
-    "STORYTELLER_LLM_PROVIDERS": "mock",
+    "STORYTELLER_LLM_PROVIDER": "mock",
     "STORYTELLER_LLM_MOCK_TYPE": "mock",
     "STORYTELLER_TTS_PROVIDERS": "mock",
     "STORYTELLER_TTS_MOCK_TYPE": "mock",

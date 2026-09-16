@@ -8,7 +8,7 @@ import tempfile
 import threading
 import time
 
-from ..core.exceptions import TTSError
+from ..core.exceptions import LLMError, TTSError
 from ..core.pipeline import Pipeline, human_time
 from ..core.story_generator import StoryGenerator, _script_from_json
 from ..core.tts import CHUNK_AUDIO, STREAM_SAMPLE_RATE
@@ -502,7 +502,16 @@ class StreamOrchestrator:
     def _llm_name(self):
         names = self.registry.list_llm_names()
         default = self.config.get("llm.default_provider")
-        return default if default in names else (names[0] if names else None)
+        if default in names:
+            return default
+        if len(names) == 1:
+            return names[0]
+        if len(names) > 1:
+            raise LLMError(
+                "Multiple LLM providers are configured; set "
+                "STORYTELLER_LLM_PROVIDER or select one in Web settings"
+            )
+        return None
 
     def _open_session(self, scheduler, voice, *, directives=None, context=None,
                       phase=None, line_id=None):

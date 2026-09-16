@@ -114,12 +114,15 @@ def test_config_from_env(monkeypatch):
     assert config.get("llm.default_provider") is None
 
 
-def test_config_loads_llm_providers(monkeypatch):
-    monkeypatch.setenv("STORYTELLER_LLM_PROVIDERS", "volcengine,openai")
+def test_config_loads_single_llm_provider(monkeypatch):
+    monkeypatch.setenv("STORYTELLER_LLM_PROVIDER", "volcengine")
     monkeypatch.setenv("STORYTELLER_LLM_VOLCENGINE_API_KEY", "key123")
     monkeypatch.setenv("STORYTELLER_LLM_VOLCENGINE_MODEL", "doubao")
+    monkeypatch.setenv("STORYTELLER_LLM_OTHER_API_KEY", "other-key")
     config = Config.from_env()
-    assert config.get("llm.providers") == ["volcengine", "openai"]
+    assert config.get("llm.providers") == ["volcengine", "other"]
+    assert config.get("llm.default_provider") == "volcengine"
+    assert config.get("llm.provider_config.other.api_key") == "other-key"
     provider_cfg = config.get("llm.provider_config.volcengine")
     assert provider_cfg["api_key"] == "key123"
     assert provider_cfg["model"] == "doubao"
@@ -231,17 +234,26 @@ def test_llm_auto_discovery_parity(monkeypatch):
     assert config.get("llm.provider_config.volcengine.api_key") == "llm-key"
 
 
-def test_sound_group_loads_providers_default_and_config(monkeypatch):
-    monkeypatch.setenv("STORYTELLER_SOUND_PROVIDERS", "volcengine")
-    monkeypatch.setenv("STORYTELLER_SOUND_DEFAULT_PROVIDER", "should-be-ignored")
+def test_multiple_discovered_llm_providers_have_no_implicit_default(monkeypatch):
+    monkeypatch.setenv("STORYTELLER_LLM_VOLCENGINE_API_KEY", "llm-key")
+    monkeypatch.setenv("STORYTELLER_LLM_OTHER_API_KEY", "other-key")
+    config = Config.from_env()
+    assert config.get("llm.providers") == ["other", "volcengine"]
+    assert config.get("llm.default_provider") is None
+
+
+def test_sound_group_loads_single_provider(monkeypatch):
+    monkeypatch.setenv("STORYTELLER_SOUND_PROVIDER", "volcengine")
     monkeypatch.setenv("STORYTELLER_SOUND_VOLCENGINE_API_KEY", "sound-key")
+    monkeypatch.setenv("STORYTELLER_SOUND_OTHER_API_KEY", "other-key")
     monkeypatch.setenv("STORYTELLER_SOUND_VOLCENGINE_MODEL", "seed-audio-1.0")
     monkeypatch.setenv(
         "STORYTELLER_SOUND_VOLCENGINE_ENDPOINT", "https://should-be-ignored"
     )
     config = Config.from_env()
-    assert config.get("sound.providers") == ["volcengine"]
-    assert config.get("sound.default_provider") is None
+    assert config.get("sound.providers") == ["volcengine", "other"]
+    assert config.get("sound.default_provider") == "volcengine"
+    assert config.get("sound.provider_config.other.api_key") == "other-key"
     assert config.get("sound.provider_config.volcengine.api_key") == "sound-key"
     assert config.get("sound.provider_config.volcengine.model") == "seed-audio-1.0"
     assert config.get("sound.provider_config.volcengine.endpoint") is None

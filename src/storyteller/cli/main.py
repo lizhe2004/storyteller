@@ -442,7 +442,7 @@ def _print_voice_table(voices):
 @click.option(
     "--sound-provider",
     default=None,
-    help="使用的音效 provider（未指定时取首个已配置 provider）",
+    help="使用的音效 provider（未指定时使用 STORYTELLER_SOUND_PROVIDER）",
 )
 def make_sound(prompt, name, kind, description, tags, audio_format,
                sound_dir, sound_provider):
@@ -459,9 +459,15 @@ def make_sound(prompt, name, kind, description, tags, audio_format,
 
     chosen = sound_provider or config.get("sound.default_provider")
     available = registry.list_sound_names()
-    if chosen is None and available:
+    if chosen is None and len(available) == 1:
         chosen = available[0]
     if chosen is None or chosen not in available:
+        if len(available) > 1:
+            raise click.ClickException(
+                "Multiple sound providers are configured; set "
+                "STORYTELLER_SOUND_PROVIDER or pass --sound-provider. "
+                "Available: {}".format(", ".join(available))
+            )
         raise click.ClickException(
             "No sound provider configured: set "
             "STORYTELLER_SOUND_<NAME>_API_KEY (or pass --sound-provider)."

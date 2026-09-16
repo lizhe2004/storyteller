@@ -413,8 +413,13 @@ class Pipeline:
         if default:
             return self.registry.get_llm(default)
         names = self.registry.list_llm_names()
-        if names:
+        if len(names) == 1:
             return self.registry.get_llm(names[0])
+        if len(names) > 1:
+            raise LLMError(
+                "Multiple LLM providers are configured; set "
+                "STORYTELLER_LLM_PROVIDER or use --default-llm-provider"
+            )
         raise LLMError("No LLM provider registered")
 
     def _audio_path(self, project_id, line_id, output_format):
@@ -529,10 +534,13 @@ class Pipeline:
         names = self.registry.list_sound_names()
         name = self.config.get("sound.default_provider")
         if name not in names:
-            # An unregistered default is ignored the same way bootstrap
-            # ignores it; fall back to the first registered provider.
-            name = names[0] if names else None
+            name = names[0] if len(names) == 1 else None
         if name is None:
+            if len(names) > 1:
+                raise TTSError(
+                    "Multiple sound providers are configured; set "
+                    "STORYTELLER_SOUND_PROVIDER or use --sound-provider"
+                )
             raise TTSError(
                 "No sound provider configured: set "
                 "STORYTELLER_SOUND_<NAME>_API_KEY "

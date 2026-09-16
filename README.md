@@ -41,7 +41,7 @@ CLI 最少需要配置 LLM 和 TTS 两套互相独立的密钥；使用 Web、�
 |------|------|
 | `STORYTELLER_LLM_VOLCENGINE_API_KEY` | 火山方舟（Ark）LLM Key |
 | `STORYTELLER_LLM_VOLCENGINE_MODEL` | 默认 `deepseek-v4-flash-260425` |
-| `STORYTELLER_LLM_PROVIDERS` | LLM provider 启用名单与顺序；未设置时按已配置 provider 自动发现 |
+| `STORYTELLER_LLM_PROVIDER` | 本次运行使用的唯一 LLM provider；未设置时仅自动使用唯一已配置 provider |
 | `STORYTELLER_TTS_VOLCENGINE_API_KEY` | 语音合成 Key（**与 LLM Key 不同**） |
 | `STORYTELLER_TTS_VOLCENGINE_RESOURCE_ID` | 默认 `seed-tts-2.0` |
 | `STORYTELLER_TTS_PROVIDERS` | TTS 可用 provider 列表；设置后仅列表内可用，未设置时自动发现已配置 provider |
@@ -57,11 +57,11 @@ CLI 最少需要配置 LLM 和 TTS 两套互相独立的密钥；使用 Web、�
 | `STORYTELLER_SOUND_DIR` | 全局共享音效库目录，默认 `<DATA_DIR>/sounds` |
 | `STORYTELLER_SOUND_VOLCENGINE_API_KEY` | 音效 Key（seed-audio），独立配置、不复用 TTS Key；启用音效必填 |
 | `STORYTELLER_SOUND_VOLCENGINE_MODEL` | 音效模型，默认 `seed-audio-1.0` |
-| `STORYTELLER_SOUND_PROVIDERS` | 可选的音效 provider 启用名单；配了 key 即可被 `--sound-provider` 选用 |
+| `STORYTELLER_SOUND_PROVIDER` | 本次运行使用的唯一音效 provider；未设置时仅自动使用唯一已配置 provider |
 | `STORYTELLER_TTS_SCHEDULER_*` | Web 实时 TTS 的并发、限速、队列和超时参数，详见[实时 TTS 与调度器](#实时-tts-与调度器) |
 | `STORYTELLER_TTS_HOST_VOICE` | Web 实时播放使用的主持人音色，格式为 `provider:voice_id`；未设置时自动选择 |
 
-> `STORYTELLER_TTS_PROVIDERS` 是 TTS 的允许列表：设置后，未列出的 provider 即使配置了 key 也不会注册；未设置时才自动发现。LLM 与音效 provider 仍是“配了参数即可自动发现”的模式。
+> LLM 和音效一次运行各使用一个 provider：用 `STORYTELLER_LLM_PROVIDER` / `STORYTELLER_SOUND_PROVIDER` 明确选择；未设置时只有在自动发现到唯一 provider 时才会自动使用，发现多个时会要求明确选择。TTS 保留 `STORYTELLER_TTS_PROVIDERS`，因为不同音色可以来自不同 provider。
 
 ## 使用
 
@@ -109,10 +109,10 @@ storyteller generate "月亮婆婆" --dry-run
 | `--output-format`, `-f` | 最终音频格式 | 否 | `mp3` | `mp3` / `wav` / `ogg` |
 | `--tts-providers` | 参与合成的 TTS provider，逗号分隔 | 否 | 环境变量 `STORYTELLER_TTS_PROVIDERS` | 如 `volcengine,my-tts` |
 | `--voice-ids` | 限制使用的音色 ID，逗号分隔 | 否 | 全部可用音色 | 任意音色 ID |
-| `--default-llm-provider` | 覆盖默认 LLM provider | 否 | 环境变量配置 | provider 名 |
+| `--default-llm-provider` | 覆盖环境中的 LLM provider | 否 | `STORYTELLER_LLM_PROVIDER` | provider 名 |
 | `--voice-matcher` | 音色匹配方式 | 否 | `llm` | `llm`（大模型语义匹配） / `rule`（关键字规则） |
 | `--with-sfx` | 生成音效/背景音乐并自动混音（seed-audio，结果进全局音效库缓存） | 否 | 关 | 标志（开关） |
-| `--sound-provider` | 本次使用的音效 provider（需配合 `--with-sfx`） | 否 | 环境默认 | provider 名，如 `volcengine` |
+| `--sound-provider` | 覆盖本次使用的音效 provider（需配合 `--with-sfx`） | 否 | `STORYTELLER_SOUND_PROVIDER` | provider 名，如 `volcengine` |
 | `--sound-dir` | 音效库目录 | 否 | `<data-dir>/sounds` | 任意目录 |
 | `--dry-run` | 只生成剧本、不合成音频 | 否 | 关 | 标志（开关） |
 | `--data-dir` | 生成物根目录 | 否 | `./.storyteller` | 任意目录 |
@@ -234,7 +234,7 @@ script_ready_sent
 | `--tags` | 逗号分隔的标签 | 否 | 空 | 如 `天气,夜晚` |
 | `--format` | 输出格式 | 否 | `mp3` | `mp3` / `wav` |
 | `--sound-dir` | 音效库目录 | 否 | `<data-dir>/sounds` | 任意目录 |
-| `--sound-provider` | 使用的音效 provider | 否 | 首个已配置 provider | provider 名 |
+| `--sound-provider` | 使用的音效 provider | 否 | 唯一已配置 provider | provider 名 |
 
 相同 `prompt` 命中缓存时打印 `Cache hit (no API call)`，不产生网络调用。
 
@@ -337,7 +337,7 @@ STORYTELLER_TTS_ALIYUN_API_KEY=your_dashscope_key
 
 `--with-sfx`（或 `STORYTELLER_SOUND_ENABLED=true`）开启后：
 
-> 音效是与 LLM/TTS 同构的独立 provider 分组：用 `STORYTELLER_SOUND_VOLCENGINE_API_KEY` 配置独立 Key（**不复用、不回退 TTS Key**），可用 `--sound-provider NAME`（generate/continue/make-sound）显式选择；未指定时使用首个已配置 provider。旧变量 `STORYTELLER_SFX_VOLCENGINE_*` 已移除。
+> 音效是独立 provider 分组：用 `STORYTELLER_SOUND_VOLCENGINE_API_KEY` 配置独立 Key（**不复用、不回退 TTS Key**），可用 `STORYTELLER_SOUND_PROVIDER` 或 `--sound-provider NAME`（generate/continue/make-sound）显式选择；未指定时仅自动使用唯一已配置 provider。旧变量 `STORYTELLER_SFX_VOLCENGINE_*` 已移除。
 
 > 生成的每条音效（含未通过响度闸门、被跳过混音的废片）都会以 cue 的中文名保存在项目目录 `stories/<项目>/sounds/` 下，永不自动删除，方便事后收听排查；通过闸门的素材另存一份到全局音效库（`snd_<id>.mp3`，供跨项目缓存复用）。`make-sound` 的新素材先暂存于 `sounds/raw/`，合格入库后清理，不合格则保留并以非零退出码报告路径。
 
@@ -387,12 +387,11 @@ LLM 与 TTS 都可通过环境变量追加任意 OpenAI 兼容 provider。下面
 LLM 示例：
 
 ```bash
-export STORYTELLER_LLM_PROVIDERS=volcengine,my_llm
+export STORYTELLER_LLM_PROVIDER=my_llm
 export STORYTELLER_LLM_MY_LLM_TYPE=openai_compatible
 export STORYTELLER_LLM_MY_LLM_API_KEY=your-key
 export STORYTELLER_LLM_MY_LLM_BASE_URL=https://example.com/v1
 export STORYTELLER_LLM_MY_LLM_MODEL=chat-model
-# 多个 LLM 时可在命令行用 --default-llm-provider my_llm 选择本次任务
 ```
 
 TTS 示例：

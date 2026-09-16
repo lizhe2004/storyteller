@@ -16,11 +16,11 @@ def _w(line):
 
 
 _MOCK_ENV = {
-    "STORYTELLER_LLM_PROVIDERS": "mock",
+    "STORYTELLER_LLM_PROVIDER": "mock",
     "STORYTELLER_LLM_MOCK_TYPE": "mock",
     "STORYTELLER_TTS_PROVIDERS": "mock",
     "STORYTELLER_TTS_MOCK_TYPE": "mock",
-    "STORYTELLER_SOUND_PROVIDERS": "mock",
+    "STORYTELLER_SOUND_PROVIDER": "mock",
     "STORYTELLER_SOUND_MOCK_TYPE": "mock",
 }
 
@@ -249,7 +249,7 @@ def test_make_sound_uses_registry_provider():
 def test_make_sound_without_configured_provider_errors():
     runner = CliRunner()
     env = {
-        "STORYTELLER_LLM_PROVIDERS": "mock",
+        "STORYTELLER_LLM_PROVIDER": "mock",
         "STORYTELLER_TTS_PROVIDERS": "mock",
     }
     with runner.isolated_filesystem():
@@ -260,10 +260,22 @@ def test_make_sound_without_configured_provider_errors():
         assert "No sound provider configured" in result.output
 
 
+def test_make_sound_with_multiple_discovered_providers_requires_selection():
+    runner = CliRunner()
+    env = {
+        "STORYTELLER_SOUND_MOCK_TYPE": "mock",
+        "STORYTELLER_SOUND_MOCK2_TYPE": "mock",
+    }
+    with runner.isolated_filesystem():
+        result = runner.invoke(cli, ["make-sound", "风声"], env=env)
+        assert result.exit_code != 0
+        assert "Multiple sound providers are configured" in result.output
+
+
 def test_wizard_enables_sound_with_single_provider():
     runner = CliRunner()
     env = dict(_MOCK_ENV)
-    env["STORYTELLER_SOUND_PROVIDERS"] = "mock"
+    env["STORYTELLER_SOUND_PROVIDER"] = "mock"
     with runner.isolated_filesystem():
         user_input = "\n".join(
             ["雨夜", "2", "1", "1", "1", "y"]
@@ -273,14 +285,13 @@ def test_wizard_enables_sound_with_single_provider():
         assert "Done" in result.output
 
 
-def test_wizard_chooses_between_multiple_sound_providers():
+def test_wizard_uses_configured_sound_provider():
     runner = CliRunner()
     env = dict(_MOCK_ENV)
     env.update(
         {
-            "STORYTELLER_SOUND_PROVIDERS": "mock,mock2",
+            "STORYTELLER_SOUND_PROVIDER": "mock",
             "STORYTELLER_SOUND_MOCK_TYPE": "mock",
-            "STORYTELLER_SOUND_MOCK2_TYPE": "mock",
         }
     )
     with runner.isolated_filesystem():
@@ -289,7 +300,7 @@ def test_wizard_chooses_between_multiple_sound_providers():
         ) + "\n"
         result = runner.invoke(cli, [], input=user_input, env=env)
         assert result.exit_code == 0, result.output
-        assert "音效 provider" in result.output
+        assert "Done" in result.output
 
 
 def test_make_sound_removes_raw_staging_on_success():

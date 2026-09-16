@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from storyteller.core.config import Config
-from storyteller.core.exceptions import TTSError
+from storyteller.core.exceptions import LLMError, TTSError
 from storyteller.core.pipeline import Pipeline
 from storyteller.providers.mock.llm import MockLLMProvider
 from storyteller.providers.mock.tts import MockTTSProvider
@@ -27,6 +27,15 @@ def test_run_generates_audio_file(tmp_path):
     assert Path(result_path).exists()
     assert Path(result_path).name == "story.mp3"
     assert Path(result_path).parent.parent.name == "stories"
+
+
+def test_multiple_llm_providers_require_explicit_selection(tmp_path):
+    pipeline = _make_pipeline(tmp_path)
+    pipeline.config.set("llm.default_provider", None)
+    pipeline.registry.register_llm("other", MockLLMProvider)
+
+    with pytest.raises(LLMError, match="Multiple LLM providers are configured"):
+        pipeline._get_default_llm()
 
 
 def test_run_saves_project_state(tmp_path):

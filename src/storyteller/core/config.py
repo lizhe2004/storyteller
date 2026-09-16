@@ -183,15 +183,15 @@ class Config:
     def _load_provider_group(config, kind):
         """Load one provider group (llm/tts/sound).
 
-        Names in STORYTELLER_<KIND>_PROVIDERS come first (default enablement
-        and ordering). Any other name with a per-provider env var is
-        auto-discovered and appended in sorted order, so configuring a key
-        is enough to make a provider CLI-selectable without editing the
-        PROVIDERS list.
+        TTS uses STORYTELLER_TTS_PROVIDERS as an explicit allowlist. LLM and
+        sound use singular STORYTELLER_<KIND>_PROVIDER for the selected
+        provider; when it is absent, configured providers are discovered so a
+        single-provider setup can work without the selector.
         """
         upper = kind.upper()
         group_prefix = "STORYTELLER_{}_".format(upper)
 
+        selected_provider = os.getenv(group_prefix + "PROVIDER", "").strip()
         providers_env = os.getenv(group_prefix + "PROVIDERS", "")
         providers = [p.strip() for p in providers_env.split(",") if p.strip()]
 
@@ -224,16 +224,32 @@ class Config:
                 continue
             discovered.add(name.lower())
 
-        # TTS_PROVIDERS is an explicit allowlist when present.  Only an
-        # unset/blank list opts into automatic discovery; LLM and sound keep
-        # their existing discovery-and-ordering behavior.
-        if kind != "tts" or not providers:
+        # TTS_PROVIDERS is an explicit allowlist when present.  LLM and sound
+        # use the singular PROVIDER selector; without it, discovery is only a
+        # convenience for the single-provider case and ambiguous discovery is
+        # rejected later instead of silently choosing the first provider.
+        if kind == "tts" and not providers:
             seen = {p.lower() for p in providers}
             for name in sorted(discovered):
                 if name not in seen:
                     providers.append(name)
                     seen.add(name)
+        elif kind in ("llm", "sound"):
+            providers = sorted(discovered)
+            if selected_provider:
+                providers = [
+                    selected_provider,
+                    *[
+                        name for name in providers
+                        if name.lower() != selected_provider.lower()
+                    ],
+                ]
         config.set("{}.providers".format(kind), providers)
+        if kind in ("llm", "sound"):
+            default = selected_provider if selected_provider else (
+                providers[0] if len(providers) == 1 else None
+            )
+            config.set("{}.default_provider".format(kind), default)
 
         for provider in providers:
             provider_prefix = "STORYTELLER_{}_{}_".format(
