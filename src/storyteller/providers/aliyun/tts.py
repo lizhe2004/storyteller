@@ -388,10 +388,11 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
     which is downloaded immediately so artifacts never depend on it.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, provider_name="aliyun"):
         super().__init__(config)
+        self.provider_name = provider_name
         provider_config = config.get(
-            "tts.provider_config.aliyun", {}
+            "tts.provider_config.{}".format(provider_name), {}
         ) or {}
         self.api_key = provider_config.get("api_key")
         self.workspace_id = (provider_config.get("workspace_id") or "").strip()
@@ -435,7 +436,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
 
     @property
     def name(self):
-        return "aliyun"
+        return self.provider_name
 
     @property
     def display_name(self):
@@ -449,7 +450,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         enabled = self._enabled_models
         return [
             VoiceConfig(
-                provider="aliyun",
+                provider=self.provider_name,
                 voice_id=record["voice_id"],
                 language=record.get("language", "zh-CN"),
                 name=record.get("name"),

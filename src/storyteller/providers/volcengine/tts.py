@@ -337,10 +337,11 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
 
     supports_streaming = True
 
-    def __init__(self, config):
+    def __init__(self, config, provider_name="volcengine"):
         super().__init__(config)
+        self.provider_name = provider_name
         provider_config = config.get(
-            "tts.provider_config.volcengine", {}
+            "tts.provider_config.{}".format(provider_name), {}
         ) or {}
         self.api_key = provider_config.get("api_key")
         self.endpoint = _DEFAULT_ENDPOINT
@@ -362,7 +363,7 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
 
     @property
     def name(self):
-        return "volcengine"
+        return self.provider_name
 
     @property
     def display_name(self):
@@ -386,7 +387,7 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
     def list_voices(self, **kwargs):
         return [
             VoiceConfig(
-                provider="volcengine",
+                provider=self.provider_name,
                 voice_id=record["voice_id"],
                 language=record.get("language", "zh-CN"),
                 name=record.get("name"),

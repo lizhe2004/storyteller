@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr
+from pydantic import (
+    BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr,
+    field_validator,
+)
 
 from ..providers.bootstrap import register_providers_from_config
 from ..providers.registry import ProviderRegistry
@@ -38,6 +41,51 @@ _DIRECT_FIELDS = {
     "llm": {"providers", "default_provider"},
     "tts": {"providers", "default_provider"},
     "sound": {"enabled", "dir", "providers"},
+}
+_PROVIDER_FORM_TYPES = {
+    "llm": {
+        "volcengine": {
+            "label": "火山引擎方舟",
+            "fields": ["api_key", "model"],
+        },
+        "openai_compatible": {
+            "label": "OpenAI 兼容服务",
+            "fields": ["api_key", "model", "base_url"],
+        },
+        "mock": {"label": "模拟服务", "fields": []},
+    },
+    "tts": {
+        "aliyun": {
+            "label": "阿里云百炼",
+            "fields": ["api_key", "models", "workspace_id"],
+        },
+        "volcengine": {
+            "label": "火山引擎语音",
+            "fields": ["api_key", "resource_id"],
+        },
+        "openai_compatible": {
+            "label": "OpenAI 兼容服务",
+            "fields": ["api_key", "model", "base_url"],
+        },
+        "mock": {"label": "模拟服务", "fields": []},
+    },
+    "sound": {
+        "volcengine": {
+            "label": "火山引擎音效",
+            "fields": ["api_key", "model"],
+        },
+        "mock": {"label": "模拟服务", "fields": []},
+    },
+}
+_CUSTOM_PROVIDER_TYPES = {
+    "llm": ["openai_compatible", "mock"],
+    "tts": ["volcengine", "aliyun", "openai_compatible", "mock"],
+    "sound": ["mock"],
+}
+_FIXED_PROVIDER_NAMES = {
+    "llm": [],
+    "tts": ["aliyun", "volcengine"],
+    "sound": ["volcengine"],
 }
 
 
@@ -70,11 +118,25 @@ class ProviderGroupPatch(_StrictModel):
     default_provider: Optional[StrictStr] = None
     provider_config: Optional[Dict[StrictStr, ProviderConfigPatch]] = None
 
+    @field_validator("providers")
+    @classmethod
+    def llm_requires_exactly_one_provider(cls, value):
+        if value is not None and len(value) != 1:
+            raise ValueError("LLM settings require exactly one provider")
+        return value
+
 
 class TTSSettingsPatch(_StrictModel):
     providers: Optional[List[StrictStr]] = None
     default_provider: Optional[StrictStr] = None
     provider_config: Optional[Dict[StrictStr, ProviderConfigPatch]] = None
+
+    @field_validator("default_provider")
+    @classmethod
+    def tts_default_is_not_configurable(cls, value):
+        if value is not None:
+            raise ValueError("TTS providers form a voice pool; no default is used")
+        return value
 
 
 class SoundSettingsPatch(_StrictModel):
@@ -82,6 +144,13 @@ class SoundSettingsPatch(_StrictModel):
     provider_config: Optional[Dict[StrictStr, ProviderConfigPatch]] = None
     enabled: Optional[StrictBool] = None
     dir: Optional[StrictStr] = None
+
+    @field_validator("providers")
+    @classmethod
+    def sound_has_at_most_one_provider(cls, value):
+        if value is not None and len(value) > 1:
+            raise ValueError("Sound settings support one provider")
+        return value
 
 
 class SettingsPatch(_StrictModel):
@@ -104,6 +173,53 @@ class ProviderTestRequest(_StrictModel):
 
 def _utc_now():
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _resolved_provider_form_type(group, name, provider_config):
+    provider_type = provider_config.get("type")
+    normalized_name = name.lower()
+    if group == "llm":
+        if provider_type in ("openai_compatible", "mock"):
+            return provider_type
+        return "volcengine" if normalized_name == "volcengine" else None
+    if group == "tts":
+        if normalized_name in ("aliyun", "volcengine"):
+            return normalized_name
+        if provider_type in ("aliyun", "volcengine", "openai_compatible", "mock"):
+            return provider_type
+        # Provider bootstrap defaults untyped/unknown TTS names to Volcengine.
+        return "volcengine"
+    if group == "sound":
+        if provider_type == "mock":
+            return "mock"
+        if normalized_name == "volcengine" and provider_type in (None, "volcengine"):
+            return "volcengine"
+    return None
+
+
+def _provider_schemas(public_settings):
+    schemas = {}
+    for group, types in _PROVIDER_FORM_TYPES.items():
+        config_group = public_settings[group]
+        provider_types = {}
+        for name in config_group.get("providers", []):
+            provider_config = config_group.get("provider_config", {}).get(name, {})
+            provider_types[name] = _resolved_provider_form_type(
+                group, name, provider_config
+            )
+        schemas[group] = {
+            "types": types,
+            "providers": provider_types,
+            "custom_types": _CUSTOM_PROVIDER_TYPES[group],
+            "fixed_names": _FIXED_PROVIDER_NAMES[group],
+        }
+    return schemas
+
+
+def _public_settings(request):
+    settings = request.app.state.runtime_settings.public_snapshot()
+    settings["provider_schemas"] = _provider_schemas(settings)
+    return settings
 
 
 def _history_path(request: Request):
@@ -179,7 +295,7 @@ def _mutation_response(request, entry):
         "updated_at": entry["updated_at"],
         "effective_for": "new_jobs",
         "message": "保存成功；配置对新任务生效，运行中任务不受影响",
-        "settings": request.app.state.runtime_settings.public_snapshot(),
+        "settings": _public_settings(request),
     }
 
 
@@ -273,13 +389,27 @@ async def _test_connection(request, kind, body):
 
 @router.get("")
 def get_settings(request: Request):
-    return request.app.state.runtime_settings.public_snapshot()
+    return _public_settings(request)
 
 
 @router.patch("")
 def patch_settings(body: SettingsPatch, request: Request):
     before = request.app.state.runtime_settings.snapshot()
     patch = body.model_dump(exclude_unset=True)
+    sound_patch = patch.get("sound")
+    if sound_patch is not None:
+        current_sound = before.values.get("sound", {})
+        sound_enabled = sound_patch.get(
+            "enabled", current_sound.get("enabled", False)
+        )
+        sound_providers = sound_patch.get(
+            "providers", current_sound.get("providers", [])
+        )
+        if sound_enabled and not sound_providers:
+            raise HTTPException(
+                status_code=422,
+                detail="启用音效时必须配置一个服务",
+            )
     after = request.app.state.runtime_settings.update(patch)
     request.app.state.refresh_runtime_config()
     entry = _append_history(

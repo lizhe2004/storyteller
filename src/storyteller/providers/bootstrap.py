@@ -95,11 +95,15 @@ def _register_tts(config, registry):
                 lambda c, n=name: OpenAICompatibleTTS(c, n),
             )
         elif provider_type == "aliyun" and AliyunTTS:
-            registry.register_tts(name, lambda c: AliyunTTS(c))
+            registry.register_tts(
+                name, lambda c, n=name: AliyunTTS(c, n),
+            )
         elif provider_type == "mock" and MockTTSProvider:
             registry.register_tts(name, lambda c: MockStreamingTTS(c) if MockStreamingTTS else MockTTSProvider(c))
         elif VolcengineTTS:
-            registry.register_tts(name, lambda c: VolcengineTTS(c))
+            registry.register_tts(
+                name, lambda c, n=name: VolcengineTTS(c, n),
+            )
 
 
 def _register_sounds(config, registry):

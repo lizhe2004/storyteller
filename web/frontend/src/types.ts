@@ -43,6 +43,18 @@ export interface ProviderGroupSettings {
   provider_config: Record<string, ProviderSettings>
 }
 
+export interface ProviderFormType {
+  label: string
+  fields: string[]
+}
+
+export interface ProviderGroupSchema {
+  types: Record<string, ProviderFormType>
+  providers: Record<string, string | null>
+  custom_types: string[]
+  fixed_names: string[]
+}
+
 export interface SettingsResponse {
   web: {
     passwords: RedactedSetting
@@ -60,6 +72,7 @@ export interface SettingsResponse {
   sources: Record<'web' | 'llm' | 'tts' | 'sound', SettingsSourceTree>
   config_error: string | null
   data_dir?: string | null
+  provider_schemas: Record<'llm' | 'tts' | 'sound', ProviderGroupSchema>
 }
 
 export interface ProviderConfigPatch {

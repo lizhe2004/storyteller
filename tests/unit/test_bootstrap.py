@@ -51,6 +51,24 @@ def test_register_openai_compatible_tts():
     assert tts.model == "custom-model"
 
 
+def test_register_implicit_volcengine_tts_uses_custom_provider_configuration():
+    config = Config()
+    config.set("tts.providers", ["custom-voice"])
+    config.set(
+        "tts.provider_config.custom-voice",
+        {"api_key": "custom-key", "resource_id": "custom-resource"},
+    )
+
+    registry = ProviderRegistry(config)
+    register_providers_from_config(config, registry)
+
+    tts = registry.get_tts("custom-voice")
+    assert tts.name == "custom-voice"
+    assert tts.api_key == "custom-key"
+    assert tts.resource_id == "custom-resource"
+    assert {voice.provider for voice in tts.list_voices()} == {"custom-voice"}
+
+
 def test_register_openai_compatible_llm():
     config = Config()
     config.set("llm.providers", ["custom-llm"])
@@ -89,6 +107,24 @@ def test_register_aliyun_tts():
     tts = registry.get_tts("aliyun")
     assert tts is not None
     assert tts.name == "aliyun"
+
+
+def test_register_aliyun_tts_alias_uses_named_configuration():
+    config = Config()
+    config.set("tts.providers", ["secondary-aliyun"])
+    config.set(
+        "tts.provider_config.secondary-aliyun",
+        {"type": "aliyun", "api_key": "secondary-key", "workspace_id": "secondary-ws"},
+    )
+
+    registry = ProviderRegistry(config)
+    register_providers_from_config(config, registry)
+
+    tts = registry.get_tts("secondary-aliyun")
+    assert tts.name == "secondary-aliyun"
+    assert tts.api_key == "secondary-key"
+    assert tts.websocket_api_url.startswith("wss://secondary-ws.")
+    assert {voice.provider for voice in tts.list_voices()} == {"secondary-aliyun"}
 
 
 def test_register_skips_unknown_defaults():

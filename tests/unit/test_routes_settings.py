@@ -83,6 +83,20 @@ def test_get_settings_returns_groups_sources_and_redacted_secrets(client):
         "configured": True,
         "masked": "********-key",
     }
+    schemas = body["provider_schemas"]
+    assert schemas["llm"]["providers"]["mock"] == "mock"
+    assert schemas["llm"]["types"]["openai_compatible"]["fields"] == [
+        "api_key", "model", "base_url"
+    ]
+    assert schemas["tts"]["types"]["aliyun"]["fields"] == [
+        "api_key", "models", "workspace_id"
+    ]
+    assert schemas["tts"]["types"]["volcengine"]["fields"] == [
+        "api_key", "resource_id"
+    ]
+    assert schemas["sound"]["types"]["volcengine"]["fields"] == [
+        "api_key", "model"
+    ]
     rendered = json.dumps(body, ensure_ascii=False)
     assert "login-password" not in rendered
     assert "environment-web-secret" not in rendered
@@ -121,6 +135,48 @@ def test_patch_accepts_whitelisted_partial_update_and_new_jobs_use_it(
         )
         == "new-model"
     )
+
+
+def test_provider_schema_tracks_new_openai_compatible_provider(client):
+    response = client.patch(
+        "/api/settings",
+        json={
+            "llm": {
+                "providers": ["writer"],
+                "provider_config": {
+                    "writer": {
+                        "type": "openai_compatible",
+                        "api_key": "writer-key",
+                        "base_url": "https://llm.example/v1",
+                        "model": "writer-model",
+                    }
+                },
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    schemas = response.json()["settings"]["provider_schemas"]["llm"]
+    assert schemas["providers"]["writer"] == "openai_compatible"
+    assert schemas["types"][schemas["providers"]["writer"]]["fields"] == [
+        "api_key", "model", "base_url"
+    ]
+
+
+def test_provider_schema_resolves_implicit_custom_tts_to_volcengine(client):
+    response = client.patch(
+        "/api/settings",
+        json={
+            "tts": {
+                "providers": ["custom-voice"],
+                "provider_config": {"custom-voice": {"api_key": "voice-key"}},
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    schemas = response.json()["settings"]["provider_schemas"]["tts"]
+    assert schemas["providers"]["custom-voice"] == "volcengine"
 
 
 def test_web_settings_update_refreshes_auth_runtime_objects(client, settings_app):
@@ -190,6 +246,22 @@ def test_patch_accepts_aliyun_workspace_and_model_allowlist(client, settings_app
     ],
 )
 def test_patch_rejects_unknown_fields_and_wrong_types(client, payload):
+    response = client.patch("/api/settings", json=payload)
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"llm": {"providers": ["volcengine", "openai"]}},
+        {"llm": {"providers": []}},
+        {"sound": {"providers": ["volcengine", "mock"]}},
+        {"sound": {"enabled": True, "providers": []}},
+        {"tts": {"default_provider": "mock"}},
+    ],
+)
+def test_patch_rejects_unsupported_provider_selection_controls(client, payload):
     response = client.patch("/api/settings", json=payload)
 
     assert response.status_code == 422

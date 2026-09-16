@@ -19,17 +19,18 @@ const settings: SettingsResponse = {
     filler_voice: 'narrator',
   },
   llm: {
-    providers: ['mock'],
-    default_provider: 'mock',
+    providers: ['writer'],
+    default_provider: 'writer',
     provider_config: {
-      mock: { type: 'mock', api_key: { configured: true, masked: '********-key', value: fullSecret }, model: 'story-model' },
+      writer: { type: 'openai_compatible', api_key: { configured: true, masked: '********-writer' }, model: 'writer-model', base_url: 'https://llm.example/v1' },
     },
   },
   tts: {
-    providers: ['mock-tts'],
+    providers: ['mock-tts', 'aliyun'],
     default_provider: 'mock-tts',
     provider_config: {
       'mock-tts': { type: 'mock', api_key: { configured: true, masked: '********-tts' }, model: 'voice-model', resource_id: 'workspace-a' },
+      aliyun: { api_key: { configured: true, masked: '********-ali' }, models: 'qwen-audio-3.0-tts-plus', workspace_id: 'workspace-a' },
     },
   },
   sound: {
@@ -43,11 +44,36 @@ const settings: SettingsResponse = {
   },
   sources: {
     web: { passwords: 'environment', secret: 'environment', token_ttl_days: 'default', host: 'environment', port: 'default', concurrency: 'admin', rate_limit_per_min: 'default', filler_voice: 'admin' },
-    llm: { providers: 'environment', default_provider: 'admin', provider_config: { mock: { type: 'default', api_key: 'environment', model: 'admin' } } },
-    tts: { providers: 'admin', default_provider: 'admin', provider_config: { 'mock-tts': { type: 'default', api_key: 'environment', model: 'admin', resource_id: 'environment' } } },
+    llm: { providers: 'environment', default_provider: 'admin', provider_config: { mock: { type: 'default', api_key: 'environment', model: 'admin' }, writer: { type: 'admin', api_key: 'environment', model: 'admin', base_url: 'admin' } } },
+    tts: { providers: 'admin', default_provider: 'admin', provider_config: { 'mock-tts': { type: 'default', api_key: 'environment', model: 'admin', resource_id: 'environment' }, aliyun: { api_key: 'environment', models: 'admin', workspace_id: 'environment' } } },
     sound: { enabled: 'default', dir: 'environment', providers: 'admin', default_provider: 'admin', provider_config: { 'mock-sound': { type: 'default', api_key: 'default', model: 'admin' } } },
   },
   config_error: null,
+  provider_schemas: {
+    llm: {
+      types: {
+        volcengine: { label: '火山引擎方舟', fields: ['api_key', 'model'] },
+        openai_compatible: { label: 'OpenAI 兼容服务', fields: ['api_key', 'model', 'base_url'] },
+        mock: { label: '模拟服务', fields: [] },
+      },
+      providers: { mock: 'mock', writer: 'openai_compatible' },
+      custom_types: ['openai_compatible', 'mock'], fixed_names: ['volcengine'],
+    },
+    tts: {
+      types: {
+        aliyun: { label: '阿里云百炼', fields: ['api_key', 'models', 'workspace_id'] },
+        volcengine: { label: '火山引擎语音', fields: ['api_key', 'resource_id'] },
+        openai_compatible: { label: 'OpenAI 兼容服务', fields: ['api_key', 'model', 'base_url'] },
+        mock: { label: '模拟服务', fields: [] },
+      },
+      providers: { 'mock-tts': 'mock', aliyun: 'aliyun' },
+      custom_types: ['openai_compatible', 'mock'], fixed_names: ['aliyun', 'volcengine'],
+    },
+    sound: {
+      types: { volcengine: { label: '火山引擎音效', fields: ['api_key', 'model'] }, mock: { label: '模拟服务', fields: [] } },
+      providers: { 'mock-sound': 'mock' }, custom_types: ['mock'], fixed_names: ['volcengine'],
+    },
+  },
 }
 
 const mutationResponse = (): SettingsMutationResponse => ({
@@ -72,8 +98,8 @@ async function settle() {
   await nextTick()
 }
 
-async function mountSettings(): Promise<MountedView> {
-  vi.spyOn(api, 'getSettings').mockResolvedValue(structuredClone(settings))
+async function mountSettings(settingsResponse: SettingsResponse = settings): Promise<MountedView> {
+  vi.spyOn(api, 'getSettings').mockResolvedValue(structuredClone(settingsResponse))
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
@@ -97,11 +123,23 @@ function input(element: HTMLElement, testId: string, value: string) {
   const control = element.querySelector(`[data-testid="${testId}"]`) as HTMLInputElement
   control.value = value
   control.dispatchEvent(new Event('input', { bubbles: true }))
+  control.dispatchEvent(new Event('change', { bubbles: true }))
+}
+
+function choose(element: HTMLElement, testId: string, value: string) {
+  const control = element.querySelector(`[data-testid="${testId}"]`) as HTMLSelectElement
+  control.value = value
+  control.dispatchEvent(new Event('change', { bubbles: true }))
 }
 
 function click(element: HTMLElement, testId: string) {
   const control = element.querySelector(`[data-testid="${testId}"]`) as HTMLButtonElement
   control.click()
+}
+
+async function selectGroup(element: HTMLElement, group: string) {
+  click(element, `settings-nav-${group}`)
+  await settle()
 }
 
 afterEach(() => {
@@ -113,27 +151,142 @@ afterEach(() => {
 })
 
 describe('SettingsView', () => {
-  it('renders four collapsible groups with configuration source labels', async () => {
+  it('renders a configuration workspace with group navigation and source labels', async () => {
     const { element } = await mountSettings()
 
     expect(element.textContent).toContain('Web 服务')
     expect(element.textContent).toContain('大模型')
     expect(element.textContent).toContain('TTS 音色服务')
-    expect(element.textContent).toContain('音效与高级设置')
+    expect(element.textContent).toContain('音效服务')
     expect(element.textContent).toContain('后台设置')
     expect(element.textContent).toContain('环境变量')
     expect(element.textContent).toContain('程序默认值')
-    expect(element.querySelectorAll('details.settings-section')).toHaveLength(4)
+    expect(element.querySelector('[data-testid="settings-navigation"]')).not.toBeNull()
+    expect(element.querySelector('[data-testid="settings-navigation"] [aria-current="page"]')?.textContent).toContain('Web 服务')
+    expect(element.querySelectorAll('[data-testid="settings-group-panel"]')).toHaveLength(1)
+    expect(element.querySelector('[data-testid="settings-group-panel"]')?.textContent).toContain('登录密码')
+  })
+
+  it('switches configuration groups without showing multiple forms at once', async () => {
+    const { element } = await mountSettings()
+
+    const llmLink = element.querySelector('[data-testid="settings-nav-llm"]') as HTMLButtonElement
+    llmLink.click()
+    await settle()
+
+    expect(llmLink.getAttribute('aria-current')).toBe('page')
+    expect(element.querySelectorAll('[data-testid="settings-group-panel"]')).toHaveLength(1)
+    expect(element.querySelector('[data-testid="settings-group-panel"]')?.textContent).toContain('服务类型')
+    expect(element.querySelector('[data-testid="settings-group-panel"]')?.textContent).not.toContain('登录密码')
+  })
+
+  it('renders only fields declared for the active provider implementation', async () => {
+    const { element } = await mountSettings()
+
+    await selectGroup(element, 'llm')
+    const llmCards = Array.from(element.querySelectorAll('.provider-card')) as HTMLElement[]
+    const writerCard = llmCards.find(card => card.querySelector('h4')?.textContent === 'writer')!
+    expect(writerCard.textContent).toContain('Base URL')
+    expect(writerCard.textContent).not.toContain('Endpoint')
+    expect(writerCard.textContent).not.toContain('资源 ID')
+
+    await selectGroup(element, 'tts')
+    const ttsCards = Array.from(element.querySelectorAll('.provider-card')) as HTMLElement[]
+    const aliyunCard = ttsCards.find(card => card.querySelector('h4')?.textContent === 'aliyun')!
+    const mockTtsCard = ttsCards.find(card => card.querySelector('h4')?.textContent === 'mock-tts')!
+    expect(aliyunCard.textContent).toContain('模型白名单')
+    expect(aliyunCard.textContent).toContain('Workspace ID')
+    expect(aliyunCard.textContent).not.toContain('Endpoint')
+    expect(aliyunCard.textContent).not.toContain('资源 ID')
+    expect(mockTtsCard.textContent).not.toContain('API Key')
+    expect(mockTtsCard.textContent).not.toContain('模型白名单')
+  })
+
+  it('shows one LLM provider and one model without a default provider control', async () => {
+    const { element } = await mountSettings()
+    await selectGroup(element, 'llm')
+
+    expect(element.querySelector('[data-testid="llm-providers"]')).toBeNull()
+    expect(element.querySelector('[data-testid="llm-default-provider"]')).toBeNull()
+    expect(element.querySelectorAll('[data-testid="llm-provider-type"]')).toHaveLength(1)
+    expect(element.querySelectorAll('[data-testid^="field-llm-"][data-testid$="-model"]')).toHaveLength(1)
+  })
+
+  it('removes the unused TTS default and limits Sound settings to one provider', async () => {
+    const { element } = await mountSettings()
+    await selectGroup(element, 'tts')
+    expect(element.querySelector('[data-testid="tts-default-provider"]')).toBeNull()
+
+    await selectGroup(element, 'sound')
+    expect(element.querySelector('[data-testid="sound-providers"]')).toBeNull()
+    expect(element.querySelectorAll('[data-testid="sound-provider-type"]')).toHaveLength(1)
+  })
+
+  it('renders and preserves custom TTS providers that use the backend Volcengine fallback', async () => {
+    const customSettings = structuredClone(settings)
+    customSettings.tts.providers = ['custom-voice']
+    customSettings.tts.provider_config = {
+      'custom-voice': { api_key: { configured: true, masked: '********-voice' }, resource_id: 'custom-resource' },
+    }
+    customSettings.provider_schemas.tts.providers = { 'custom-voice': 'volcengine' }
+    const patchSettings = vi.spyOn(api, 'patchSettings').mockResolvedValue(mutationResponse())
+    const { element } = await mountSettings(customSettings)
+    await selectGroup(element, 'tts')
+
+    const card = element.querySelector('[data-testid="provider-card-tts-custom-voice"]') as HTMLElement
+    expect(card.textContent).toContain('资源 ID')
+    expect(card.textContent).toContain('********-voice')
+    click(element, 'save-tts')
+    await settle()
+
+    expect(patchSettings.mock.calls[0][0]).toMatchObject({
+      tts: { providers: ['custom-voice'], provider_config: { 'custom-voice': { type: 'volcengine', resource_id: 'custom-resource' } } },
+    })
+  })
+
+  it('clears a legacy TTS default when saving its provider pool', async () => {
+    const patchSettings = vi.spyOn(api, 'patchSettings').mockResolvedValue(mutationResponse())
+    const { element } = await mountSettings()
+    await selectGroup(element, 'tts')
+    click(element, 'save-tts')
+    await settle()
+
+    expect(patchSettings.mock.calls[0][0]).toMatchObject({ tts: { default_provider: null } })
+  })
+
+  it('keeps unsaved state per group when another group is saved', async () => {
+    const patchSettings = vi.spyOn(api, 'patchSettings').mockResolvedValue(mutationResponse())
+    const { element } = await mountSettings()
+
+    input(element, 'web-concurrency', '4')
+    await selectGroup(element, 'llm')
+    input(element, 'field-llm-writer-model', 'writer-model-v2')
+    click(element, 'save-llm')
+    await settle()
+
+    expect(patchSettings).toHaveBeenCalledTimes(1)
+    expect(element.querySelector('[data-testid="settings-nav-web"]')?.textContent).toContain('未保存')
+    expect(element.querySelector('[data-testid="settings-nav-llm"]')?.textContent).not.toContain('未保存')
+    await selectGroup(element, 'web')
+    expect((element.querySelector('[data-testid="web-concurrency"]') as HTMLInputElement).value).toBe('4')
+    expect(element.querySelector('.settings-unsaved')?.textContent).toContain('有未保存的修改')
   })
 
   it('shows only masked secret status and leaves replacement fields empty', async () => {
     const { element } = await mountSettings()
 
     expect(element.textContent).toContain('********cret')
-    expect(element.textContent).toContain('********-key')
+    expect(element.textContent).not.toContain(fullSecret)
+    const webSecretInputs = Array.from(element.querySelectorAll('input[type="password"]')) as HTMLInputElement[]
+    expect(webSecretInputs.every(control => control.value === '')).toBe(true)
+
+    await selectGroup(element, 'llm')
+    expect(element.textContent).toContain('********-writer')
+    await selectGroup(element, 'tts')
+    expect(element.textContent).toContain('********-ali')
     expect(element.textContent).not.toContain(fullSecret)
     const secretInputs = Array.from(element.querySelectorAll('input[type="password"]')) as HTMLInputElement[]
-    expect(secretInputs.length).toBeGreaterThanOrEqual(3)
+    expect(secretInputs).toHaveLength(1)
     expect(secretInputs.every(control => control.value === '')).toBe(true)
   })
 
@@ -151,15 +304,26 @@ describe('SettingsView', () => {
     expect(element.textContent).toContain('已对新任务生效')
   })
 
-  it('serializes the provider list as an array when edited as text', async () => {
+  it('serializes exactly one selected LLM provider and clears the unused default', async () => {
     const patchSettings = vi.spyOn(api, 'patchSettings').mockResolvedValue(mutationResponse())
     const { element } = await mountSettings()
 
-    input(element, 'llm-providers', 'mock,gemini')
+    await selectGroup(element, 'llm')
+    choose(element, 'llm-provider-type', 'openai_compatible')
+    await settle()
+    input(element, 'field-llm-openai-model', 'gemini-pro')
+    input(element, 'llm-openai-api-key', 'new-key')
+    input(element, 'field-llm-openai-base_url', 'https://llm.example/v1')
     click(element, 'save-llm')
     await settle()
 
-    expect(patchSettings.mock.calls[0][0]).toMatchObject({ llm: { providers: ['mock', 'gemini'] } })
+    expect(patchSettings.mock.calls[0][0]).toMatchObject({
+      llm: {
+        providers: ['openai'],
+        default_provider: null,
+        provider_config: { openai: { type: 'openai_compatible', model: 'gemini-pro', api_key: 'new-key', base_url: 'https://llm.example/v1' } },
+      },
+    })
   })
 
   it('shows successful and failed connection test results without saving', async () => {
@@ -169,15 +333,18 @@ describe('SettingsView', () => {
     const patchSettings = vi.spyOn(api, 'patchSettings')
     const { element } = await mountSettings()
 
+    await selectGroup(element, 'llm')
     click(element, 'test-llm')
     await settle()
     expect(element.querySelector('[data-testid="status-llm"]')?.textContent).toContain('连接成功')
 
+    await selectGroup(element, 'tts')
+    input(element, 'tts-providers', 'aliyun')
     click(element, 'test-tts')
     await settle()
     expect(element.querySelector('[data-testid="status-tts"]')?.textContent).toContain('连接测试失败')
-    expect(testSettings).toHaveBeenNthCalledWith(1, 'llm', expect.objectContaining({ provider: 'mock' }))
-    expect(testSettings).toHaveBeenNthCalledWith(2, 'tts', expect.objectContaining({ provider: 'mock-tts' }))
+    expect(testSettings).toHaveBeenNthCalledWith(1, 'llm', expect.objectContaining({ provider: 'writer' }))
+    expect(testSettings).toHaveBeenNthCalledWith(2, 'tts', expect.objectContaining({ provider: 'aliyun' }))
     expect(patchSettings).not.toHaveBeenCalled()
   })
 
