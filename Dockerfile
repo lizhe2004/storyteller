@@ -24,10 +24,7 @@ COPY --from=frontend /build/src/storyteller/web/static/ ./src/storyteller/web/st
 
 RUN pip install --no-cache-dir ".[web,aliyun]"
 
-RUN useradd --create-home --uid 10001 storyteller \
-    && mkdir -p /data \
-    && chown -R storyteller:storyteller /app /data
-USER storyteller
+RUN mkdir -p /data
 
 EXPOSE 8000
 VOLUME ["/data"]
