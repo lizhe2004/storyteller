@@ -12,7 +12,6 @@ def test_register_volcengine_llm_and_tts():
         {"api_key": "llm-key", "model": "doubao"},
     )
     config.set("tts.providers", ["volcengine"])
-    config.set("tts.default_provider", "volcengine")
     config.set(
         "tts.provider_config.volcengine",
         {"api_key": "tts-key"},
@@ -26,7 +25,7 @@ def test_register_volcengine_llm_and_tts():
     llm = registry.get_default_llm()
     assert llm is not None
     # Instantiation validates config; with fake key it should succeed.
-    assert registry.get_default_tts() is not None
+    assert registry.get_tts("volcengine") is not None
 
 
 def test_register_openai_compatible_tts():
@@ -76,7 +75,6 @@ def test_register_openai_compatible_llm():
 def test_register_aliyun_tts():
     config = Config()
     config.set("tts.providers", ["aliyun"])
-    config.set("tts.default_provider", "aliyun")
     config.set(
         "tts.provider_config.aliyun",
         {
@@ -90,7 +88,7 @@ def test_register_aliyun_tts():
     register_providers_from_config(config, registry)
 
     assert "aliyun" in registry.list_tts_names()
-    tts = registry.get_default_tts()
+    tts = registry.get_tts("aliyun")
     assert tts is not None
     assert tts.name == "aliyun"
     assert tts.model == "qwen-audio-3.0-tts-flash"

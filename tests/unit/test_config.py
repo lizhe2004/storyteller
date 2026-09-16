@@ -21,7 +21,7 @@ def test_tts_scheduler_defaults_and_model_override_are_configurable():
     assert config.get("tts.scheduler.default_max_concurrent_sessions") == 1
     assert config.get("tts.scheduler.default_max_text_chunks_per_second") is None
     assert config.get("tts.scheduler.default_queue_size") == 16
-    assert config.get("tts.scheduler.default_queue_timeout_seconds") == 5.0
+    assert config.get("tts.scheduler.default_queue_timeout_seconds") is None
 
     config.set(
         "tts.scheduler.limits.aliyun.qwen-plus",
@@ -73,6 +73,17 @@ def test_tts_scheduler_provider_limits_env_tolerates_underscored_provider(monkey
     assert config.get(
         "tts.scheduler.provider_limits.my_tts.queue_timeout_seconds"
     ) == 1.5
+
+
+def test_aliyun_workspace_id_from_env(monkeypatch):
+    monkeypatch.setenv(
+        "STORYTELLER_TTS_ALIYUN_WORKSPACE_ID", "workspace-123"
+    )
+    config = Config.from_env()
+
+    assert config.get(
+        "tts.provider_config.aliyun.workspace_id"
+    ) == "workspace-123"
 
 
 def test_config_get_nested():
@@ -182,13 +193,23 @@ def test_tts_provider_auto_discovered_without_providers_list(monkeypatch):
     assert config.get("tts.provider_config.aliyun.api_key") == "dashscope-key"
 
 
-def test_listed_providers_first_discovered_sorted_and_deduped(monkeypatch):
+def test_explicit_tts_provider_list_excludes_other_configured_providers(monkeypatch):
+    """An explicit TTS list is an allowlist, not a display order."""
     monkeypatch.setenv("STORYTELLER_TTS_PROVIDERS", "volcengine")
     monkeypatch.setenv("STORYTELLER_TTS_VOLCENGINE_API_KEY", "vkey")
     monkeypatch.setenv("STORYTELLER_TTS_MOCK_API_KEY", "unused")
     monkeypatch.setenv("STORYTELLER_TTS_ALIYUN_API_KEY", "akey")
+    monkeypatch.setenv(
+        "STORYTELLER_TTS_OPENAI_COMPATIBLE_CUSTOM_NAME", "custom-tts"
+    )
+    monkeypatch.setenv(
+        "STORYTELLER_TTS_OPENAI_COMPATIBLE_CUSTOM_API_KEY", "custom-key"
+    )
     config = Config.from_env()
-    assert config.get("tts.providers") == ["volcengine", "aliyun", "mock"]
+    assert config.get("tts.providers") == ["volcengine"]
+    assert config.get("tts.provider_config.aliyun") is None
+    assert config.get("tts.provider_config.mock") is None
+    assert config.get("tts.provider_config.custom-tts") is None
 
 
 def test_llm_auto_discovery_parity(monkeypatch):

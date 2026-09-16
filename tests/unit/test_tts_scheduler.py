@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 
@@ -5,6 +6,7 @@ import pytest
 
 from storyteller.core.config import Config
 from storyteller.core.models import VoiceConfig
+from storyteller.core.tts import CHUNK_AUDIO, StreamChunk
 from storyteller.web.tts_scheduler import (
     SchedulerError,
     SchedulerLimits,
@@ -32,6 +34,8 @@ class RecordingSession:
         self.sent.append(text)
 
     def iter_audio(self):
+        if self.provider.emit_audio:
+            return iter([StreamChunk(CHUNK_AUDIO, b"\x01\x00")])
         if self.provider.fail_next_audio:
             self.provider.fail_next_audio = False
 
@@ -74,6 +78,7 @@ class RecordingProvider:
         self.fail_next_send = False
         self.fail_next_finish = False
         self.fail_next_audio = False
+        self.emit_audio = False
 
     def open_stream(self, voice, *, directives=None, context=None):
         if self.fail_next_open:
@@ -132,6 +137,46 @@ def _scheduler(limits, provider=None, **kwargs):
 
 def _voice(voice_id="voice-a"):
     return VoiceConfig(provider="fake", voice_id=voice_id)
+
+
+def test_logs_text_when_scheduler_worker_sends_it_to_provider(caplog):
+    """The provider-send event must not be emitted merely by enqueueing text."""
+    provider = RecordingProvider()
+    scheduler = _scheduler(SchedulerLimits(1, None, 2, 0.5), provider)
+    session = scheduler.open("fake", "model-a", _voice())
+    caplog.set_level(logging.INFO, logger="storyteller.web.tts_scheduler")
+
+    session.send_text("真正发送")
+    _wait_for(lambda: provider.sessions[0].sent == ["真正发送"])
+    session.finish()
+
+    assert any(
+        "event=tts_provider_text_sent" in record.getMessage()
+        and "text_length=4" in record.getMessage()
+        and "message=文本已真正发送到TTS提供商" in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_logs_when_first_audio_chunk_arrives_from_provider(caplog):
+    provider = RecordingProvider()
+    provider.emit_audio = True
+    scheduler = _scheduler(SchedulerLimits(1, None, 2, None), provider)
+    session = scheduler.open("fake", "model-a", _voice(), phase="line", line_id="1")
+    caplog.set_level(logging.INFO, logger="storyteller.web.tts_scheduler")
+
+    assert list(session.iter_audio()) == [StreamChunk(CHUNK_AUDIO, b"\x01\x00")]
+    session.cancel()
+
+    assert any(
+        "event=tts_first_audio_received" in record.getMessage()
+        and "provider=fake" in record.getMessage()
+        and "model=model-a" in record.getMessage()
+        and "phase=line" in record.getMessage()
+        and "line_id=1" in record.getMessage()
+        and "first_audio_wait_ms=" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_limits_resolve_with_defaults_provider_then_model_precedence():
@@ -198,6 +243,57 @@ def test_same_provider_model_never_exceeds_its_session_limit():
     holder[0].finish()
     thread.join(timeout=1)
 
+
+def test_session_queue_waits_indefinitely_when_timeout_is_disabled():
+    provider = RecordingProvider()
+    scheduler = _scheduler(SchedulerLimits(1, None, 2, None), provider)
+    first = scheduler.open("fake", "model-a", _voice("first"))
+    holder = []
+
+    thread = threading.Thread(
+        target=lambda: holder.append(scheduler.open("fake", "model-a", _voice("second")))
+    )
+    thread.start()
+    _wait_for_waiters(scheduler, 1)
+    assert thread.is_alive()
+
+    first.finish()
+    thread.join(timeout=1)
+    assert not thread.is_alive()
+    holder[0].finish()
+
+
+def test_opening_session_jumps_ahead_of_waiting_line_sessions():
+    provider = RecordingProvider()
+    scheduler = _scheduler(SchedulerLimits(1, None, 2, None), provider)
+    first_line = scheduler.open(
+        "fake", "model-a", _voice("line-1"), phase="line", line_id="1"
+    )
+    waiting_line = []
+    opening = []
+
+    line_thread = threading.Thread(target=lambda: waiting_line.append(
+        scheduler.open("fake", "model-a", _voice("line-2"), phase="line", line_id="2")
+    ))
+    opening_thread = threading.Thread(target=lambda: opening.append(
+        scheduler.open("fake", "model-a", _voice("opening"), phase="opening")
+    ))
+    line_thread.start()
+    _wait_for_waiters(scheduler, 1)
+    opening_thread.start()
+    _wait_for_waiters(scheduler, 2)
+
+    first_line.finish()
+    opening_thread.join(timeout=1)
+    assert not opening_thread.is_alive()
+    assert provider.opened[-1] == ("fake", "opening")
+
+    opening[0].finish()
+    line_thread.join(timeout=1)
+    assert not line_thread.is_alive()
+    assert provider.opened[-1] == ("fake", "line-2")
+    waiting_line[0].finish()
+
     assert provider.max_active_count == 1
 
 
@@ -243,14 +339,21 @@ def test_waiting_sessions_open_in_fifo_order():
     third.join(timeout=1)
 
 
-def test_queue_timeout_raises_a_typed_scheduler_error():
+def test_queue_timeout_raises_a_typed_scheduler_error(caplog):
     """Dropping a timed-out waiter or raising a generic error must fail."""
     scheduler = _scheduler(SchedulerLimits(1, None, 2, 0.01))
     first = scheduler.open("fake", "model-a", _voice())
 
+    caplog.set_level(logging.ERROR, logger="storyteller.web.tts_scheduler")
     with pytest.raises(SchedulerQueueTimeout):
         scheduler.open("fake", "model-a", _voice("waiting"))
 
+    assert any(
+        "event=tts_queue_wait_failed" in record.getMessage()
+        and "voice_id=waiting" in record.getMessage()
+        and "error_type=SchedulerQueueTimeout" in record.getMessage()
+        for record in caplog.records
+    )
     first.cancel()
 
 
@@ -351,15 +454,22 @@ def test_finish_is_idempotent_after_the_session_has_drained():
     session.finish()
 
 
-def test_provider_open_failure_releases_the_same_key_slot_for_retry():
+def test_provider_open_failure_releases_the_same_key_slot_for_retry(caplog):
     """Keeping a failed provider open in the FIFO gate must block a retry."""
     provider = RecordingProvider()
     provider.fail_next_open = True
     scheduler = _scheduler(SchedulerLimits(1, None, 2, 0.05), provider)
 
+    caplog.set_level(logging.ERROR, logger="storyteller.web.tts_scheduler")
     with pytest.raises(RuntimeError, match="open failed"):
         scheduler.open("fake", "model-a", _voice())
 
+    assert any(
+        "event=tts_session_start_failed" in record.getMessage()
+        and "error_type=RuntimeError" in record.getMessage()
+        and "exception_message=open_failed" in record.getMessage()
+        for record in caplog.records
+    )
     recovered = scheduler.open("fake", "model-a", _voice())
     recovered.finish()
 

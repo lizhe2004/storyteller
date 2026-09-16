@@ -63,6 +63,23 @@ def test_ordered_audio_publisher_discards_aborted_lease_and_late_frames():
     assert _queued_audio(job) == [b"FF"]
 
 
+def test_ordered_audio_publisher_streams_live_line_frames_after_prior_phases():
+    publisher_type = getattr(streaming, "_OrderedAudioPublisher", None)
+    assert publisher_type is not None
+    job = Job(JobParams(topic="live-line"))
+    publisher = publisher_type(job, ["opening", "start_notice"])
+    publisher.add_phase(("line", 1), live=True)
+    opening = publisher.lease("opening")
+    notice = publisher.lease("start_notice")
+    line = publisher.lease(("line", 1))
+
+    opening.commit()
+    notice.commit()
+    line.publish(b"L1")
+
+    assert _queued_audio(job) == [b"L1"]
+
+
 def test_ordered_audio_publisher_cancellation_rejects_late_producer_frames():
     """Cancellation must not let a reader thread publish after the job is terminal."""
     publisher_type = getattr(streaming, "_OrderedAudioPublisher", None)

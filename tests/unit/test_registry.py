@@ -144,14 +144,6 @@ def test_registry_list_tts_voices_subset_of_providers():
     assert len(voices) == 0
 
 
-def test_registry_default_tts():
-    config = Config()
-    registry = ProviderRegistry(config)
-    registry.register_tts("fake", FakeTTS)
-    registry.set_default_tts("fake")
-    assert registry.get_default_tts() is not None
-
-
 def test_registry_list_registered_names():
     config = Config()
     registry = ProviderRegistry(config)

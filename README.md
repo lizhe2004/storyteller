@@ -37,18 +37,20 @@ cp .env.example .env
 | `STORYTELLER_TTS_VOLCENGINE_API_KEY` | 语音合成 Key（**与 LLM Key 不同**） |
 | `STORYTELLER_TTS_VOLCENGINE_RESOURCE_ID` | 默认 `seed-tts-2.0` |
 | `STORYTELLER_TTS_VOLCENGINE_ENDPOINT` | v3 单向流式接口 `/api/v3/tts/unidirectional` |
+| `STORYTELLER_TTS_PROVIDERS` | TTS 可用 provider 列表；设置后仅列表内可用，未设置时自动发现已配置 provider |
 | `STORYTELLER_TTS_ALIYUN_API_KEY` | 可选第二 TTS：阿里云百炼（DASHSCOPE）Key，需配 `STORYTELLER_TTS_ALIYUN_TYPE=aliyun` |
 | `STORYTELLER_TTS_ALIYUN_MODEL` | 默认 `qwen-audio-3.0-tts-flash`（目录音色自带模型归属） |
 | `STORYTELLER_TTS_ALIYUN_ENDPOINT` | 默认通用域名，可换 `{WorkspaceId}.cn-beijing.maas.aliyuncs.com` 专属域名 |
+| `STORYTELLER_TTS_ALIYUN_WORKSPACE_ID` | Web 实时播放所需业务空间 ID，WebSocket 地址由程序自动拼接 |
 | `STORYTELLER_DATA_DIR` | 生成物根目录，默认 `./.storyteller`（内含 `stories/`、`sounds/`） |
 | `STORYTELLER_OUTPUT_DIR` / `STORYTELLER_PROJECT_DIR` | 分别覆盖故事产物/状态目录，默认都在 `<DATA_DIR>/stories` |
 | `STORYTELLER_VOICE_MATCHER` | `llm`（默认，语义匹配）或 `rule`（仅关键字规则） |
 | `STORYTELLER_SOUND_ENABLED` | `true/false`，是否生成音效/背景音乐（默认关） |
 | `STORYTELLER_SOUND_DIR` | 全局共享音效库目录，默认 `<DATA_DIR>/sounds` |
 | `STORYTELLER_SOUND_VOLCENGINE_API_KEY` | 音效 Key（seed-audio），独立配置、不复用 TTS Key；启用音效必填 |
-| `STORYTELLER_SOUND_PROVIDERS` / `STORYTELLER_SOUND_DEFAULT_PROVIDER` | 可选的音效 provider 启用名单/默认（同 LLM/TTS 规则，配了 key 即可被 `--sound-provider` 选用） |
+| `STORYTELLER_SOUND_PROVIDERS` / `STORYTELLER_SOUND_DEFAULT_PROVIDER` | 可选的音效 provider 启用名单/默认，配了 key 即可被 `--sound-provider` 选用 |
 
-> `*_PROVIDERS` 均为可选项，只决定默认启用与排序；只要配了某 provider 的 per-provider 变量（如 `STORYTELLER_TTS_ALIYUN_API_KEY`），就能直接用命令行参数选用，不必改名单。
+> `STORYTELLER_TTS_PROVIDERS` 是 TTS 的允许列表：设置后，未列出的 provider 即使配置了 key 也不会注册；未设置时才自动发现。LLM 与音效 provider 仍是“配了参数即可自动发现”的模式。
 
 ## 使用
 
@@ -97,7 +99,6 @@ storyteller generate "月亮婆婆" --dry-run
 | `--tts-providers` | 参与合成的 TTS provider，逗号分隔 | 否 | 环境变量 `STORYTELLER_TTS_PROVIDERS` | 如 `volcengine,my-tts` |
 | `--voice-ids` | 限制使用的音色 ID，逗号分隔 | 否 | 全部可用音色 | 任意音色 ID |
 | `--default-llm-provider` | 覆盖默认 LLM provider | 否 | 环境变量配置 | provider 名 |
-| `--default-tts-provider` | 覆盖默认 TTS provider | 否 | 环境变量配置 | provider 名 |
 | `--voice-matcher` | 音色匹配方式 | 否 | `llm` | `llm`（大模型语义匹配） / `rule`（关键字规则） |
 | `--with-sfx` | 生成音效/背景音乐并自动混音（seed-audio，结果进全局音效库缓存） | 否 | 关 | 标志（开关） |
 | `--sound-provider` | 本次使用的音效 provider（需配合 `--with-sfx`） | 否 | 环境默认 | provider 名，如 `volcengine` |
@@ -179,7 +180,7 @@ script_ready_sent
 
 #### `storyteller continue <project_id>` — 从断点继续
 
-沿用项目已保存的 length/complexity 与已合成的分段音频，跳过已完成步骤。可选参数（含义与 `generate` 相同）：`--output-format/-f`、`--tts-providers`、`--voice-ids`、`--default-llm-provider`、`--default-tts-provider`、`--voice-matcher`、`--with-sfx`、`--sound-provider`、`--sound-dir`、`--data-dir`、`--strict-mode`。
+沿用项目已保存的 length/complexity 与已合成的分段音频，跳过已完成步骤。可选参数（含义与 `generate` 相同）：`--output-format/-f`、`--tts-providers`、`--voice-ids`、`--default-llm-provider`、`--voice-matcher`、`--with-sfx`、`--sound-provider`、`--sound-dir`、`--data-dir`、`--strict-mode`。
 
 #### `storyteller list-projects` — 列出所有项目
 
@@ -237,7 +238,7 @@ script_ready_sent
 ### 通用说明
 
 - 带 `--data-dir` / `--sound-dir` 的选项也可用环境变量 `STORYTELLER_DATA_DIR` / `STORYTELLER_SOUND_DIR` 指定，优先级：命令行 > 环境变量 > 默认值（完整环境变量表见上文[配置](#配置)）。
-- `generate` 与 `continue` 共用：`--tts-providers`、`--voice-ids`、`--default-llm-provider`、`--default-tts-provider`、`--voice-matcher`、`--with-sfx`、`--sound-provider`、`--sound-dir`、`--data-dir`、`--strict-mode`、`--output-format`。
+- `generate` 与 `continue` 共用：`--tts-providers`、`--voice-ids`、`--default-llm-provider`、`--voice-matcher`、`--with-sfx`、`--sound-provider`、`--sound-dir`、`--data-dir`、`--strict-mode`、`--output-format`。
 - `--length` / `--complexity` 原样传给 LLM 作为"故事长度 / 剧本复杂度"约束，最终台词行数由模型决定。
 
 ## 产物
@@ -312,15 +313,17 @@ script_ready_sent
 除火山外可启用阿里云 Qwen-Audio-TTS（非实时 SpeechSynthesizer 接口，北京地域）。在 `.env` 中：
 
 ```bash
-# 配了 TYPE + API_KEY 即自动注册，可直接 --tts-providers aliyun 选用；
-# 不必再把 aliyun 加进 STORYTELLER_TTS_PROVIDERS（该名单只控制默认启用/排序）
+# 配了 TYPE + API_KEY 后，将 aliyun 加进 TTS 可用列表：
+STORYTELLER_TTS_PROVIDERS=volcengine,aliyun
 STORYTELLER_TTS_ALIYUN_TYPE=aliyun
 STORYTELLER_TTS_ALIYUN_API_KEY=your_dashscope_key
 # 可选：业务空间专属域名（替换 WorkspaceId），不填走通用域名
 # STORYTELLER_TTS_ALIYUN_ENDPOINT=https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com
+# Web 实时播放还需配置 Qwen-Audio-TTS/CosyVoice 的业务空间 ID；WebSocket 地址由程序自动拼接：
+# STORYTELLER_TTS_ALIYUN_WORKSPACE_ID=your_workspace_id
 ```
 
-非流式接口先返回 24 小时有效的音频 URL，程序会立即下载落盘。多 provider 时逐句按音色归属的 provider 路由，音色匹配在两家音色库中统一进行；想完全用阿里云，设 `STORYTELLER_TTS_DEFAULT_PROVIDER=aliyun` 并用 `--tts-providers aliyun` 限定候选池。
+非流式接口先返回 24 小时有效的音频 URL，程序会立即下载落盘。多 provider 时逐句按音色归属的 provider 路由，音色匹配在 `STORYTELLER_TTS_PROVIDERS` 列出的音色库中统一进行；想完全用阿里云，设 `STORYTELLER_TTS_PROVIDERS=aliyun`，或单次使用 `--tts-providers aliyun`。
 
 ## 音效与背景音乐
 
@@ -456,7 +459,7 @@ HTTP TTS**，不影响出片；CLI 完全不经过这条链路。
 | `STORYTELLER_TTS_SCHEDULER_MAX_CONCURRENT_SESSIONS` | `1` | 每个 (provider, model) 同时进行的实时会话数 |
 | `STORYTELLER_TTS_SCHEDULER_MAX_TEXT_CHUNKS_PER_SECOND` | 空（不限速） | 每会话每秒提交的文本块上限，`0`/留空表示不限 |
 | `STORYTELLER_TTS_SCHEDULER_QUEUE_SIZE` | `16` | 排队文本块缓冲深度，满了对上游施加背压 |
-| `STORYTELLER_TTS_SCHEDULER_QUEUE_TIMEOUT_SECONDS` | `5` | 入队最长等待，超时即走降级路径 |
+| `STORYTELLER_TTS_SCHEDULER_QUEUE_TIMEOUT_SECONDS` | 空（不限时） | 槽位/文本缓冲最长等待；留空或 `0` 表示一直排队 |
 | `STORYTELLER_TTS_SCHEDULER_LIMITS_<PROVIDER>_<字段>` | — | 只覆盖某个 provider（名小写，可含下划线），字段同上 |
 
 例：给阿里云更大并发与更深队列——

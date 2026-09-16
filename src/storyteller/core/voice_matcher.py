@@ -248,8 +248,11 @@ class VoiceMatcher:
         default_provider=None,
     ):
         started = perf_counter()
-        log_event(logger, logging.INFO, "voice_matching_started",
-                  character_count=len(script.characters), mode=self.mode)
+        log_event(
+            logger, logging.INFO, "voice_matching_started",
+            context=self.log_context,
+            character_count=len(script.characters), mode=self.mode,
+        )
         if not script.characters:
             return script
 
@@ -299,6 +302,7 @@ class VoiceMatcher:
 
         log_event(
             logger, logging.INFO, "voice_matching_completed",
+            context=self.log_context,
             character_count=len(script.characters), mode=self.mode,
             duration_ms=int((perf_counter() - started) * 1000),
         )

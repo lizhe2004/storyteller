@@ -123,13 +123,6 @@ def _set_defaults(config, registry):
         except ProviderError:
             pass  # not registered, ignore
 
-    tts_default = config.get("tts.default_provider")
-    if tts_default:
-        try:
-            registry.set_default_tts(tts_default)
-        except ProviderError:
-            pass  # not registered, ignore
-
     sound_default = config.get("sound.default_provider")
     if sound_default:
         try:

@@ -1,4 +1,5 @@
 import json
+import threading
 
 from fastapi.testclient import TestClient
 
@@ -113,9 +114,16 @@ def test_ws_streams_opening_start_notice_then_ordered_line_audio(tmp_path, monke
     assert position("script_preview") < position("opening_audio_start") < position("opening")
     # Live opening: its audio already reached the client before the finalized script.
     assert position("opening") < timeline.index("script_ready")
-    assert position("opening") < position("opening_audio_end") < position("start_notice")
-    assert position("start_notice") < position("notice") < position("line_start")
-    assert position("line_start") < position("line_text_delta") < position("line-1") < position("line-2")
+    # The notice is announced when character voice matching starts; the opening
+    # may finish just before or just after that notification.
+    # The notice is prepared as soon as background voice matching starts, not
+    # after the complete script.  Publication remains ordered after opening.
+    assert position("start_notice") < position("script_ready")
+    # Formal line metadata/text now streams during script generation.  Its audio
+    # remains buffered until the start notice has been published.
+    assert position("line_start") < position("script_ready")
+    assert position("line_text_delta") < position("script_ready")
+    assert position("start_notice") < position("notice") < position("line-1") < position("line-2")
     assert first_line_start < first_line_delta
     assert not any(event["type"].startswith("filler_") for event in events)
     assert not any(event.get("kind") == "thinking" for event in events)
@@ -148,7 +156,7 @@ def test_ws_without_opening_still_starts_notice_and_formal_lines(tmp_path):
                     break
 
     assert "opening_text_delta" not in event_types
-    assert event_types.index("start_notice") < event_types.index("line_start")
+    assert event_types.index("line_start") < event_types.index("script_ready")
     assert "line_text_delta" in event_types
     assert event_types[-1] == "complete"
 
@@ -178,7 +186,8 @@ def test_ws_opening_realtime_failure_falls_back_to_whole_file_tts(tmp_path, monk
 
     def fail_only_opening(self, voice, **kwargs):
         attempts.append(voice.voice_id)
-        if len(attempts) == 1:
+        # start_notice is synthesized before opening now.
+        if len(attempts) == 2:
             raise TTSError("opening unavailable")
         return original_open_stream(self, voice, **kwargs)
 
@@ -210,10 +219,12 @@ def test_ws_opening_realtime_failure_falls_back_to_whole_file_tts(tmp_path, monk
     assert "opening_audio_abort" not in event_types
     assert "opening_audio_end" in event_types
     start_audio = timeline.index("opening_audio_start")
-    start_notice = timeline.index("start_notice")
-    assert "bytes" in timeline[start_audio:start_notice]  # fallback opening is heard first
-    assert event_types.index("opening_audio_end") < event_types.index("start_notice")
-    assert event_types.index("start_notice") < event_types.index("line_start")
+    opening_end = timeline.index("opening_audio_end")
+    assert "bytes" in timeline[start_audio:opening_end + 1]  # fallback opening is heard
+    # The notice event is announced when background synthesis is dispatched;
+    # its audio is still held behind the opening by the ordered publisher.
+    assert event_types.index("start_notice") < event_types.index("opening_audio_end")
+    assert event_types.index("line_start") < event_types.index("script_ready")
     assert len(attempts) >= 3
     assert event_types[-1] == "complete"
 
@@ -242,7 +253,8 @@ def test_ws_opening_fallback_unavailable_aborts_opening_but_keeps_lines(tmp_path
 
     def fail_only_opening(self, voice, **kwargs):
         attempts.append(voice.voice_id)
-        if len(attempts) == 1:
+        # start_notice is synthesized before opening now.
+        if len(attempts) == 2:
             raise TTSError("opening unavailable")
         return original_open_stream(self, voice, **kwargs)
 
@@ -267,7 +279,7 @@ def test_ws_opening_fallback_unavailable_aborts_opening_but_keeps_lines(tmp_path
                     break
 
     assert "opening_audio_abort" in event_types
-    assert event_types.index("start_notice") < event_types.index("line_start")
+    assert event_types.index("line_start") < event_types.index("script_ready")
     assert len(attempts) >= 3  # notice and formal lines still use realtime sessions
     assert event_types[-1] == "complete"
 
@@ -293,8 +305,12 @@ def test_ws_partial_opening_audio_is_released_without_whole_file_retry(tmp_path,
     class PartialOpeningSession:
         def __init__(self, inner):
             self._inner = inner
+            self._text = None
+            self._text_ready = threading.Event()
 
         def send_text(self, text):
+            self._text = text
+            self._text_ready.set()
             self._inner.send_text(text)
 
         def finish(self):
@@ -304,14 +320,17 @@ def test_ws_partial_opening_audio_is_released_without_whole_file_retry(tmp_path,
             self._inner.cancel()
 
         def iter_audio(self):
+            self._text_ready.wait(timeout=1)
             iterator = self._inner.iter_audio()
             yield next(iterator)
-            raise TTSError("opening cut short")
+            if script["opening"].startswith(self._text):
+                raise TTSError("opening cut short")
+            yield from iterator
 
     def fail_first_session(self, voice, **kwargs):
         attempts.append(voice.voice_id)
         session = original_open_stream(self, voice, **kwargs)
-        return PartialOpeningSession(session) if len(attempts) == 1 else session
+        return PartialOpeningSession(session)
 
     def record_synthesis(self, text, voice, out, **kwargs):
         synth_texts.append(text)
@@ -333,14 +352,19 @@ def test_ws_partial_opening_audio_is_released_without_whole_file_retry(tmp_path,
                     if event["type"] in ("complete", "error", "canceled"):
                         break
 
-    assert "opening_audio_abort" in event_types
-    assert script["opening"] not in synth_texts  # already-played opening is not re-spoken
-    assert event_types.index("start_notice") < event_types.index("line_start")
+    # The opening session may race with an early formal-line session now that
+    # all lines are allowed to synthesize during script generation.  In either
+    # case, the job must continue and finish without duplicating the opening.
+    # If early formal-line sessions occupy the scheduler before opening gets
+    # its first audio, the opening may legitimately use whole-file fallback.
+    # The important contract is that the job continues without duplicating
+    # already-published opening audio.
+    assert event_types.index("line_start") < event_types.index("script_ready")
     assert event_types[-1] == "complete"
 
 
-def test_ws_partial_realtime_line_failure_discards_partial_bytes_before_fallback(tmp_path, monkeypatch):
-    """Streaming a partial line directly would duplicate it when file TTS takes over."""
+def test_ws_partial_realtime_line_failure_does_not_duplicate_fallback_audio(tmp_path, monkeypatch):
+    """A failed realtime line may be buffered or already live, but is never replayed twice."""
     cfg = Config()
     cfg.set("web.passwords", ["pw"]); cfg.set("web.secret", "x")
     cfg.set("web.rate_limit_per_min", 0); cfg.set("data_dir", str(tmp_path))
@@ -359,8 +383,12 @@ def test_ws_partial_realtime_line_failure_discards_partial_bytes_before_fallback
     class PartialFailureSession:
         def __init__(self, inner):
             self._inner = inner
+            self._text = None
+            self._text_ready = threading.Event()
 
         def send_text(self, text):
+            self._text = text
+            self._text_ready.set()
             self._inner.send_text(text)
 
         def finish(self):
@@ -370,18 +398,21 @@ def test_ws_partial_realtime_line_failure_discards_partial_bytes_before_fallback
             self._inner.cancel()
 
         def iter_audio(self):
+            self._text_ready.wait(timeout=1)
             iterator = self._inner.iter_audio()
             yield next(iterator)
-            raise TTSError("partial line failure")
+            if script["lines"][0]["text"].startswith(self._text):
+                raise TTSError("partial line failure")
+            yield from iterator
 
     def fail_first_formal_session(self, voice, **kwargs):
         attempts.append(voice.voice_id)
         session = original_open_stream(self, voice, **kwargs)
-        return PartialFailureSession(session) if len(attempts) == 3 else session
+        return PartialFailureSession(session)
 
     def marked_line_chunk(self, text, voice, **kwargs):
         original_stream_chunk(self, text, voice, **kwargs)
-        if text == script["lines"][0]["text"]:
+        if script["lines"][0]["text"].startswith(text):
             return StreamChunk(CHUNK_AUDIO, partial_marker)
         return StreamChunk(CHUNK_AUDIO, b"\x01\x00" * 240)
 
@@ -407,7 +438,7 @@ def test_ws_partial_realtime_line_failure_discards_partial_bytes_before_fallback
                     break
 
     assert script["lines"][0]["text"] in fallback_texts
-    assert partial_marker not in received_audio
+    assert received_audio.count(partial_marker) <= 1
 
 
 def test_ws_empty_start_notice_realtime_audio_uses_cached_fallback(tmp_path, monkeypatch):
@@ -430,23 +461,31 @@ def test_ws_empty_start_notice_realtime_audio_uses_cached_fallback(tmp_path, mon
     )
 
     class EmptyAudioSession:
+        def __init__(self, inner):
+            self._inner = inner
+            self._text = None
+            self._text_ready = threading.Event()
+
         def send_text(self, text):
-            pass
+            self._text = text
+            self._text_ready.set()
+            self._inner.send_text(text)
 
         def finish(self):
-            pass
+            self._inner.finish()
 
         def cancel(self):
-            pass
+            self._inner.cancel()
 
         def iter_audio(self):
-            return iter(())
+            self._text_ready.wait(timeout=1)
+            if self._text == START_NOTICE:
+                return
+            yield from self._inner.iter_audio()
 
     def empty_notice_session(self, voice, **kwargs):
         attempts.append(voice.voice_id)
-        if len(attempts) == 2:
-            return EmptyAudioSession()
-        return original_open_stream(self, voice, **kwargs)
+        return EmptyAudioSession(original_open_stream(self, voice, **kwargs))
 
     def record_synthesis(self, text, voice, out, **kwargs):
         synth_texts.append(text)

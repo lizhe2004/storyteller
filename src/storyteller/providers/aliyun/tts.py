@@ -20,6 +20,9 @@ from ..base import BaseProvider
 
 _DEFAULT_ENDPOINT = "https://dashscope.aliyuncs.com"
 _API_PATH = "/api/v1/services/audio/tts/SpeechSynthesizer"
+_REALTIME_WS_URL_TEMPLATE = (
+    "wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference"
+)
 logger = logging.getLogger(__name__)
 _DASHSCOPE_CONFIGURATION_LOCK = threading.Lock()
 
@@ -343,11 +346,14 @@ def _create_dashscope_synthesizer(**kwargs):
 
     audio_format = getattr(AudioFormat, kwargs.pop("format"))
     api_key = kwargs.pop("api_key")
+    websocket_api_url = kwargs.pop("websocket_api_url")
     with _DASHSCOPE_CONFIGURATION_LOCK:
         previous_api_key = getattr(dashscope, "api_key", None)
         dashscope.api_key = api_key
         try:
-            return SpeechSynthesizer(format=audio_format, **kwargs)
+            return SpeechSynthesizer(
+                format=audio_format, url=websocket_api_url, **kwargs
+            )
         except Exception:
             raise TTSError("Aliyun realtime TTS connection failed") from None
         finally:
@@ -407,9 +413,12 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             for s in (provider_config.get("models") or "").split(",")
             if s.strip()
         ) or None
-        self.realtime_endpoint = (
-            provider_config.get("realtime_endpoint") or ""
-        ).rstrip("/")
+        self.workspace_id = (provider_config.get("workspace_id") or "").strip()
+        self.websocket_api_url = (
+            _REALTIME_WS_URL_TEMPLATE.format(workspace_id=self.workspace_id)
+            if self.workspace_id
+            else ""
+        )
 
         if not self.api_key:
             raise TTSError(
@@ -450,8 +459,11 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         ]
 
     def open_stream(self, voice, *, directives=None, context=None):
-        if not self.realtime_endpoint:
-            raise TTSError("Aliyun realtime TTS is not configured")
+        if not self.websocket_api_url:
+            raise TTSError(
+                "Aliyun realtime TTS workspace_id is not configured "
+                "(STORYTELLER_TTS_ALIYUN_WORKSPACE_ID)"
+            )
         callback = _AliyunRealtimeCallback(None)
         volume = _clamp(
             int(round((voice.volume - 1.0) * 50)) + 50, 0, 100
@@ -467,7 +479,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
                 instruction=_build_instruction(directives) or None,
                 callback=callback,
                 api_key=self.api_key,
-                url=self.realtime_endpoint,
+                websocket_api_url=self.websocket_api_url,
             )
         except TTSError:
             raise

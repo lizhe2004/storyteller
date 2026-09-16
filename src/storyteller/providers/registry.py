@@ -21,7 +21,6 @@ class ProviderRegistry:
         self._llm_instances = {}
         self._tts_instances = {}
         self._default_llm = None
-        self._default_tts = None
         self._sound_factories = {}
         self._sound_instances = {}
         self._default_sound = None
@@ -65,16 +64,6 @@ class ProviderRegistry:
         if name not in self._tts_instances:
             self._tts_instances[name] = self._tts_factories[name](self.config)
         return self._tts_instances[name]
-
-    def set_default_tts(self, name):
-        if name not in self._tts_factories:
-            raise ProviderError("Unknown TTS provider: {}".format(name))
-        self._default_tts = name
-
-    def get_default_tts(self):
-        if self._default_tts is None:
-            return None
-        return self.get_tts(self._default_tts)
 
     def list_tts_names(self):
         return list(self._tts_factories.keys())

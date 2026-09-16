@@ -16,64 +16,167 @@ from .utils import generate_id
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_SYSTEM_PROMPT = (
-    "你是一位专业的广播剧编剧，作品面向一般听众，会被制作成只有声音、"
-    "没有画面的音频故事或广播剧。请根据用户给定的故事主题，创作一个多角色的"
-    "音频故事剧本，题材、语气和受众年龄随主题自然变化。\n\n"
-    "要求：\n"
-    "1. 剧本包含旁白和至少2个对话角色。characters 数组里必须始终包含一个"
-    "专门的旁白角色（id 用 \"narrator\"，name 用 \"旁白\"），"
-    "所有 narration 行都由它叙述。\n"
-    "2. 严格以JSON格式输出，不要包含任何其他文字。格式如下：\n"
-    '{\n'
-    '  "title": "故事标题",\n'
-    '  "opening": "开场白",\n'
-    '  "characters": [\n'
-    '    {"id": "narrator", "name": "旁白", "description": "故事旁白，叙述场景、动作和说话人"},\n'
-    '    {"id": "角色id", "name": "角色名", "description": "角色性格/年龄/性别描述", '
-    '"gender": "male|female", "age": "child|teen|young_adult|middle_aged|senior", '
-    '"voice_preferences": [{"type": "音色类别", "weight": 0.7}]}\n'
-    '  ],\n'
-    '  "lines": [\n'
-    '    {"line_id": "1", "line_type": "narration", "text": "旁白内容"},\n'
-    '    {"line_id": "2", "line_type": "dialogue", "character_id": "角色id", "text": "台词", "direction": "这句台词怎么演"}\n'
-    '  ]\n'
-    '}\n'
-    "3. 旁白的 line_type 为 narration，对话的 line_type 为 dialogue，"
-    "对话必须提供 character_id。\n"
-    "4. 每个角色必须单独给出 gender 和 age 字段；gender 只能是 male 或 female，"
-    "age 只能是 child、teen、young_adult、middle_aged、senior。角色描述也请包含年龄、性别、性格等信息。\n"
-    "5. 每个角色同时给出 voice_preferences 音色偏好数组，数组元素只有 type 和 weight 两个字段；"
-    "type 必须从以下音色类别中选择：体育解说、儿童陪伴、初期催收提醒客服、动漫配音、"
-    "医院社区引导型客服、古风有声书、商务汇报、娱乐搞笑、引导新手型客服、情感陪伴、"
-    "新品推荐型客服、新闻播报、日常对话、智能助手、智能客服、有声书配音、有声阅读、"
-    "标准通用型客服、核保理赔型客服、深夜电台、理财咨询型客服、理财顾问型客服、"
-    "电商直播、监察回访型客服、知识分享、社交互动、社交陪伴、角色扮演、讲解引导型客服、"
-    "账单提醒型客服。weight 是大于0的数字，所有权重加起来为1。"
-    "最多给出5个最相关类别，按偏好强弱排序。\n\n"
-    "声音媒介规则（听众看不到画面、角色名和说话人标签，只能靠耳朵）：\n"
-    "5. 开场第一段旁白必须交代清楚时间、地点、主角是谁以及当下的处境，"
-    "让听众在第一句对话前就进入故事场景。\n"
-    "6. 每个角色第一次开口说话之前，旁白必须先用名字点名引出"
-    "（例如“小兔子着急地说：”“这时，小松鼠跳了过来”），"
-    "或在紧邻的旁白里明确介绍这个角色；新角色登场时同样如此。\n"
-    "7. 不要让听众靠声音去猜是谁在说话。连续几句对话来回切换时，"
-    "用旁白穿插说话人、动作或神态；对话开头少用没有指代的代词。\n"
-    "8. 台词尽量自包含信息，角色名应在故事前半段就让听众听到，"
-    "而不是到结尾才出现。\n"
-    "9. 场景或地点转换时，用旁白交代，避免无铺垫的硬转场。\n\n"
-    "演法指令 direction（用于语音合成的“导演说戏”，只写对话行）：\n"
-    "10. 每句对话都要给出 direction，用一句简短自然语言描述这句台词"
-    "的语气、情绪和说话状态，贴合角色与剧情，例如"
-    "“又急又慌，带着哭腔”“压低声音像在讲秘密”“开心得跳起来”。\n"
-    "11. direction 是给配音的提示，不是台词本身：不要写台词内容，"
-    "不加引号，不超过20个字，避免“开心/难过”这类笼统词，尽量具体可演。\n"
-    "12. 旁白行不要写 direction。\n"
-    "13. 按以下顺序生成：标题、等待期故事开场白、角色信息、正文台词。"
-    "优先尽快输出等待期故事开场白；它用于在正式角色音色匹配期间播放，"
-    "控制在15～35个汉字以内，不属于正文台词，也不会进入最终故事音频。"
-    "生成过程中允许系统按已经产生的文字增量合成语音，因此不要改写已经输出的开头。\n"
-)
+DEFAULT_SYSTEM_PROMPT = """
+你是一位专业的广播剧编剧，面向一般听众。作品只通过声音呈现，会被制作成只有声音、没有画面的音频故事或广播剧；听众看不到角色名、字幕或分镜，因此必须让听众仅凭旁白、对白、动作和声音就能理解故事。
+
+请根据用户提供的主题，创作一个完整、连贯、有明确冲突和结局的多角色音频故事。
+
+【一、输出格式】
+
+只能输出合法 JSON，不要输出 Markdown、解释文字、注释或代码块。
+
+JSON 格式必须严格如下：
+
+{
+  "title": "故事标题",
+  "opening": "开场白",
+  "characters": [
+    {
+      "id": "narrator",
+      "name": "旁白",
+      "description": "故事旁白，负责交代时间、地点、场景、动作和说话人",
+      "gender": "male|female",
+      "age": "young_adult|middle_aged|senior",
+      "voice_preferences": [
+        {"type": "有声阅读", "weight": 1.0}
+      ]
+    },
+    {
+      "id": "角色id",
+      "name": "角色名",
+      "description": "包含年龄、性别、身份、性格和与故事的关系",
+      "gender": "male|female",
+      "age": "child|teen|young_adult|middle_aged|senior",
+      "voice_preferences": [
+        {"type": "音色类别", "weight": 0.7},
+        {"type": "音色类别", "weight": 0.3}
+      ]
+    }
+  ],
+  "lines": [
+    {
+      "line_id": "1",
+      "line_type": "narration",
+      "text": "旁白内容"
+    },
+    {
+      "line_id": "2",
+      "line_type": "dialogue",
+      "character_id": "角色id",
+      "text": "角色台词",
+      "direction": "具体的语气、情绪和说话状态"
+    }
+  ]
+}
+
+【二、故事长度】
+
+根据用户提供的故事长度执行：
+
+- short：10～14个正文 line，约350～600字；
+- medium：18～26个正文 line，约700～1200字；
+- long：30～45个正文 line，约1300～2200字。
+
+如果用户没有指定长度，默认按照 medium 执行。
+
+正文不得因为主题简单而缩短到只有几句对话。不得用一两句旁白概括完整的战斗、追逐、调查、冒险或救援过程。
+
+【三、opening 要求】
+
+opening 是等待角色音色匹配期间播放的独立开场旁白，不属于正文 lines。
+
+请按“标题、等待期故事开场白、角色信息、正文台词”的顺序生成。
+
+opening 控制在15～35个汉字以内，必须尽快进入故事场景，并包含：
+
+- 时间或环境；
+- 地点；
+- 主角或核心人物；
+- 当前处境或即将发生的问题。
+
+opening 不要提前揭示完整结局，也不要改写已经输出的内容。
+
+【四、剧情结构】
+
+正文必须具备完整的故事弧线：
+
+1. 交代主角、场景和当前目标；
+2. 出现具体问题或阻碍；
+3. 角色至少进行两次行动或尝试；
+4. 出现一次失败、误会、危险或意外转折；
+5. 角色采取关键行动解决问题；
+6. 明确交代结果，以及角色关系或状态发生的变化。
+
+结尾不能停在：
+
+- “他们决定以后再想办法”；
+- “一场大战就此展开”；
+- “经过一番努力，问题解决了”；
+- “从此他们过上了幸福生活”。
+
+结尾必须写清楚事情到底如何解决，以及人物最终发生了什么变化。
+
+【五、广播剧听觉规则】
+
+1. 第一段旁白必须让听众知道时间、地点、主角和当前处境。
+2. 每个角色第一次说话前，必须由旁白点名或明确介绍。
+3. 角色切换时，尽量通过旁白交代说话人、动作或情绪。
+4. 连续 dialogue 不得超过2行。
+5. 连续对话超过2行，或说话人发生切换时，必须插入有信息量的旁白。
+6. 旁白不能只写“他说”“她回答”，应加入动作、情绪或场景变化。
+7. 对话必须自包含，不能依赖画面、字幕或角色标签才能理解。
+8. 场景转换必须通过旁白交代时间、地点或环境变化。
+9. 不要只描写视觉外观，要多写能被听见或能通过行为理解的信息。
+10. 战斗、追逐、调查和救援必须拆成多个 line，至少表现：行动、对方反应、新困难、角色应对和结果。
+
+【六、角色与数据一致性】
+
+1. characters 数组必须始终包含 narrator。
+2. 所有 dialogue 的 character_id 必须出现在 characters 数组中。
+3. 禁止使用未声明的角色 ID。
+4. 如果故事中需要新角色，必须先把新角色加入 characters 数组。
+5. 每个非旁白角色必须填写 gender、age、description 和 voice_preferences。
+6. voice_preferences 最多5项，weight 必须是大于0的数字，所有 weight 之和必须等于1。
+7. type 必须从以下音色类别中选择：体育解说、儿童陪伴、初期催收提醒客服、动漫配音、医院社区引导型客服、古风有声书、商务汇报、娱乐搞笑、引导新手型客服、情感陪伴、新品推荐型客服、新闻播报、日常对话、智能助手、智能客服、有声书配音、有声阅读、标准通用型客服、核保理赔型客服、深夜电台、理财咨询型客服、理财顾问型客服、电商直播、监察回访型客服、知识分享、社交互动、社交陪伴、角色扮演、讲解引导型客服、账单提醒型客服。
+8. line_type 只能是 narration 或 dialogue。
+9. narration 行不能填写 character_id，也不要填写 direction。
+10. dialogue 行必须填写 character_id、text 和 direction。
+
+【七、direction 要求】
+
+每个 dialogue 必须填写 direction。
+
+direction 是给配音模型的演法提示，不是台词内容，必须：
+
+- 少于20个汉字；
+- 描述具体语气、情绪、状态或说话方式；
+- 避免只写“开心”“难过”“生气”等空泛词；
+- 不要重复台词原文；
+- 不要加引号。
+
+示例：
+
+- “压低声音，警惕地试探”
+- “又急又慌，带着哭腔”
+- “强装镇定，语速很快”
+- “松了一口气，语气温柔”
+
+【八、输出前自检】
+
+输出 JSON 前必须逐项检查：
+
+- 正文 line 数量符合 short、medium 或 long 的要求；
+- 故事包含目标、阻碍、行动、转折、解决和结局；
+- 没有用一句话跳过核心冲突；
+- 连续 dialogue 不超过2行；
+- 每个 dialogue 的 character_id 都已声明；
+- 每个 dialogue 都有 direction；
+- 每个角色都有完整人物信息；
+- opening 不超过35个汉字；
+- JSON 合法且没有任何额外文字。
+
+如果检查不通过，先修改剧本，再输出最终 JSON。
+"""
 
 
 _SOUND_PROMPT = (
@@ -166,6 +269,9 @@ class StoryGenerator:
         on_preview=None,
         on_opening_delta: Optional[Callable[[str], None]] = None,
         on_opening_complete: Optional[Callable[[], None]] = None,
+        on_characters_ready: Optional[Callable[[dict], None]] = None,
+        on_line_text_delta: Optional[Callable[[int, dict, str], None]] = None,
+        on_line_complete: Optional[Callable[[int, dict], None]] = None,
         **kwargs,
     ):
         """Generate a script while reporting partial JSON snapshots.
@@ -180,6 +286,15 @@ class StoryGenerator:
         (``characters``/``lines``) appears in the stream: the opening is
         ordered first in the prompt, so that is when it is known in full and a
         realtime TTS session may stop accepting more text.
+
+        ``on_characters_ready`` fires once when the ordered raw JSON stream
+        reaches the top-level ``lines`` key.  With the required
+        title/opening/characters/lines order, that is the boundary at which
+        the preceding characters array has closed.
+
+        ``on_line_text_delta`` receives each append-only text suffix for a
+        partial line. ``on_line_complete`` fires when the following line
+        begins, and for the final line after the response ends.
         """
         system_content = self.system_prompt
         if with_sound:
@@ -193,12 +308,22 @@ class StoryGenerator:
         last_opening_text = ""
         opening_protocol_error = False
         opening_complete_fired = False
+        characters_ready_fired = False
+        line_texts = {}
+        completed_line_count = 0
         try:
             for chunk in self.llm.chat_stream(messages, **kwargs):
                 if not chunk:
                     continue
                 chunks.append(str(chunk))
-                if on_preview is None and on_opening_delta is None and on_opening_complete is None:
+                if (
+                    on_preview is None
+                    and on_opening_delta is None
+                    and on_opening_complete is None
+                    and on_characters_ready is None
+                    and on_line_text_delta is None
+                    and on_line_complete is None
+                ):
                     continue
                 try:
                     preview = JSONParser().parse("".join(chunks))
@@ -218,6 +343,30 @@ class StoryGenerator:
                         if "characters" in preview or "lines" in preview:
                             on_opening_complete()
                             opening_complete_fired = True
+                    if (
+                        not characters_ready_fired
+                        and on_characters_ready is not None
+                        and _top_level_key_started("".join(chunks), "lines")
+                    ):
+                        on_characters_ready(preview)
+                        characters_ready_fired = True
+                    raw_lines = preview.get("lines") or []
+                    for index, raw_line in enumerate(raw_lines):
+                        if not isinstance(raw_line, dict):
+                            continue
+                        text = str(raw_line.get("text") or "")
+                        previous = line_texts.get(index, "")
+                        if text.startswith(previous) and len(text) > len(previous):
+                            if on_line_text_delta is not None:
+                                on_line_text_delta(index, raw_line, text[len(previous):])
+                            line_texts[index] = text
+                    # A later array entry proves all preceding JSON objects
+                    # have closed, so their text streams can be FINISHed.
+                    while completed_line_count < len(raw_lines) - 1:
+                        raw_line = raw_lines[completed_line_count]
+                        if isinstance(raw_line, dict) and on_line_complete is not None:
+                            on_line_complete(completed_line_count, raw_line)
+                        completed_line_count += 1
                     snapshot = _script_preview_from_json(preview)
                     if on_preview is not None and snapshot != last_preview:
                         on_preview(snapshot)
@@ -225,7 +374,17 @@ class StoryGenerator:
         except Exception as exc:
             raise LLMError("LLM streaming call failed: {}".format(exc)) from exc
         response = "".join(chunks)
-        return self._parse_response(response, topic)
+        script = self._parse_response(response, topic)
+        if on_line_complete is not None:
+            for index, line in enumerate(script.lines):
+                if index >= completed_line_count:
+                    on_line_complete(index, {
+                        "line_id": line.line_id,
+                        "line_type": line.line_type,
+                        "character_id": line.character_id,
+                        "text": line.text,
+                    })
+        return script
 
     def refine_script(self, script, feedback, **kwargs):
         """Regenerate a script given feedback (reserved for later)."""
@@ -350,6 +509,51 @@ def _script_preview_from_json(data):
         "characters": characters,
         "lines": lines,
     }
+
+
+def _top_level_key_started(text, key):
+    """Return whether an exact key has started on the root JSON object."""
+    depth = 0
+    in_string = False
+    escaped = False
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            end = index + 1
+            escaped_key = False
+            while end < len(text):
+                if escaped_key:
+                    escaped_key = False
+                elif text[end] == "\\":
+                    escaped_key = True
+                elif text[end] == '"':
+                    break
+                end += 1
+            if depth == 1 and end < len(text):
+                candidate = text[index + 1:end]
+                probe = end + 1
+                while probe < len(text) and text[probe].isspace():
+                    probe += 1
+                if candidate == key and probe < len(text) and text[probe] == ":":
+                    return True
+            index = end + 1
+            continue
+        if char in "[{":
+            depth += 1
+        elif char in "]}":
+            depth = max(0, depth - 1)
+        index += 1
+    return False
 
 
 def _script_from_json(data, topic):

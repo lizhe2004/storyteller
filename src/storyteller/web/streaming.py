@@ -6,18 +6,52 @@ import logging
 import os
 import tempfile
 import threading
+import time
 
 from ..core.exceptions import TTSError
 from ..core.pipeline import Pipeline, human_time
-from ..core.story_generator import StoryGenerator
+from ..core.story_generator import StoryGenerator, _script_from_json
 from ..core.tts import CHUNK_AUDIO, STREAM_SAMPLE_RATE
 from ..core.voice_matcher import VoiceMatcher
 from .fillers import cached_start_notice, choose_host_voice, start_notice_text
 from .tts_chunks import audio_file_to_standard_pcm, iter_pcm_frames, pcm_duration_ms, pcm_to_mp3_file
 from .tts_scheduler import TTSScheduler
-from ..core.observability import log_event, timed_event, with_context
+from ..core.observability import (
+    _safe_exception_message,
+    log_event,
+    timed_event,
+    with_context,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _emit_stream_warning(job, message, *, event, phase=None, line_id=None, exc=None):
+    """Send a client warning and persist the same incident in structured logs."""
+    fields = {
+        "phase": phase or job.phase,
+        "line_id": line_id,
+        "message": message,
+    }
+    if exc is not None:
+        fields.update({
+            "error_type": type(exc).__name__,
+            "exception_message": _safe_exception_message(exc),
+        })
+    log_event(
+        logger,
+        logging.WARNING,
+        event,
+        context={
+            "job_id": job.id,
+            "project_id": job.project_id,
+        },
+        **fields,
+    )
+    payload = {"type": "warning", "message": message}
+    if line_id is not None:
+        payload["line_id"] = line_id
+    job.emit(payload)
 
 
 def _script_preview_event(preview):
@@ -86,6 +120,162 @@ class _AudioPump:
             self.error = exc
 
 
+class _IncrementalLineCoordinator:
+    """Turn streamed line text into buffered, independently finalized TTS clips."""
+
+    def __init__(self, orchestrator, job, publisher, scheduler, names):
+        self.orchestrator = orchestrator
+        self.job = job
+        self.publisher = publisher
+        self.scheduler = scheduler
+        self.names = names
+        self._states = {}
+        self._voices = {}
+        self._provisional_char_voice_map = {}
+        self._provisional_narrator_voice = None
+        self._lock = threading.Lock()
+
+    def on_delta(self, index, raw_line, suffix):
+        with self._lock:
+            state = self._states.get(index)
+            if state is None:
+                state = {
+                    "text": "", "complete": False, "voice": None,
+                    "raw_line": dict(raw_line),
+                    "condition": threading.Condition(threading.Lock()),
+                    "pcm": None, "error": None, "thread": None,
+                }
+                self._states[index] = state
+                self.publisher.add_phase(("line", index + 1), live=True)
+                provisional_voice = self._provisional_voice_for_raw_line_locked(raw_line)
+                if provisional_voice is not None:
+                    self._voices[index] = provisional_voice
+                self.job.emit({
+                    "type": "line_start", "line_id": str(raw_line.get("line_id") or index + 1),
+                    "index": index + 1, "total": self.job.total,
+                    "speaker": self.names.get(raw_line.get("character_id"))
+                    or ("旁白" if raw_line.get("line_type") == "narration" else "未知角色"),
+                    "text": str(raw_line.get("text") or ""), "has_sound": False,
+                })
+            else:
+                state["raw_line"] = dict(raw_line)
+            condition = state["condition"]
+        with condition:
+            state["text"] += suffix
+            condition.notify_all()
+        self.job.emit({"type": "line_text_delta", "line_id": str(raw_line.get("line_id") or index + 1),
+                       "index": index + 1, "text": suffix})
+        self._maybe_start(index)
+
+    def on_complete(self, index, raw_line):
+        state = self._states.get(index)
+        if state is None:
+            return
+        with state["condition"]:
+            state["complete"] = True
+            state["condition"].notify_all()
+        self._maybe_start(index)
+
+    def apply_final_line_voices(self, script, char_map, narrator):
+        with self._lock:
+            for index, line in enumerate(script.lines):
+                self._voices[index] = self.orchestrator.pipeline.voice_for_line(
+                    line, char_map, narrator
+                )
+        for index in list(self._states):
+            self._maybe_start(index)
+
+    def set_provisional_voice_context(self, script):
+        """Store matched voices for lines that arrive during script streaming."""
+        char_map = {
+            character.id: character.voice_config
+            for character in script.characters
+            if character.voice_config
+        }
+        narrator = self.orchestrator.pipeline._find_narrator_voice(script, char_map)
+        with self._lock:
+            self._provisional_char_voice_map = char_map
+            self._provisional_narrator_voice = narrator
+            for index, state in self._states.items():
+                voice = self._provisional_voice_for_raw_line_locked(state["raw_line"])
+                if voice is not None:
+                    self._voices[index] = voice
+        for index in list(self._states):
+            self._maybe_start(index)
+
+    def _provisional_voice_for_raw_line_locked(self, raw_line):
+        voice = None
+        if raw_line.get("line_type") == "dialogue":
+            voice = self._provisional_char_voice_map.get(raw_line.get("character_id"))
+        return voice or self._provisional_narrator_voice
+
+    def _maybe_start(self, index):
+        with self._lock:
+            state = self._states.get(index)
+            voice = self._voices.get(index)
+            if state is None or voice is None or state["thread"] is not None:
+                return
+            state["voice"] = voice
+            state["thread"] = threading.Thread(
+                target=self._run, args=(index, state),
+                name="line-tts-{}".format(index + 1), daemon=True,
+            )
+            state["thread"].start()
+
+    def _run(self, index, state):
+        pump = lease = None
+        try:
+            lease = self.publisher.lease(("line", index + 1))
+            pump = _AudioPump(
+                self.orchestrator._open_session(
+                    self.scheduler, state["voice"], phase="line",
+                    line_id=str(state["raw_line"].get("line_id") or index + 1),
+                ), lease
+            )
+            pump.start()
+            sent = 0
+            condition = state["condition"]
+            while True:
+                with condition:
+                    while len(state["text"]) == sent and not state["complete"]:
+                        condition.wait()
+                    text = state["text"][sent:]
+                    complete = state["complete"]
+                if text:
+                    pump.session.send_text(text)
+                    sent += len(text)
+                if complete and sent == len(state["text"]):
+                    pcm = pump.finish()
+                    if not pcm:
+                        raise TTSError("实时 TTS 没有返回音频")
+                    state["pcm"] = pcm
+                    lease.commit()
+                    return
+        except Exception as exc:
+            if pump is not None and pump.pcm:
+                state["pcm"] = bytes(pump.pcm)
+            state["error"] = exc
+            if pump is not None:
+                pump.cancel()
+            elif lease is not None:
+                lease.abort()
+        finally:
+            with state["condition"]:
+                state["condition"].notify_all()
+
+    def get(self, index):
+        return self._states.get(index)
+
+    def wait(self, index):
+        state = self._states.get(index)
+        if state is None:
+            return None, None
+        thread = state["thread"]
+        if thread is not None:
+            thread.join()
+        return state["pcm"], state["error"]
+
+
 class _AudioLease:
     """A generation-scoped producer handle for one ordered audio phase."""
 
@@ -107,14 +297,11 @@ class _AudioLease:
 class _OrderedAudioPublisher:
     """Ordered PCM publication for opening/notice/line phases.
 
-    Live phases (the head opening) stream each frame the instant it arrives,
-    so the filler can actually play while the script is being written; once a
-    byte is out it cannot be reclaimed. Buffered phases (the start notice and
-    formal lines) hold every frame until commit and emit atomically in order,
-    so a failed realtime line can still be discarded and replaced by whole-line
-    HTTP TTS without duplicating audio. A buffered phase holds one line/clip of
-    PCM (bounded by its synthesis length), not a fixed number of packets, so
-    long phases never overflow.
+    Live phases stream each frame as soon as their turn reaches the ordered
+    publisher; once a byte is out it cannot be reclaimed. A phase that has not
+    reached the cursor still buffers frames so opening, notice, and lines stay
+    in order. Failed live phases must not publish a second whole-line fallback
+    after partial audio has already reached the client.
     """
 
     def __init__(self, job, phases, live_phases=("opening",)):
@@ -123,7 +310,8 @@ class _OrderedAudioPublisher:
         self._live = set(live_phases)
         self._tracks = {
             key: {"generation": 0, "state": "waiting", "frames": deque(),
-                  "live": key in self._live}
+                  "live": key in self._live, "published_frames": 0,
+                  "published_bytes": 0}
             for key in self._phases
         }
         self._cursor = 0
@@ -143,13 +331,14 @@ class _OrderedAudioPublisher:
             track["frames"].clear()
             return _AudioLease(self, key, track["generation"])
 
-    def add_phase(self, key):
+    def add_phase(self, key, *, live=False):
         with self._lock:
             if key in self._tracks:
                 raise TTSError("重复的音频阶段")
             self._phases.append(key)
             self._tracks[key] = {"generation": 0, "state": "waiting",
-                                 "frames": deque(), "live": key in self._live}
+                                 "frames": deque(), "live": live or key in self._live,
+                                 "published_frames": 0, "published_bytes": 0}
 
     def publish(self, lease, data):
         if len(data) % 2:
@@ -160,9 +349,9 @@ class _OrderedAudioPublisher:
             if index < self._cursor:
                 raise TTSError("音频阶段已经发布")
             if track["live"] and index == self._cursor:
-                self._job.emit_bytes(data)  # live head: play immediately
+                self._emit_frame_locked(lease._key, track, data)
             else:
-                track["frames"].append(data)  # buffered: one clip's worth of PCM
+                track["frames"].append(data)
 
     def commit(self, lease):
         with self._lock:
@@ -170,6 +359,21 @@ class _OrderedAudioPublisher:
             track = self._track(lease._key)
             track["state"] = "committed"
             self._drain_locked()
+            if track["state"] == "released" and track["published_frames"]:
+                fields = {
+                    "phase": "line" if isinstance(lease._key, tuple) else lease._key,
+                    "audio_frame_count": track["published_frames"],
+                    "audio_bytes": track["published_bytes"],
+                    "message": "TTS音频已完成发送到WebSocket",
+                }
+                if isinstance(lease._key, tuple):
+                    fields["line_id"] = str(lease._key[1])
+                log_event(
+                    logger, logging.INFO, "tts_audio_published",
+                    context={"job_id": getattr(self._job, "id", None),
+                             "project_id": getattr(self._job, "project_id", None)},
+                    **fields,
+                )
 
     def abort(self, lease):
         with self._lock:
@@ -179,7 +383,13 @@ class _OrderedAudioPublisher:
             if track is None or track["generation"] != lease._generation:
                 return
             track["frames"].clear()  # live bytes already on the wire are not reclaimed
-            track["state"] = "aborted"
+            if track["live"] and track["published_frames"]:
+                track["state"] = "skipped"
+                self._drain_locked()
+            else:
+                # No bytes reached the client yet, so the caller may reopen
+                # this phase and use a whole-file fallback.
+                track["state"] = "aborted"
 
     def skip(self, key):
         """Finish a phase without new audio, allowing the following phase to publish."""
@@ -219,15 +429,39 @@ class _OrderedAudioPublisher:
                     return  # buffered phase emits atomically at commit
                 # Live head: hand over buffered frames and keep streaming.
                 while track["frames"]:
-                    self._job.emit_bytes(track["frames"].popleft())
+                    self._emit_frame_locked(
+                        self._phases[self._cursor], track, track["frames"].popleft()
+                    )
                 return
             if track["state"] not in ("committed", "skipped"):
                 return
-            for frame in track["frames"]:
-                self._job.emit_bytes(frame)
-            track["frames"].clear()
+            while track["frames"]:
+                self._emit_frame_locked(
+                    self._phases[self._cursor], track, track["frames"].popleft()
+                )
             track["state"] = "released"
             self._cursor += 1
+
+    def _emit_frame_locked(self, key, track, data):
+        self._job.emit_bytes(data)
+        track["published_frames"] += 1
+        track["published_bytes"] += len(data)
+        if track["published_frames"] == 1:
+            phase = "line" if isinstance(key, tuple) else key
+            fields = {
+                "phase": phase,
+                "audio_bytes": len(data),
+                "frame_index": 1,
+                "message": "TTS音频首帧已发送到WebSocket",
+            }
+            if isinstance(key, tuple):
+                fields["line_id"] = str(key[1])
+            log_event(
+                logger, logging.INFO, "tts_audio_frame_published",
+                context={"job_id": getattr(self._job, "id", None),
+                         "project_id": getattr(self._job, "project_id", None)},
+                **fields,
+            )
 
     def _cancel_locked(self):
         self._cancelled = True
@@ -270,13 +504,16 @@ class StreamOrchestrator:
         default = self.config.get("llm.default_provider")
         return default if default in names else (names[0] if names else None)
 
-    def _open_session(self, scheduler, voice, *, directives=None, context=None):
+    def _open_session(self, scheduler, voice, *, directives=None, context=None,
+                      phase=None, line_id=None):
         return scheduler.open(
             voice.provider,
             self.registry.get_tts_model(voice),
             voice,
             directives=directives,
             context=context,
+            phase=phase,
+            line_id=line_id,
         )
 
     def _fallback_opening_http(self, job, publisher, host, text):
@@ -287,7 +524,10 @@ class StreamOrchestrator:
         after emitting a warning.
         """
         if not host:
-            job.emit({"type": "warning", "message": "无可用主持人音色，跳过开场"})
+            _emit_stream_warning(
+                job, "无可用主持人音色，跳过开场",
+                event="opening_voice_unavailable", phase="opening",
+            )
             return None
         if not text:
             return None
@@ -308,7 +548,10 @@ class StreamOrchestrator:
         except Exception as exc:
             if lease is not None:
                 lease.abort()
-            job.emit({"type": "warning", "message": "开场语音不可用：{}".format(exc)})
+            _emit_stream_warning(
+                job, "开场语音不可用：{}".format(exc),
+                event="opening_fallback_failed", phase="opening", exc=exc,
+            )
             return None
         finally:
             if tmp_path is not None:
@@ -317,11 +560,18 @@ class StreamOrchestrator:
                 except OSError:
                     pass
 
-    def _play_start_notice(self, job, scheduler, host, publisher):
+    def _play_start_notice(
+        self, job, scheduler, host, publisher, *, emit_event=True,
+        release_event=None,
+    ):
         text = start_notice_text()
-        job.emit({"type": "start_notice", "text": text})
+        if emit_event:
+            job.emit({"type": "start_notice", "text": text})
         if not host:
-            job.emit({"type": "warning", "message": "无可用主持人音色，跳过开播提示"})
+            _emit_stream_warning(
+                job, "无可用主持人音色，跳过开播提示",
+                event="start_notice_voice_unavailable", phase="start_notice",
+            )
             publisher.skip("start_notice")
             return
         _, voice = host
@@ -329,12 +579,16 @@ class StreamOrchestrator:
         lease = None
         try:
             lease = publisher.lease("start_notice")
-            pump = _AudioPump(self._open_session(scheduler, voice), lease)
+            pump = _AudioPump(
+                self._open_session(scheduler, voice, phase="start_notice"), lease
+            )
             pump.start()
             pump.session.send_text(text)
             pcm = pump.finish()
             if not pcm:
                 raise TTSError("实时 TTS 没有返回音频")
+            if release_event is not None:
+                release_event.wait()
             lease.commit()
             return
         except Exception as exc:
@@ -342,7 +596,10 @@ class StreamOrchestrator:
                 pump.cancel()
             elif lease is not None:
                 lease.abort()
-            job.emit({"type": "warning", "message": "开播提示实时语音失败：{}".format(exc)})
+            _emit_stream_warning(
+                job, "开播提示实时语音失败：{}".format(exc),
+                event="start_notice_realtime_failed", phase="start_notice", exc=exc,
+            )
         fallback = None
         try:
             clip = cached_start_notice(
@@ -352,12 +609,17 @@ class StreamOrchestrator:
             if clip:
                 fallback = publisher.lease("start_notice")
                 self._send_pcm_file(fallback, clip.mp3_path)
+                if release_event is not None:
+                    release_event.wait()
                 fallback.commit()
                 return
         except Exception as exc:
             if fallback is not None:
                 fallback.abort()
-            job.emit({"type": "warning", "message": "开播提示不可用：{}".format(exc)})
+            _emit_stream_warning(
+                job, "开播提示不可用：{}".format(exc),
+                event="start_notice_fallback_failed", phase="start_notice", exc=exc,
+            )
         publisher.skip("start_notice")
 
     def run(self, job):
@@ -402,12 +664,25 @@ class StreamOrchestrator:
         scheduler = TTSScheduler(self.registry, self.config)
         host = choose_host_voice(self.registry, tts_names, self.config.get("web.filler_voice"))
         publisher = _OrderedAudioPublisher(job, ["opening", "start_notice"])
+        voice_matching_thread = None
+        voice_matching_result = None
+        voice_matching_error = None
+        start_notice_thread = None
+        start_notice_announced = False
+        start_notice_release = threading.Event()
         opening_pump = None
         opening_lease = None
+        opening_finalize_thread = None
         opening_failed = False
         opening_streamed = False
         opening_committed = False
         opening_text = ""
+        opening_first_delta_logged = False
+        script_preview_count = 0
+        script_started = time.perf_counter()
+        line_coordinator = _IncrementalLineCoordinator(
+            self, job, publisher, scheduler, {}
+        )
 
         def fail_opening(exc=None):
             # Stop the realtime attempt but defer releasing the phase until the
@@ -424,43 +699,84 @@ class StreamOrchestrator:
                 opening_lease.abort()
                 opening_lease = None
             if exc is not None:
-                job.emit({"type": "warning",
-                          "message": "开场实时语音失败，尝试整句兜底：{}".format(exc)})
+                _emit_stream_warning(
+                    job,
+                    "开场实时语音失败，尝试整句兜底：{}".format(exc),
+                    event="opening_realtime_failed",
+                    phase="opening",
+                    exc=exc,
+                )
 
         def finalize_opening():
-            # Idempotent FINISH of the realtime opening session. Called as soon as
-            # the opening text is known in full (characters arrive) and again after
-            # the whole script, whichever comes first.
-            nonlocal opening_committed, opening_pump, opening_lease
-            if opening_committed or opening_failed or opening_pump is None:
+            # Request FINISH as soon as the opening text is complete, but do not
+            # block the LLM streaming callback while the provider drains audio.
+            # The caller joins this thread before moving to the post-script stage.
+            nonlocal opening_finalize_thread
+            if (opening_committed or opening_failed or opening_pump is None
+                    or opening_finalize_thread is not None):
                 return
-            try:
-                opening_pcm = opening_pump.finish()
-                if not opening_pcm:
-                    raise TTSError("实时 TTS 没有返回音频")
-                opening_lease.commit()
-                job.emit({"type": "opening_audio_end",
-                          "duration_ms": pcm_duration_ms(opening_pcm)})
-                opening_committed = True
-            except Exception as exc:
-                fail_opening(exc)
+
+            def finish_in_background():
+                nonlocal opening_committed, opening_pump, opening_lease
+                pump = opening_pump
+                lease = opening_lease
+                try:
+                    opening_pcm = pump.finish()
+                    if not opening_pcm:
+                        raise TTSError("实时 TTS 没有返回音频")
+                    lease.commit()
+                    job.emit({"type": "opening_audio_end",
+                              "duration_ms": pcm_duration_ms(opening_pcm)})
+                    opening_committed = True
+                except Exception as exc:
+                    fail_opening(exc)
+
+            opening_finalize_thread = threading.Thread(
+                target=finish_in_background,
+                name="opening-tts-finish",
+                daemon=True,
+            )
+            opening_finalize_thread.start()
 
         def mark_opening_started():
             nonlocal opening_streamed
             opening_streamed = True
             job.emit({"type": "opening_audio_start"})
 
+        def emit_script_preview_event(event, source):
+            nonlocal script_preview_count
+            script_preview_count += 1
+            job.script_preview = event
+            job.emit(event)
+            log_event(
+                job_logger, logging.DEBUG, "script_preview_emitted",
+                phase="script", preview_index=script_preview_count,
+                source=source, title=event.get("title") or "",
+                opening_length=len(event.get("opening") or ""),
+                character_count=len(event.get("characters") or []),
+                line_count=len(event.get("lines") or []),
+            )
+
         def emit_opening_delta(text):
             nonlocal opening_pump, opening_lease, opening_text
+            nonlocal opening_first_delta_logged
             if not text or opening_committed:
                 return
             opening_text += text
+            if not opening_first_delta_logged:
+                log_event(
+                    job_logger, logging.INFO, "opening_first_delta_received",
+                    phase="script", text_length=len(text),
+                    time_since_script_start_ms=int(
+                        (time.perf_counter() - script_started) * 1000
+                    ),
+                )
+                opening_first_delta_logged = True
             # StoryGenerator reports opening deltas before its first preview.  Emit a
             # minimal preview here so opening audio can never overtake the preview.
             if not job.script_preview or job.script_preview.get("opening") != opening_text:
                 event = _script_preview_event({"opening": opening_text})
-                job.script_preview = event
-                job.emit(event)
+                emit_script_preview_event(event, "opening_delta")
             job.emit({"type": "opening_text_delta", "text": text})
             if opening_failed:
                 return  # keep accumulating text for the post-script HTTP fallback
@@ -471,7 +787,7 @@ class StreamOrchestrator:
                 try:
                     opening_lease = publisher.lease("opening")
                     opening_pump = _AudioPump(
-                        self._open_session(scheduler, host[1]), opening_lease,
+                        self._open_session(scheduler, host[1], phase="opening"), opening_lease,
                         on_first_audio=mark_opening_started,
                     )
                     opening_pump.start()
@@ -487,10 +803,90 @@ class StreamOrchestrator:
         job.emit({"type": "status", "phase": "script", "message": "正在生成剧本…"})
         llm = self.registry.get_llm(llm_name)
 
+        def run_voice_matching(script):
+            return VoiceMatcher(
+                self.registry, llm=llm,
+                mode=self.config.get("voice_matcher") or "rule",
+                log_context={"job_id": job.id, "project_id": state.project_id,
+                             "phase": "voices"},
+            ).match_voices(script, allowed_providers=tts_names)
+
+        def start_start_notice(*, announce=False):
+            nonlocal start_notice_thread, start_notice_announced
+            if start_notice_thread is not None:
+                if announce and not start_notice_announced:
+                    job.emit({"type": "start_notice", "text": start_notice_text()})
+                    start_notice_announced = True
+                    start_notice_release.set()
+                return
+            start_notice_thread = threading.Thread(
+                target=self._play_start_notice,
+                args=(job, scheduler, host, publisher),
+                kwargs={"emit_event": False, "release_event": start_notice_release},
+                name="start-notice-tts", daemon=True,
+            )
+            start_notice_thread.start()
+            log_event(
+                job_logger, logging.INFO, "start_notice_dispatched",
+                phase="script", message="主持人音色已确定，开播提示开始后台合成",
+            )
+            if announce:
+                job.emit({"type": "start_notice", "text": start_notice_text()})
+                start_notice_announced = True
+                start_notice_release.set()
+
+        def start_voice_matching(preview):
+            nonlocal voice_matching_thread, voice_matching_result, voice_matching_error
+            if voice_matching_thread is not None:
+                return
+            provisional = _script_from_json(
+                {
+                    "title": preview.get("title") or "",
+                    "characters": preview.get("characters") or [],
+                    "lines": [],
+                },
+                params.topic,
+            )
+            line_coordinator.names = {
+                character.id: character.name for character in provisional.characters
+            }
+
+            def match_in_background():
+                nonlocal voice_matching_result, voice_matching_error
+                try:
+                    voice_matching_result = run_voice_matching(provisional)
+                    line_coordinator.set_provisional_voice_context(voice_matching_result)
+                except Exception as exc:
+                    voice_matching_error = exc
+                    log_event(
+                        job_logger,
+                        logging.ERROR,
+                        "voice_matching_failed",
+                        phase="script",
+                        error_type=type(exc).__name__,
+                        exception_message=_safe_exception_message(exc),
+                    )
+
+            voice_matching_thread = threading.Thread(
+                target=match_in_background, name="voice-matching", daemon=True,
+            )
+            voice_matching_thread.start()
+            log_event(
+                job_logger, logging.INFO, "voice_matching_dispatched",
+                phase="script", character_count=len(provisional.characters),
+            )
+            # The audio was synthesized as soon as the host voice was known;
+            # announce it to the client only when character voice matching starts.
+            start_start_notice(announce=True)
+
         def emit_script_preview(preview):
             event = _script_preview_event(preview)
-            job.script_preview = event
-            job.emit(event)
+            emit_script_preview_event(event, "llm_snapshot")
+
+        # Host voice selection is already complete before script streaming
+        # begins. Start notice synthesis immediately; its audio remains buffered
+        # by the ordered publisher until it is allowed to reach the client.
+        start_start_notice()
 
         try:
             with timed_event(job_logger, "script_generation", phase="script", topic=params.topic):
@@ -500,14 +896,20 @@ class StreamOrchestrator:
                     on_preview=emit_script_preview,
                     on_opening_delta=emit_opening_delta,
                     on_opening_complete=finalize_opening,
+                    on_characters_ready=start_voice_matching,
+                    on_line_text_delta=line_coordinator.on_delta,
+                    on_line_complete=line_coordinator.on_complete,
                 )
         except Exception:
             if opening_pump is not None:
                 opening_pump.cancel()
+            start_notice_release.set()
             publisher.cancel()
             raise
 
         finalize_opening()
+        if opening_finalize_thread is not None:
+            opening_finalize_thread.join()
 
         if not opening_committed:
             if opening_streamed:
@@ -524,9 +926,6 @@ class StreamOrchestrator:
                     if opening_text:
                         job.emit({"type": "opening_audio_abort"})
 
-        for index, _ in enumerate(state.script.lines, 1):
-            publisher.add_phase(("line", index))
-
         state.state = "script_generated"
         self.projects.save_project(state)
         self.projects.rename_for_title(state)
@@ -537,18 +936,26 @@ class StreamOrchestrator:
 
         job.phase = "voices"
         job.emit({"type": "status", "phase": "voices", "message": "正在匹配音色…"})
-        with timed_event(job_logger, "voice_matching", phase="voices"):
-            VoiceMatcher(self.registry, llm=llm,
-                         mode=self.config.get("voice_matcher") or "rule",
-                         log_context={"job_id": job.id, "project_id": state.project_id,
-                                      "phase": "voices"}).match_voices(
-                             state.script, allowed_providers=tts_names)
+        if voice_matching_thread is None:
+            voice_matching_result = run_voice_matching(state.script)
+        else:
+            voice_matching_thread.join()
+            if voice_matching_error is not None:
+                start_notice_release.set()
+                raise voice_matching_error
+            matched_by_id = {
+                character.id: character.voice_config
+                for character in voice_matching_result.characters
+            }
+            for character in state.script.characters:
+                character.voice_config = matched_by_id.get(character.id)
         state.state = "voice_configured"
         self.projects.save_project(state)
         self.pipeline._export_script(state)
 
         char_map = {c.id: c.voice_config for c in state.script.characters if c.voice_config}
         narrator = self.pipeline._find_narrator_voice(state.script, char_map)
+        line_coordinator.apply_final_line_voices(state.script, char_map, narrator)
         names = {c.id: c.name for c in state.script.characters}
         script_ready = {"type": "script_ready", "title": state.script.title,
                         "total": len(state.script.lines),
@@ -567,7 +974,10 @@ class StreamOrchestrator:
         job.script_ready = script_ready
         job.emit(script_ready)
         log_event(job_logger, logging.INFO, "script_ready_sent", phase="voices", line_count=len(state.script.lines))
-        self._play_start_notice(job, scheduler, host, publisher)
+        # Character matching normally announces this earlier; keep the
+        # announcement for scripts without characters as a safe fallback.
+        start_start_notice(announce=True)
+        start_notice_thread.join()
 
         if job.cancel_event.is_set():
             publisher.cancel()
@@ -580,7 +990,10 @@ class StreamOrchestrator:
                 sound_provider = self.pipeline._get_sound_provider()
                 sound_library = self.pipeline._get_sound_library()
             except Exception as exc:
-                job.emit({"type": "warning", "message": "音效不可用：{}".format(exc)})
+                _emit_stream_warning(
+                    job, "音效不可用：{}".format(exc),
+                    event="sound_provider_unavailable", phase="line", exc=exc,
+                )
                 with_sound = False
         refs, line_paths = set(), []
         for index, line in enumerate(state.script.lines, 1):
@@ -591,31 +1004,60 @@ class StreamOrchestrator:
             voice = self.pipeline.voice_for_line(line, char_map, narrator)
             if not voice:
                 publisher.skip(("line", index))
-                job.emit({"type": "warning", "line_id": line.line_id, "message": "无可用音色"}); continue
+                _emit_stream_warning(
+                    job, "无可用音色", event="line_voice_unavailable",
+                    phase="line", line_id=line.line_id,
+                )
+                continue
             has_cues = with_sound and bool(line.sound_effects or line.background_music)
+            incremental = line_coordinator.get(index - 1)
+            if incremental is None:
+                publisher.add_phase(("line", index), live=True)
             job.line_index = index
-            job.emit({"type": "line_start", "line_id": line.line_id, "index": index,
-                      "total": job.total, "speaker": names.get(line.character_id) or line.line_type,
-                      "text": line.text, "has_sound": has_cues})
-            # The parser currently yields formal lines only after the script is complete;
-            # this is therefore the first safe point to submit their text after voice assignment.
-            job.emit({"type": "line_text_delta", "line_id": line.line_id, "index": index,
-                      "text": line.text})
+            if incremental is None:
+                job.emit({"type": "line_start", "line_id": line.line_id, "index": index,
+                          "total": job.total, "speaker": names.get(line.character_id) or line.line_type,
+                          "text": line.text, "has_sound": has_cues})
+                job.emit({"type": "line_text_delta", "line_id": line.line_id, "index": index,
+                          "text": line.text})
             out = self.pipeline._audio_path(state.project_id, line.line_id, "mp3")
             directives, context = self.pipeline.line_context_directives(state.script.lines, index - 1)
             tts_timing = line.processing.setdefault("tts", {})
             tts_timing["started_at"] = human_time()
             streamed = False
+            realtime_audio_published = False
             pump = None
             lease = None
             try:
                 with timed_event(job_logger, "tts_line", phase="line", line_id=line.line_id,
                                  provider=voice.provider, index=index):
-                    if not has_cues:
+                    incremental_attempted = incremental is not None
+                    if incremental_attempted:
+                        try:
+                            pcm, incremental_error = line_coordinator.wait(index - 1)
+                            if pcm:
+                                realtime_audio_published = True
+                            if incremental_error is not None:
+                                raise TTSError(str(incremental_error))
+                            if not pcm:
+                                raise TTSError("实时 TTS 没有返回音频")
+                            pcm_to_mp3_file(pcm, out)
+                            streamed = True
+                        except Exception as exc:
+                            _emit_stream_warning(
+                                job,
+                                "实时语音降级：{}".format(exc),
+                                event="tts_line_realtime_fallback",
+                                phase="line", line_id=line.line_id, exc=exc,
+                            )
+                    if not streamed and not incremental_attempted and not has_cues:
                         try:
                             lease = publisher.lease(("line", index))
                             pump = _AudioPump(
-                                self._open_session(scheduler, voice, directives=directives, context=context),
+                                self._open_session(
+                                    scheduler, voice, directives=directives,
+                                    context=context, phase="line", line_id=line.line_id,
+                                ),
                                 lease,
                             )
                             pump.start()
@@ -626,13 +1068,20 @@ class StreamOrchestrator:
                             lease.commit()
                             pcm_to_mp3_file(pcm, out)
                             streamed = True
+                            realtime_audio_published = True
                         except Exception as exc:
+                            if pump is not None and pump.pcm:
+                                realtime_audio_published = True
                             if pump is not None:
                                 pump.cancel()
                             elif lease is not None:
                                 lease.abort()
-                            job.emit({"type": "warning", "line_id": line.line_id,
-                                      "message": "实时语音降级：{}".format(exc)})
+                            _emit_stream_warning(
+                                job,
+                                "实时语音降级：{}".format(exc),
+                                event="tts_line_realtime_fallback",
+                                phase="line", line_id=line.line_id, exc=exc,
+                            )
                     if not streamed:
                         self.registry.get_tts(voice.provider).synthesize(
                             line.text, voice, out, directives=directives, context=context)
@@ -649,7 +1098,7 @@ class StreamOrchestrator:
                             mix_line_with_cues(out, entries, out)
                         finally:
                             line.processing["mixing"] = {"started_at": mix_started, "ended_at": human_time()}
-                if not streamed:
+                if not realtime_audio_published:
                     fallback = publisher.lease(("line", index))
                     self._send_pcm_file(fallback, out)
                     fallback.commit()
@@ -661,7 +1110,10 @@ class StreamOrchestrator:
                 if tts_timing.get("started_at") and not tts_timing.get("ended_at"):
                     tts_timing["ended_at"] = human_time()
                 publisher.skip(("line", index))
-                job.emit({"type": "warning", "line_id": line.line_id, "message": str(exc)})
+                _emit_stream_warning(
+                    job, str(exc), event="tts_line_failed",
+                    phase="line", line_id=line.line_id, exc=exc,
+                )
         if not line_paths:
             raise TTSError("没有成功生成任何音频行")
         self.projects.save_project(state)

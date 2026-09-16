@@ -122,7 +122,7 @@ class StreamingTTSProvider(Protocol):
 - 回调→队列→标准化：`on_data` push 原生 22.05k PCM 块、`on_complete` sentinel、`on_error` 推送后连接自动关闭；adapter 用 `queue.Queue` 桥接回调线程，并在产出前经常驻 ffmpeg 管道（`ffmpeg -f s16le -ar 22050 -ac 1 -i - -f s16le -ar 24000 -ac 1 -`）流式重采样，**对编排层只产出标准 24k StreamChunk**，与火山路径同构。ffmpeg 进程按 synthesizer 实例或每行启停，实现时按延迟实测决定。
 - 参数沿用非流式 aliyun provider 的映射：rate/pitch 0.5–2.0 直接透传、volume 0–100（中值 50）、默认值不进构造参数；`instruction` 沿用 directives/context 拼接（去#、中文逗号拼接、引用上文丢弃）。
 - 双向流 `streaming_call` 模式留给将来"剧本 token 级流"（§1.2 明确首版不做）。
-- 配置扩展示意：在现有 `STORYTELLER_TTS_ALIYUN_*` 上加 `REALTIME_ENDPOINT`/`base_websocket_api_url`（含 WorkspaceId 的 wss 地址）；没有配就只注册非流式能力。
+- 配置扩展示意：在现有 `STORYTELLER_TTS_ALIYUN_*` 上加 `WORKSPACE_ID`，由程序拼出专属 wss 地址；没有配就只注册非流式能力。
 - 真机验证用例写进实现计划：flash/plus 各一个音色确认输出为标准 24k PCM（验证重采样管道）、instruction 生效、连接池复用。
 
 ## 4. 逐行处理与统一 PCM 出口
@@ -285,7 +285,7 @@ ref 沿用 ProjectManager.resolve_project_dir 的解析（目录名/id/前缀，
 | `STORYTELLER_WEB_CONCURRENCY` | 2 | 同时生成任务数 |
 | `STORYTELLER_WEB_RATE_LIMIT_PER_MIN` | 10 | auth/WS 建连每 IP 限流，0=关 |
 | `STORYTELLER_WEB_FILLER_VOICE` | 自动选 narrator 音色 | 填充语主持人音色，格式 `provider:voice_id` |
-| `STORYTELLER_TTS_ALIYUN_REALTIME_ENDPOINT` | — | P2：wss 含 WorkspaceId 地址，配了才启用实时能力 |
+| `STORYTELLER_TTS_ALIYUN_WORKSPACE_ID` | — | P2：Qwen-Audio-TTS/CosyVoice 业务空间 ID，配了才启用实时能力 |
 
 其余（data_dir、provider keys、sound 开关、strict_mode）全部复用现有配置。
 

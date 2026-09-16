@@ -110,6 +110,7 @@ def _config(**overrides):
         "api_key": "test-key",
         "endpoint": _ENDPOINT,
         "model": "qwen-audio-3.0-tts-flash",
+        "workspace_id": "test-workspace",
     }
     pc.update(overrides)
     config.set("tts.provider_config.aliyun", pc)
@@ -120,7 +121,7 @@ def _voice(voice_id="longanhuan_v3.6", **kw):
 
 
 def _make_tts(synth_response=None, download_bytes=b"ID3fake-mp3"):
-    tts = AliyunTTS(_config())
+    tts = AliyunTTS(_config(workspace_id=""))
     tts._session = _FakeSession(
         synth_response or _synth_ok(),
         _FakeResponse(200, content=download_bytes),
@@ -419,9 +420,9 @@ def test_constructor_raises_on_missing_key():
         AliyunTTS(_config(api_key=None))
 
 
-def test_realtime_session_forwards_text_completes_and_resamples_callback_pcm():
+def test_websocket_session_builds_workspace_url_forwards_text_and_resamples_callback_pcm():
     """Bypassing the callback bridge or 22.05kHz conversion breaks the stream contract."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config(workspace_id="workspace-123"))
     created = {}
     input_pcm = struct.pack("<147h", *range(147))
 
@@ -445,14 +446,17 @@ def test_realtime_session_forwards_text_completes_and_resamples_callback_pcm():
     ]
     assert synthesizer.completed is True
     assert created["format"] == "PCM_22050HZ_MONO_16BIT"
+    assert created["websocket_api_url"] == (
+        "wss://workspace-123.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference"
+    )
     output_pcm = b"".join(chunk.data for chunk in session.iter_audio())
     assert len(output_pcm) == 320
     assert output_pcm != input_pcm
 
 
-def test_realtime_session_translates_callback_errors_and_can_cancel():
+def test_websocket_session_translates_callback_errors_and_can_cancel():
     """Leaking a DashScope callback error would expose an SDK-specific failure."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
     created = {}
 
     def factory(**kwargs):
@@ -473,7 +477,7 @@ def test_realtime_session_translates_callback_errors_and_can_cancel():
 
 def test_realtime_session_requires_realtime_configuration_before_constructing_sdk():
     """An ordinary HTTP-only Aliyun provider must never construct the SDK client."""
-    tts = AliyunTTS(_config())
+    tts = AliyunTTS(_config(workspace_id=""))
 
     def unexpected_factory(**kwargs):
         raise AssertionError("realtime synthesizer factory must not be called")
@@ -485,7 +489,7 @@ def test_realtime_session_requires_realtime_configuration_before_constructing_sd
 
 def test_realtime_session_finish_waits_for_callback_completion():
     """Returning from finish before DashScope completes truncates trailing audio."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
     created = {}
 
     class DelayedCompletingSynthesizer:
@@ -519,7 +523,7 @@ def test_realtime_session_finish_waits_for_callback_completion():
 
 def test_realtime_session_finish_times_out_without_completion(monkeypatch):
     """A DashScope SDK that never calls on_complete must not hang the job."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
 
     class NeverCompletingSynthesizer:
         def __init__(self, callback):
@@ -545,7 +549,7 @@ def test_realtime_session_finish_times_out_without_completion(monkeypatch):
 
 def test_realtime_session_cancel_releases_callback_blocked_by_bounded_audio_queue():
     """An unbounded or uncleared callback queue would leak memory or deadlock finish."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
     created = {}
     input_pcm = struct.pack("<3h", 1, 2, 3)
 
@@ -584,7 +588,7 @@ def test_realtime_session_cancel_releases_callback_blocked_by_bounded_audio_queu
 
 def test_realtime_session_finishes_before_draining_more_than_bounded_audio_chunks():
     """A full callback buffer must not make finish-before-drain deadlock."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
     created = {}
     input_pcm = struct.pack("<3h", 1, 2, 3)
 
@@ -628,7 +632,7 @@ def test_realtime_session_failure_drains_overflow_spill_before_iterator_cleanup(
     monkeypatch,
 ):
     """Closing spill on failure must not discard already accepted overflow PCM."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
     created = {}
     input_pcm = struct.pack("<3h", 1, 2, 3)
 
@@ -680,7 +684,7 @@ def test_realtime_session_failure_drains_overflow_spill_before_iterator_cleanup(
 
 def test_realtime_session_redacts_callback_credentials_and_signed_urls():
     """SDK diagnostics must not expose API credentials through pipeline errors."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
 
     def factory(**kwargs):
         return _FakeRealtimeSynthesizer(
@@ -701,7 +705,7 @@ def test_realtime_session_redacts_callback_credentials_and_signed_urls():
 
 def test_realtime_session_redacts_websocket_signed_urls_from_callback_errors():
     """Changing URL schemes must not bypass realtime diagnostics redaction."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
 
     def factory(**kwargs):
         return _FakeRealtimeSynthesizer(
@@ -727,7 +731,7 @@ def test_realtime_session_redacts_websocket_signed_urls_from_callback_errors():
 
 def test_realtime_provider_exception_hides_sdk_context_from_traceback():
     """A sanitized connection failure must not print the SDK's secret message."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
 
     def factory(**kwargs):
         raise RuntimeError(
@@ -751,7 +755,7 @@ def test_realtime_provider_exception_hides_sdk_context_from_traceback():
 
 def test_realtime_session_rejects_send_that_started_after_cancellation():
     """A send that loses the cancel race must not reach the DashScope SDK."""
-    tts = AliyunTTS(_config(realtime_endpoint="wss://workspace.example/realtime"))
+    tts = AliyunTTS(_config())
     submitted = []
     call_accessed = threading.Event()
     release_call_access = threading.Event()

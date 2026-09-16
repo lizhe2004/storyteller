@@ -33,7 +33,7 @@ class Config:
                 "default_max_concurrent_sessions": 1,
                 "default_max_text_chunks_per_second": None,
                 "default_queue_size": 16,
-                "default_queue_timeout_seconds": 5.0,
+                "default_queue_timeout_seconds": None,
                 "limits": {},
                 "provider_limits": {},
             },
@@ -176,7 +176,7 @@ class Config:
     # Per-provider config keys shared by the llm/tts/sound groups.
     _PROVIDER_CONFIG_KEYS = (
         "type", "api_key", "model", "endpoint", "base_url", "resource_id",
-        "models",
+        "models", "workspace_id",
     )
 
     @staticmethod
@@ -218,11 +218,15 @@ class Config:
                 continue
             discovered.add(name.lower())
 
-        seen = {p.lower() for p in providers}
-        for name in sorted(discovered):
-            if name not in seen:
-                providers.append(name)
-                seen.add(name)
+        # TTS_PROVIDERS is an explicit allowlist when present.  Only an
+        # unset/blank list opts into automatic discovery; LLM and sound keep
+        # their existing discovery-and-ordering behavior.
+        if kind != "tts" or not providers:
+            seen = {p.lower() for p in providers}
+            for name in sorted(discovered):
+                if name not in seen:
+                    providers.append(name)
+                    seen.add(name)
         config.set("{}.providers".format(kind), providers)
 
         for provider in providers:
@@ -257,6 +261,11 @@ class Config:
 
             providers = config.get("tts.providers", [])
             if provider_name not in providers:
+                # A non-empty TTS_PROVIDERS allowlist must also constrain
+                # OpenAI-compatible providers, which are discovered through
+                # this separate naming convention.
+                if os.getenv("STORYTELLER_TTS_PROVIDERS", "").strip():
+                    continue
                 providers.append(provider_name)
                 config.set("tts.providers", providers)
             config.set(
@@ -283,7 +292,8 @@ class Config:
                 return value if value > 0 else None
             if field in ("max_concurrent_sessions", "queue_size"):
                 return int(raw)
-            return float(raw)
+            value = float(raw)
+            return value if value > 0 else None
         except (TypeError, ValueError):
             return None
 

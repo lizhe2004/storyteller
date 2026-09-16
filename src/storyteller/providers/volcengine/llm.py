@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import logging
 import requests
+import time
 
 from ...core.exceptions import LLMError
 from ...core.llm import LLMProvider
 from ..base import BaseProvider
 from ...core.observability import timed_event
+from ...core.observability import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +47,7 @@ class VolcengineLLM(BaseProvider, LLMProvider):
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
+            "thinking": {"type": "disabled"},
         }
         if max_tokens is not None:
             body["max_tokens"] = max_tokens
@@ -85,6 +88,7 @@ class VolcengineLLM(BaseProvider, LLMProvider):
             "messages": messages,
             "temperature": temperature,
             "stream": True,
+            "thinking": {"type": "disabled"},
         }
         if max_tokens is not None:
             body["max_tokens"] = max_tokens
@@ -93,6 +97,10 @@ class VolcengineLLM(BaseProvider, LLMProvider):
             "Authorization": "Bearer {}".format(self.api_key),
             "Content-Type": "application/json",
         }
+        request_started = time.perf_counter()
+        last_chunk_at = request_started
+        chunk_index = 0
+        first_chunk_logged = False
         try:
             with timed_event(logger, "llm_http_request", operation="chat_stream",
                              provider="volcengine",
@@ -106,6 +114,38 @@ class VolcengineLLM(BaseProvider, LLMProvider):
                 for line in response.iter_lines(decode_unicode=False):
                     chunk = _content_from_sse_line(line)
                     if chunk:
+                        now = time.perf_counter()
+                        chunk_index += 1
+                        wait_ms = int((now - last_chunk_at) * 1000)
+                        log_event(
+                            logger, logging.DEBUG, "llm_chunk_received",
+                            provider="volcengine", model=self.model,
+                            operation="chat_stream", chunk_index=chunk_index,
+                            chunk_length=len(chunk),
+                            chunk_content=chunk,
+                            wait_since_previous_chunk_ms=wait_ms,
+                            elapsed_ms=int((now - request_started) * 1000),
+                        )
+                        if wait_ms >= 500:
+                            log_event(
+                                logger, logging.DEBUG, "llm_chunk_gap_detected",
+                                provider="volcengine", model=self.model,
+                                operation="chat_stream", chunk_index=chunk_index,
+                                gap_ms=wait_ms,
+                                message="等待LLM下一个流式chunk",
+                            )
+                        last_chunk_at = now
+                        if not first_chunk_logged:
+                            log_event(
+                                logger, logging.INFO,
+                                "llm_first_chunk_received",
+                                provider="volcengine", model=self.model,
+                                operation="chat_stream",
+                                time_to_first_chunk_ms=int(
+                                    (time.perf_counter() - request_started) * 1000
+                                ),
+                            )
+                            first_chunk_logged = True
                         yield chunk
         except requests.RequestException as exc:
             raise LLMError(

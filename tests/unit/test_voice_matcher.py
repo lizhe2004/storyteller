@@ -44,6 +44,31 @@ def test_match_voices_assigns_narrator_voice():
     assert narrator.voice_config.provider == "mock"
 
 
+def test_match_voices_logs_request_context(caplog):
+    config = Config()
+    registry = ProviderRegistry(config)
+    registry.register_tts("mock", MockTTSProvider)
+    matcher = VoiceMatcher(
+        registry,
+        mode="rule",
+        log_context={"job_id": "job_1", "project_id": "proj_1", "phase": "voices"},
+    )
+    script = _make_script_with_characters(
+        Character(id="narrator", name="旁白", description="故事旁白")
+    )
+
+    with caplog.at_level("INFO", logger="storyteller.core.voice_matcher"):
+        matcher.match_voices(script)
+
+    messages = [record.getMessage() for record in caplog.records]
+    started = next(message for message in messages if "event=voice_matching_started" in message)
+    completed = next(message for message in messages if "event=voice_matching_completed" in message)
+    for message in (started, completed):
+        assert "job_id=job_1" in message
+        assert "project_id=proj_1" in message
+        assert "phase=voices" in message
+
+
 def test_match_voices_male_by_description():
     matcher = _make_matcher()
     hero = Character(id="hero", name="大壮", description="一个成年男子，勇敢")

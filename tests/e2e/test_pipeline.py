@@ -14,7 +14,6 @@ def _make_pipeline(tmp_path):
     config.set("data_dir", str(tmp_path / ".storyteller"))
     config.resolve_paths()
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
 
     pipeline = Pipeline(config)
     pipeline.registry.register_llm("mock", MockLLMProvider)
@@ -140,7 +139,6 @@ def test_run_passes_directive_and_context_to_tts(tmp_path):
     config.set("data_dir", str(tmp_path / ".storyteller"))
     config.resolve_paths()
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
     pipeline = Pipeline(config)
     llm = MockLLMProvider(config)
     llm.set_response(_json.dumps(script, ensure_ascii=False))
@@ -182,7 +180,6 @@ def test_narration_uses_narrator_voice_when_llm_omits_it(tmp_path):
     config.set("data_dir", str(tmp_path / ".storyteller"))
     config.resolve_paths()
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
     pipeline = Pipeline(config)
     llm = MockLLMProvider(config)
     llm.set_response(_json.dumps(script, ensure_ascii=False))
@@ -301,7 +298,6 @@ def test_near_silent_retry_prints_retry_progress(tmp_path, capsys):
     config.set("sound.enabled", True)
     config.set("sound.dir", str(tmp_path / "sounds"))
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
 
     llm = MockLLMProvider(config)
     llm.set_response(_single_cue_script())
@@ -456,7 +452,6 @@ def _make_sound_pipeline(tmp_path, llm, provider, library):
     config.set("sound.enabled", True)
     config.set("sound.dir", str(tmp_path / "sounds"))
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
     pipeline = Pipeline(
         config, sound_provider=provider, sound_library=library
     )
@@ -689,7 +684,6 @@ def test_near_silent_clip_is_retried_then_accepted(tmp_path):
     config.set("sound.enabled", True)
     config.set("sound.dir", str(tmp_path / "sounds"))
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
 
     llm = MockLLMProvider(config)
     llm.set_response(_single_cue_script())
@@ -724,7 +718,6 @@ def test_near_silent_clip_retried_up_to_limit_then_skipped(tmp_path):
     config.set("sound.enabled", True)
     config.set("sound.dir", str(tmp_path / "sounds"))
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
 
     llm = MockLLMProvider(config)
     llm.set_response(_single_cue_script())
@@ -759,7 +752,6 @@ def test_failed_sound_clip_is_kept_in_project_but_not_mixed(tmp_path):
     config.set("sound.enabled", True)
     config.set("sound.dir", str(tmp_path / "sounds"))
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
 
     llm = MockLLMProvider(config)
     llm.set_response(_sound_script())
@@ -806,7 +798,6 @@ def _make_registry_sound_pipeline(tmp_path, llm, library):
     config.set("sound.dir", str(tmp_path / "sounds"))
     config.set("sound.default_provider", "mock")
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
     pipeline = Pipeline(config, sound_library=library)
     pipeline.registry.register_llm("mock", lambda c: llm)
     pipeline.registry.register_tts("mock", MockTTSProvider)
@@ -840,7 +831,6 @@ def test_sound_enabled_without_any_provider_raises(tmp_path):
     config.set("sound.enabled", True)
     config.set("sound.dir", str(tmp_path / "sounds"))
     config.set("llm.default_provider", "mock")
-    config.set("tts.default_provider", "mock")
     llm = MockLLMProvider(config)
     llm.set_response(_sound_script())
     pipeline = Pipeline(config)

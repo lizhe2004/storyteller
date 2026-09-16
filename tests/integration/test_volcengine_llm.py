@@ -29,7 +29,7 @@ class _FakeResponse:
 
             raise requests.HTTPError("status {}".format(self.status_code))
 
-    def iter_lines(self, decode_unicode=False):
+    def iter_lines(self, decode_unicode=False, **kwargs):
         if decode_unicode:
             return iter(self.stream_lines)
         return iter(
@@ -95,6 +95,18 @@ def test_volcengine_llm_passes_temperature():
     assert body["temperature"] == 0.3
 
 
+def test_volcengine_llm_disables_thinking_by_default():
+    config = _config()
+    llm = VolcengineLLM(config)
+    llm._session = _FakeSession(
+        _FakeResponse(200, {"choices": [{"message": {"content": "ok"}}]})
+    )
+
+    llm.chat([{"role": "user", "content": "hi"}])
+
+    assert llm._session.calls[0]["json"]["thinking"] == {"type": "disabled"}
+
+
 def test_volcengine_llm_raises_on_http_error():
     config = _config()
     llm = VolcengineLLM(config)
@@ -128,6 +140,18 @@ def test_volcengine_stream_decodes_utf8_sse_text():
     ]
 
 
+def test_volcengine_stream_disables_thinking_by_default():
+    config = _config()
+    llm = VolcengineLLM(config)
+    fake_response = _FakeResponse()
+    fake_response.stream_lines = [b"data: [DONE]"]
+    llm._session = _FakeSession(fake_response)
+
+    list(llm.chat_stream([{"role": "user", "content": "hi"}]))
+
+    assert llm._session.calls[0]["json"]["thinking"] == {"type": "disabled"}
+
+
 def test_volcengine_stream_logs_only_provider_http_context(caplog):
     config = _config()
     llm = VolcengineLLM(config)
@@ -152,3 +176,49 @@ def test_volcengine_stream_logs_only_provider_http_context(caplog):
     assert "operation=chat_stream" in message
     assert "phase=" not in message
     assert "job_id=" not in message
+
+
+def test_volcengine_stream_logs_first_chunk_latency(caplog):
+    config = _config()
+    llm = VolcengineLLM(config)
+    fake_response = _FakeResponse()
+    fake_response.stream_lines = [
+        'data: {"choices":[{"delta":{"content":"首段"}}]}'.encode("utf-8"),
+        b'data: [DONE]',
+    ]
+    llm._session = _FakeSession(fake_response)
+
+    with caplog.at_level("INFO", logger="storyteller.providers.volcengine.llm"):
+        assert list(llm.chat_stream([{"role": "user", "content": "hi"}])) == [
+            "首段"
+        ]
+
+    message = "\n".join(record.getMessage() for record in caplog.records)
+    assert "event=llm_first_chunk_received" in message
+    assert "time_to_first_chunk_ms=" in message
+
+
+def test_volcengine_stream_logs_each_chunk_at_debug(caplog):
+    config = _config()
+    llm = VolcengineLLM(config)
+    fake_response = _FakeResponse()
+    fake_response.stream_lines = [
+        'data: {"choices":[{"delta":{"content":"一"}}]}'.encode("utf-8"),
+        'data: {"choices":[{"delta":{"content":"二"}}]}'.encode("utf-8"),
+        b'data: [DONE]',
+    ]
+    llm._session = _FakeSession(fake_response)
+
+    with caplog.at_level("DEBUG", logger="storyteller.providers.volcengine.llm"):
+        assert list(llm.chat_stream([{"role": "user", "content": "hi"}])) == [
+            "一", "二"
+        ]
+
+    messages = [record.getMessage() for record in caplog.records]
+    chunk_logs = [message for message in messages if "event=llm_chunk_received" in message]
+    assert len(chunk_logs) == 2
+    assert "chunk_index=1" in chunk_logs[0]
+    assert "chunk_index=2" in chunk_logs[1]
+    assert "chunk_content=一" in chunk_logs[0]
+    assert "chunk_content=二" in chunk_logs[1]
+    assert "wait_since_previous_chunk_ms=" in chunk_logs[0]

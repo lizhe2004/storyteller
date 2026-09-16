@@ -189,6 +189,54 @@ def test_generate_script_prompt_schema_includes_opening_between_title_and_charac
     assert '  "title": "故事标题",\n  "opening": "开场白",\n  "characters": [' in DEFAULT_SYSTEM_PROMPT
 
 
+def test_generate_script_stream_reports_characters_ready_when_lines_key_starts():
+    class _ChunkedLLM:
+        def __init__(self, chunks):
+            self.chunks = chunks
+
+        def chat_stream(self, messages, **kwargs):
+            return iter(self.chunks)
+
+    chunks = [
+        '{"title":"T","opening":"开场","characters":[{"id":"c1"}',
+        ',{"id":"c2"}],"lines":[{"line_id":"1"',
+        ',"text":"正文"}]}'
+    ]
+    ready = []
+    generator = StoryGenerator(_ChunkedLLM(chunks))
+
+    script = generator.generate_script_stream(
+        "测试", on_characters_ready=ready.append
+    )
+
+    assert len(ready) == 1
+    assert [character["id"] for character in ready[0]["characters"]] == [
+        "c1", "c2"
+    ]
+    assert [line.text for line in script.lines] == ["正文"]
+
+
+def test_generate_script_stream_reports_line_text_suffixes_before_response_ends():
+    class _ChunkedLLM:
+        def chat_stream(self, messages, **kwargs):
+            yield '{"title":"T","characters":[],"lines":[{"line_id":"1","line_type":"narration","text":"第'
+            yield '一句"},{"line_id":"2","line_type":"dialogue","character_id":"c","text":"第二句"}]}'
+
+    deltas, completed = [], []
+    StoryGenerator(_ChunkedLLM()).generate_script_stream(
+        "测试",
+        on_line_text_delta=lambda index, line, text: deltas.append(
+            (index, line["line_id"], text)
+        ),
+        on_line_complete=lambda index, line: completed.append(
+            (index, line["line_id"], line["text"])
+        ),
+    )
+
+    assert deltas == [(0, "1", "第"), (0, "1", "一句"), (1, "2", "第二句")]
+    assert completed == [(0, "1", "第一句"), (1, "2", "第二句")]
+
+
 def test_generate_script_sets_topic():
     generator, _ = _make_generator()
     script = generator.generate_script(topic="太空冒险")
