@@ -15,6 +15,11 @@ const withSound = ref(false)
 const providers = ref<{ name: string }[]>([])
 const selected = ref<string[]>([])
 const busy = ref(false)
+const storyIdeas = [
+  '一只怕黑的小狐狸，在月亮下交到了朋友',
+  '深海灯塔里，最后一条鲸鱼的来信',
+  '搬到新城市的孩子，发现窗台住着一颗星星',
+]
 
 onMounted(async () => {
   try {
@@ -46,6 +51,11 @@ const activeLineIndex = computed(() => {
   }
   return player.currentIndex
 })
+
+function chooseStoryIdea(idea: string) {
+  topic.value = idea
+  document.querySelector<HTMLTextAreaElement>('#topic')?.focus()
+}
 
 function submit() {
   if (!topic.value.trim() || busy.value) return
@@ -105,7 +115,14 @@ function stopGeneration() {
         <div class="script-lines"><p v-for="(line, i) in player.lines" :key="line.line_id" :class="{active: i === activeLineIndex}"><span>{{ String(i + 1).padStart(2, '0') }}</span><b class="speaker">{{ line.speaker }}</b><em>{{ line.text || '……' }}</em></p></div>
         <a v-if="player.finalUrl" class="download" :href="player.finalUrl" target="_blank">播放完整版 / 下载</a>
       </div>
-      <div v-else class="empty-player"><div class="moon">◐</div><p>你的下一段声音<br>会在这里开始。</p></div>
+      <div v-else class="empty-player">
+        <div class="moon" aria-hidden="true">◐</div>
+        <p>从一个小小的念头开始，<br>故事就会在这里响起。</p>
+        <div class="story-ideas" role="group" aria-label="试试这些故事主题">
+          <span>或者试试</span>
+          <button v-for="idea in storyIdeas" :key="idea" data-testid="story-idea" type="button" @click="chooseStoryIdea(idea)">{{ idea }}</button>
+        </div>
+      </div>
     </div>
   </section>
 </template>
