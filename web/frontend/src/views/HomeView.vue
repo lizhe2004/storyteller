@@ -6,6 +6,8 @@ import { useAudioTimeline } from '../composables/useAudioTimeline'
 
 const player = usePlayerStore()
 const timeline = useAudioTimeline()
+const isPlaying = timeline.playing
+const hasCapturedAudio = timeline.hasCapturedAudio
 const topic = ref('')
 const length = ref('short')
 const complexity = ref('simple')
@@ -93,10 +95,10 @@ function stopGeneration() {
           <div class="character-list"><span v-for="character in player.characters" :key="character.id" class="character-chip"><b>{{ character.name }}</b><small>{{ character.voice?.name || character.voice?.voice_id || '待匹配音色' }}</small></span></div>
         </div>
         <div class="player-controls">
-          <button v-if="timeline.playing || !['completed', 'failed', 'canceled'].includes(player.phase)" class="round" :aria-label="timeline.playing ? '暂停播放' : '继续播放'" :title="timeline.playing ? '暂停播放' : '继续播放'" @click="timeline.togglePause"><span aria-hidden="true">{{ timeline.playing ? 'Ⅱ' : '▶' }}</span><small>{{ timeline.playing ? '暂停' : '继续' }}</small></button>
+          <button v-if="isPlaying || !['completed', 'failed', 'canceled'].includes(player.phase)" class="round" :class="{ 'is-playing': isPlaying }" :aria-pressed="isPlaying" :aria-label="isPlaying ? '暂停播放' : '继续播放'" :title="isPlaying ? '暂停播放' : '继续播放'" @click="timeline.togglePause"><span aria-hidden="true">{{ isPlaying ? 'Ⅱ' : '▶' }}</span><small>{{ isPlaying ? '暂停' : '继续' }}</small></button>
           <div class="meter"><i :style="{width: `${progressWidth}%`}"></i></div>
-          <button v-if="timeline.hasCapturedAudio" class="cancel replay" @click="timeline.replay">↻ 重播缓存</button>
-          <button v-if="timeline.hasCapturedAudio" class="cancel replay" @click="timeline.replayDirect">◌ 对照重播</button>
+          <button v-if="hasCapturedAudio" class="cancel replay" @click="timeline.replay">↻ 重播缓存</button>
+          <button v-if="hasCapturedAudio" class="cancel replay" @click="timeline.replayDirect">◌ 对照重播</button>
           <button v-if="!['completed', 'failed', 'canceled'].includes(player.phase)" class="cancel" @click="stopGeneration">停止生成</button>
         </div>
         <p v-if="player.fillerText" class="host-bubble">{{ player.fillerText }}</p>
