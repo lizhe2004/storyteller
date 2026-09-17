@@ -298,6 +298,7 @@ class RuntimeSettingsStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary_path, self._settings_path)
+            os.chmod(self._settings_path, 0o600)
         finally:
             try:
                 temporary_path.unlink()

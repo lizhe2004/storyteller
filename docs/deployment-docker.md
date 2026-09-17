@@ -12,18 +12,16 @@
 cp .env.example .env
 ```
 
-至少配置：
+至少配置服务 API Key。Web 密码可以留空，首次启动后会在日志中生成一次性初始化码：
 
 ```env
-STORYTELLER_WEB_PASSWORDS=请设置一个登录密码
-STORYTELLER_WEB_SECRET=请设置一个长期随机密钥
 STORYTELLER_LLM_VOLCENGINE_API_KEY=你的LLM_API_KEY
 STORYTELLER_TTS_VOLCENGINE_API_KEY=你的TTS_API_KEY
 STORYTELLER_LLM_VOLCENGINE_MODEL=deepseek-v4-flash-260425
 STORYTELLER_TTS_PROVIDERS=volcengine
 ```
 
-示例值必须替换，真实密码和 API Key 不要提交到版本库。
+示例值必须替换，真实 API Key 不要提交到版本库。如果自行配置 `STORYTELLER_WEB_PASSWORDS`，首次初始化码将不会生成。
 
 ## 拉取并启动
 
@@ -48,6 +46,8 @@ http://localhost:8000
 ```bash
 docker compose logs -f storyteller
 ```
+
+首次部署时，从启动日志中复制 `First-run password setup required` 后面的初始化码，在浏览器页面设置至少 8 位登录密码。设置成功后，密码哈希和会话签名密钥会持久化到 `docker-data/config/settings.json`，初始化码立即失效；请勿公开分享服务日志。
 
 停止服务：
 

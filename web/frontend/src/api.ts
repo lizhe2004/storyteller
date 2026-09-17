@@ -8,8 +8,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  authStatus: () => request<{ setup_required: boolean; setup_available: boolean }>('/api/auth/status'),
   me: () => request<{ authenticated: boolean }>('/api/me'),
   login: (password: string) => request<void>('/api/auth', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ password }) }),
+  setup: (code: string, password: string) => request<void>('/api/auth/setup', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ code, password }) }),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
   options: () => request<{ lengths: string[]; complexities: string[]; tts_providers: {name: string}[]; sound_enabled: boolean }>('/api/config/options'),
   stories: () => request<{ stories: { id: string; dir_name: string; title: string; state: string; created_at: string }[] }>('/api/stories'),

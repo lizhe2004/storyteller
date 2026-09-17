@@ -10,6 +10,7 @@ def _app(tmp_path):
     cfg.set("web.secret", "test-secret")
     cfg.set("web.rate_limit_per_min", 0)
     cfg.set("project_dir", str(tmp_path / "stories"))
+    cfg.set("data_dir", str(tmp_path))
     cfg.set("tts.providers", ["mock"])
     cfg.set("tts.provider_config.mock", {"type": "mock"})
     return create_app(cfg)
@@ -24,6 +25,54 @@ def test_auth_and_options(tmp_path):
         body = client.get("/api/config/options").json()
         assert body["tts_providers"] == [{"name": "mock"}]
         assert "api_key" not in str(body)
+
+
+def test_first_run_setup_is_one_time_and_persisted(tmp_path):
+    cfg = Config()
+    cfg.set("data_dir", str(tmp_path))
+    cfg.set("web.rate_limit_per_min", 0)
+    app = create_app(cfg)
+    setup_code = app.state.setup_code
+    assert setup_code
+
+    with TestClient(app) as client:
+        assert client.get("/api/auth/status").json() == {
+            "setup_required": True, "setup_available": True
+        }
+        assert client.post("/api/auth", json={"password": "unused"}).status_code == 409
+        assert client.post("/api/auth/setup", json={
+            "code": "wrong", "password": "a sufficiently long password"
+        }).status_code == 401
+        assert client.post("/api/auth/setup", json={
+            "code": setup_code, "password": "1234567"
+        }).status_code == 422
+        response = client.post("/api/auth/setup", json={
+            "code": setup_code, "password": "12345678"
+        })
+        assert response.status_code == 204
+        assert client.get("/api/auth/status").json() == {
+            "setup_required": False, "setup_available": False
+        }
+        assert client.get("/api/me").json()["authenticated"] is True
+        assert client.post("/api/auth/setup", json={
+            "code": setup_code, "password": "another sufficiently long password"
+        }).status_code == 409
+
+    import json
+    persisted = json.loads((tmp_path / "config" / "settings.json").read_text())
+    stored_password = persisted["web"]["passwords"][0]
+    assert stored_password.startswith("pbkdf2_sha256$")
+    assert "12345678" not in stored_password
+
+    restarted = create_app(cfg)
+    assert restarted.state.setup_code is None
+    with TestClient(restarted) as client:
+        assert client.get("/api/auth/status").json() == {
+            "setup_required": False, "setup_available": False
+        }
+        assert client.post("/api/auth", json={
+            "password": "12345678"
+        }).status_code == 204
 
 
 def test_static_javascript_assets_share_the_assets_directory(tmp_path):

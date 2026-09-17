@@ -1,3 +1,7 @@
+import logging
+import secrets
+import threading
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
@@ -7,6 +11,8 @@ from .jobs import JobManager
 from .routes_auth import router as auth_router
 from .routes_options import router as options_router
 from .routes_settings import router as settings_router
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(config, registry=None):
@@ -20,6 +26,20 @@ def create_app(config, registry=None):
     app = FastAPI(title="storyteller web")
     app.state.config = runtime_config
     app.state.runtime_settings = runtime_settings
+    app.state.setup_lock = threading.Lock()
+    app.state.setup_code = None
+
+    def update_setup_code(current):
+        if current.get("web.passwords"):
+            app.state.setup_code = None
+        elif not runtime_settings.snapshot().config_error and not app.state.setup_code:
+            app.state.setup_code = secrets.token_urlsafe(18)
+            logger.warning(
+                "First-run password setup required; one-time setup code: %s",
+                app.state.setup_code,
+            )
+
+    update_setup_code(runtime_config)
     app.state.registry = registry
     app.state.issuer = TokenIssuer(runtime_config.get("web.secret"), runtime_config.get("web.token_ttl_days"))
     app.state.limiter = RateLimiter(runtime_config.get("web.rate_limit_per_min"))
@@ -31,6 +51,7 @@ def create_app(config, registry=None):
     def refresh_runtime_config():
         current = runtime_settings.snapshot().to_config()
         app.state.config = current
+        update_setup_code(current)
         app.state.issuer = TokenIssuer(
             current.get("web.secret"), current.get("web.token_ttl_days")
         )

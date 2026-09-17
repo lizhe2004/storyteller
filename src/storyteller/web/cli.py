@@ -7,8 +7,6 @@ import click
 def web_command(host, port):
     from ..core.config import Config
     cfg = Config.from_env()
-    if not cfg.get("web.passwords"):
-        raise click.ClickException("未配置访问密码：请设置 STORYTELLER_WEB_PASSWORDS")
     try:
         import uvicorn
     except ImportError:

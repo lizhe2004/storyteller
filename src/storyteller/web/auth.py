@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import hashlib
 import secrets
 import threading
 import time
@@ -22,7 +23,30 @@ def require_login(request: Request):
 
 def check_password(password, passwords):
     given = (password or "").encode("utf-8")
-    return any(hmac.compare_digest(given, p.encode("utf-8")) for p in (passwords or []))
+    for stored in passwords or []:
+        if stored.startswith("pbkdf2_sha256$"):
+            try:
+                _, iterations, salt, expected = stored.split("$", 3)
+                actual = hashlib.pbkdf2_hmac(
+                    "sha256", given, bytes.fromhex(salt), int(iterations)
+                ).hex()
+                if hmac.compare_digest(actual, expected):
+                    return True
+            except (ValueError, TypeError):
+                continue
+        elif hmac.compare_digest(given, stored.encode("utf-8")):
+            # Environment-provided passwords remain compatible.
+            return True
+    return False
+
+
+def hash_password(password):
+    salt = secrets.token_bytes(16)
+    iterations = 600_000
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return "pbkdf2_sha256${}${}${}".format(
+        iterations, salt.hex(), digest.hex()
+    )
 
 
 class TokenIssuer:

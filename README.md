@@ -51,7 +51,7 @@ CLI 最少需要配置 LLM 和 TTS 两套互相独立的密钥；使用 Web、�
 | `STORYTELLER_DATA_DIR` | 生成物根目录，默认 `./.storyteller`（内含 `stories/`、`sounds/`） |
 | `STORYTELLER_OUTPUT_DIR` / `STORYTELLER_PROJECT_DIR` | 分别覆盖故事产物/状态目录，默认都在 `<DATA_DIR>/stories` |
 | `STORYTELLER_VOICE_MATCHER` | `llm`（默认，语义匹配）或 `rule`（仅关键字规则） |
-| `STORYTELLER_WEB_PASSWORDS` / `STORYTELLER_WEB_SECRET` | Web 登录密码（逗号分隔）/ Cookie 签名密钥；启动 Web 必填密码 |
+| `STORYTELLER_WEB_PASSWORDS` / `STORYTELLER_WEB_SECRET` | 可选的 Web 登录密码（逗号分隔）/ Cookie 签名密钥；未配置密码时可在首次访问时通过日志初始化码设置 |
 | `STORYTELLER_WEB_HOST` / `STORYTELLER_WEB_PORT` | Web 监听地址/端口，默认 `127.0.0.1` / `8000` |
 | `STORYTELLER_SOUND_ENABLED` | `true/false`，是否生成音效/背景音乐（默认关） |
 | `STORYTELLER_SOUND_DIR` | 全局共享音效库目录，默认 `<DATA_DIR>/sounds` |
@@ -451,7 +451,7 @@ cp .env.example .env
 storyteller web --host 0.0.0.0 --port 8000
 ```
 
-配置 `STORYTELLER_WEB_PASSWORDS` 后即可登录。WebSocket `/ws` 使用 cookie
+配置 `STORYTELLER_WEB_PASSWORDS` 后即可登录；未配置时 Web 会在日志中输出一次性初始化码，首次打开页面后输入该码并设置至少 8 位密码。密码哈希和会话签名密钥会保存到数据目录的后台设置中。WebSocket `/ws` 使用 cookie
 或 token 鉴权，音频线缆标准为 PCM s16le / mono / 24kHz。前端工程见
 `web/frontend`，构建产物由 FastAPI 托管。
 
