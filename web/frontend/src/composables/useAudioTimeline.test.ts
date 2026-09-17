@@ -22,6 +22,20 @@ describe('useAudioTimeline', () => {
     expect(fake.resume).toHaveBeenCalled()
   })
 
+  it('plays PCM buffered during AudioWorklet startup if worklet loading fails', async () => {
+    const fake = new FakeContext() as FakeContext & { audioWorklet: { addModule: ReturnType<typeof vi.fn> } }
+    fake.audioWorklet = { addModule: vi.fn(async () => { throw new Error('worklet load failed') }) }
+    ;(globalThis as any).AudioContext = vi.fn(() => fake)
+    ;(globalThis as any).AudioWorkletNode = vi.fn()
+    const timeline = useAudioTimeline()
+    timeline.begin(24000)
+    timeline.append(new Int16Array(2400).buffer)
+
+    await vi.waitFor(() => expect(fake.sources).toHaveLength(1))
+    expect(fake.sources[0].start).toHaveBeenCalledWith(0.05)
+    delete (globalThis as any).AudioWorkletNode
+  })
+
   it('can suspend and resume the same audio context', async () => {
     const fake = new FakeContext(); (globalThis as any).AudioContext = vi.fn(() => fake)
     const timeline = useAudioTimeline(); timeline.begin(); await timeline.togglePause(); expect(fake.suspend).toHaveBeenCalled(); await timeline.togglePause(); expect(fake.resume).toHaveBeenCalledTimes(2)

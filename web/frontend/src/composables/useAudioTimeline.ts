@@ -25,6 +25,19 @@ export function useAudioTimeline() {
     pending = []
   }
 
+  function scheduleFallback(samples: Float32Array) {
+    const audioContext = context.value
+    if (!audioContext || !samples.length) return
+    const audio = audioContext.createBuffer(1, samples.length, sampleRate)
+    audio.getChannelData(0).set(samples)
+    const source = audioContext.createBufferSource()
+    source.buffer = audio
+    source.connect(audioContext.destination)
+    const at = Math.max(audioContext.currentTime + 0.05, cursor.value)
+    source.start(at)
+    cursor.value = at + audio.duration
+  }
+
   function begin(rate = 24000) {
     sampleRate = rate
     if (context.value) {
@@ -52,7 +65,7 @@ export function useAudioTimeline() {
     console.info('[storyteller-audio] PCM capture ready; run window.__storytellerAudioDiagnostics.download() after playback to save PCM + manifest')
     worklet = null; useWorklet = canUseWorklet(audioContext)
     if (useWorklet) {
-      workletReady = audioContext.audioWorklet!.addModule('/pcm-ring-buffer-worklet.js').then(() => {
+      workletReady = audioContext.audioWorklet!.addModule('/assets/pcm-ring-buffer-worklet.js').then(() => {
         if (!context.value) return
         worklet = new AudioWorkletNode(context.value, 'pcm-ring-buffer', { processorOptions: { inputSampleRate: sampleRate } })
         worklet.port.onmessage = ({ data }) => {
@@ -78,7 +91,13 @@ export function useAudioTimeline() {
         }
         worklet.connect(context.value.destination)
         flushPending()
-      }).catch(() => { worklet = null; useWorklet = false })
+      }).catch((error) => {
+        worklet = null
+        useWorklet = false
+        console.warn('[storyteller-audio] AudioWorklet unavailable; switching to scheduled AudioBuffer playback', error)
+        for (const samples of pending) scheduleFallback(samples)
+        pending = []
+      })
     } else {
       workletReady = null
     }
@@ -134,13 +153,7 @@ export function useAudioTimeline() {
     queuedSamples += floatSamples.length
     if (worklet) worklet.port.postMessage({ type: 'write', samples: floatSamples.buffer }, [floatSamples.buffer])
     else if (useWorklet) pending.push(floatSamples)
-    else {
-      const audio = context.value.createBuffer(1, samples.length, sampleRate)
-      audio.getChannelData(0).set(floatSamples)
-      const source = context.value.createBufferSource(); source.buffer = audio; source.connect(context.value.destination)
-      const at = Math.max(context.value.currentTime + 0.05, cursor.value)
-      source.start(at); cursor.value = at + audio.duration
-    }
+    else scheduleFallback(floatSamples)
     buffered.value = queuedSamples / sampleRate
     previousLastSample = lastSample; previousUnit = unit; previousArrivalMs = wallNow
   }

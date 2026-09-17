@@ -101,7 +101,7 @@ async function play(mode: Mode) {
       return
     }
     if (!ctx.audioWorklet || typeof AudioWorkletNode === 'undefined') throw new Error('当前浏览器不支持 AudioWorklet')
-    await ctx.audioWorklet.addModule('/pcm-ring-buffer-worklet.js')
+    await ctx.audioWorklet.addModule('/assets/pcm-ring-buffer-worklet.js')
     worklet = new AudioWorkletNode(ctx, 'pcm-ring-buffer', { processorOptions: { inputSampleRate: PCM_SAMPLE_RATE } })
     worklet.port.onmessage = ({ data }) => {
       if (data.type === 'state') underruns.value = data.underruns

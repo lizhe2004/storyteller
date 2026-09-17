@@ -24,3 +24,21 @@ def test_auth_and_options(tmp_path):
         body = client.get("/api/config/options").json()
         assert body["tts_providers"] == [{"name": "mock"}]
         assert "api_key" not in str(body)
+
+
+def test_static_javascript_assets_share_the_assets_directory(tmp_path):
+    with TestClient(_app(tmp_path)) as client:
+        worklet = client.get("/assets/pcm-ring-buffer-worklet.js")
+        assert worklet.status_code == 200
+        assert "javascript" in worklet.headers["content-type"]
+        assert "registerProcessor('pcm-ring-buffer'" in worklet.text
+
+        old_worklet_path = client.get("/pcm-ring-buffer-worklet.js")
+        assert old_worklet_path.status_code == 404
+
+        missing_asset = client.get("/missing-worklet.js")
+        assert missing_asset.status_code == 404
+
+        spa_route = client.get("/stories")
+        assert spa_route.status_code == 200
+        assert "text/html" in spa_route.headers["content-type"]

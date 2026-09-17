@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
 from ..core.runtime_settings import RuntimeSettingsStore
@@ -68,8 +68,23 @@ def create_app(config, registry=None):
             app.mount("/assets", StaticFiles(directory=str(assets)), name="assets")
         @app.get("/{path:path}")
         async def spa_fallback(path: str):
-            # Vue Router uses history mode; unknown non-API paths must load the
-            # SPA shell so direct links and browser refreshes work.
+            # Root-level public files (for example the AudioWorklet module)
+            # must be served as files instead of falling through to index.html.
+            if path:
+                root = static.resolve()
+                candidate = (static / path).resolve()
+                try:
+                    candidate.relative_to(root)
+                except ValueError:
+                    raise HTTPException(status_code=404)
+                if candidate.is_file():
+                    return FileResponse(str(candidate))
+                # Returning index.html for a missing script hides deployment
+                # mistakes behind a confusing strict-MIME module error.
+                if candidate.suffix:
+                    raise HTTPException(status_code=404)
+            # Vue Router uses history mode; extensionless routes load the SPA
+            # shell so direct links and browser refreshes continue to work.
             return FileResponse(str(static / "index.html"))
         app.mount("/", StaticFiles(directory=str(static), html=True), name="spa")
     return app
