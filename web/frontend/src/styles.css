@@ -143,3 +143,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--teal);outline-offse
 .round.is-playing{border-color:var(--coral);background:var(--coral);color:var(--ink)}
 .round:not(.is-playing){border-color:var(--teal);color:var(--teal)}
 .round:active{transform:scale(.94)}
+.story-form>label select{display:block;width:100%;margin-top:8px;color:var(--paper);background:#111d30;border:1px solid var(--line);padding:11px 12px;border-radius:4px;outline:none}
+.story-form>label select:focus{border-color:var(--teal)}
+.story-form>label select:disabled{opacity:.55}
+.playback-hint{margin:-3px 0 20px;color:#8191a7;font-size:11px;line-height:1.6}

@@ -26,6 +26,14 @@ afterEach(() => {
 })
 
 describe('HomeView empty state', () => {
+  it('offers both playback modes and keeps Web Audio as the default', async () => {
+    const element = await mountHome()
+    const select = element.querySelector('select[aria-label="播放方式"]') as HTMLSelectElement
+
+    expect(select.value).toBe('webaudio')
+    expect(Array.from(select.options).map(option => option.value)).toEqual(['webaudio', 'native_mp3'])
+  })
+
   it('offers a story idea that fills and focuses the topic field', async () => {
     const element = await mountHome()
     const textarea = element.querySelector('#topic') as HTMLTextAreaElement
