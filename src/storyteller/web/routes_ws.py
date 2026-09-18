@@ -5,6 +5,7 @@ import asyncio
 from fastapi import APIRouter, WebSocket
 
 from ..core.tts import STREAM_CHANNELS, STREAM_SAMPLE_RATE
+from ..core.observability import server_time
 from .auth import SESSION_COOKIE
 from .jobs import JobParams
 from .streaming import StreamOrchestrator
@@ -13,9 +14,12 @@ router = APIRouter()
 TERMINAL = {"complete", "error", "canceled"}
 
 
-def _ready():
-    return {"type": "ready", "audio": {"encoding": "pcm_s16le",
-            "sample_rate": STREAM_SAMPLE_RATE, "channels": STREAM_CHANNELS}}
+def _ready(job):
+    return {"type": "ready", "job_id": job.id,
+            "playback_mode": job.params.audio_mode,
+            "server_time": server_time(),
+            "audio": {"encoding": "pcm_s16le",
+                      "sample_rate": STREAM_SAMPLE_RATE, "channels": STREAM_CHANNELS}}
 
 
 async def _receive_loop(ws, inbox):
@@ -50,7 +54,7 @@ async def ws_endpoint(ws: WebSocket):
             job = state.jobs.get(job_id)
             if job is None:
                 await ws.close(code=4404); return
-            for event in (_ready(), {"type": "status", "phase": job.phase,
+            for event in (_ready(job), {"type": "status", "phase": job.phase,
                          "message": "已重连", "index": job.line_index,
                          "total": job.total}, job.script_preview,
                          job.characters_matched, job.script_ready):
@@ -64,7 +68,9 @@ async def ws_endpoint(ws: WebSocket):
                 topic=first.get("topic", ""), length=first.get("length", "medium"),
                 complexity=first.get("complexity", "simple"),
                 with_sound=bool(first.get("with_sound", False)),
-                tts_providers=first.get("tts_providers")))
+                tts_providers=first.get("tts_providers"),
+                audio_mode=("native_mp3" if first.get("audio_mode") == "native_mp3" else "webaudio")))
+            await ws.send_json(_ready(job))
             state.jobs.submit(job, lambda j: StreamOrchestrator(
                 state.config, registry=state.registry).run(j))
         old = state.job_viewers.get(job.id)

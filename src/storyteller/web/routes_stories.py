@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import re
+import queue
+import shutil
+import subprocess
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from ..core.exceptions import ProjectError
 from ..core.project import ProjectManager
@@ -82,6 +86,75 @@ def story_audio(ref: str, request: Request):
     if not audio:
         raise HTTPException(404, "音频尚未生成")
     return FileResponse(str(audio))
+
+
+@router.get("/api/streaming-jobs/{job_id}/audio")
+def streaming_job_audio(job_id: str, request: Request):
+    """Encode the job's ordered PCM frames into one progressive MP3 response."""
+    _auth(request)
+    job = request.app.state.jobs.get(job_id)
+    if job is None:
+        raise HTTPException(404, "播放任务不存在或已过期")
+    if job.params.audio_mode != "native_mp3":
+        raise HTTPException(409, "此任务未启用原生音频播放")
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise HTTPException(503, "服务器未安装 ffmpeg，无法提供 MP3 实时流")
+
+    def encoded_audio():
+        process = subprocess.Popen(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "s16le",
+             "-ar", "24000", "-ac", "1", "-i", "pipe:0", "-vn",
+             "-codec:a", "libmp3lame", "-b:a", "64k", "-flush_packets", "1",
+             "-f", "mp3", "pipe:1"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            bufsize=0,
+        )
+        stop_writer = threading.Event()
+
+        def write_pcm():
+            try:
+                assert process.stdin is not None
+                while not stop_writer.is_set():
+                    try:
+                        pcm = job.audio_queue.get(timeout=0.25)
+                    except queue.Empty:
+                        if job.audio_stream_closed:
+                            break
+                        continue
+                    if pcm is None:
+                        break
+                    process.stdin.write(pcm)
+                    process.stdin.flush()
+            except (BrokenPipeError, OSError):
+                pass
+            finally:
+                try:
+                    process.stdin.close()
+                except (BrokenPipeError, OSError, ValueError):
+                    pass
+
+        writer = threading.Thread(target=write_pcm, name="storyteller-mp3-stream", daemon=True)
+        writer.start()
+        try:
+            assert process.stdout is not None
+            while True:
+                chunk = process.stdout.read(4096)
+                if not chunk:
+                    break
+                yield chunk
+            writer.join(timeout=1)
+        finally:
+            stop_writer.set()
+            if process.poll() is None:
+                process.terminate()
+            process.wait(timeout=3)
+            process.stdout.close()
+
+    return StreamingResponse(
+        encoded_audio(), media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/api/stories/{ref}/segments/{segment}")

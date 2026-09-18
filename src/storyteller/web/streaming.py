@@ -676,8 +676,6 @@ class StreamOrchestrator:
         params = job.params
         job_logger = with_context(logger, job_id=job.id)
         log_event(job_logger, logging.INFO, "job_started", topic=params.topic)
-        job.emit({"type": "ready", "audio": {"encoding": "pcm_s16le",
-                  "sample_rate": STREAM_SAMPLE_RATE, "channels": 1}})
         tts_names = params.tts_providers or self.config.get("tts.providers") or self.registry.list_tts_names()
         llm_name = self._llm_name()
         if not tts_names or not llm_name:

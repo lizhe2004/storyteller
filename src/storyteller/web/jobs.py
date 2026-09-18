@@ -27,6 +27,7 @@ class JobParams:
     complexity: str = "simple"
     with_sound: bool = False
     tts_providers: object = None
+    audio_mode: str = "webaudio"
 
 
 class Job:
@@ -49,17 +50,45 @@ class Job:
         self.total = 0
         self.cancel_event = threading.Event()
         self.queue = queue.Queue()
+        # Native media playback consumes a separate copy of PCM so WebSocket
+        # control events and the existing Web Audio path remain independent.
+        self.audio_queue = queue.Queue(maxsize=256)
+        self.audio_stream_closed = False
 
     def emit(self, obj):
         if isinstance(obj, dict) and "_bytes" not in obj:
             obj = dict(obj)
             obj.setdefault("server_time", server_time())
         self.queue.put(obj)
+        if isinstance(obj, dict) and obj.get("type") in {"complete", "error", "canceled"}:
+            self.close_audio_stream()
 
     def emit_bytes(self, data):
         if len(data) % 2:
             raise ValueError("PCM frame must have even byte length")
-        self.queue.put({"_bytes": data})
+        if self.params.audio_mode == "native_mp3":
+            while not self.cancel_event.is_set():
+                try:
+                    self.audio_queue.put(data, timeout=0.25)
+                    break
+                except queue.Full:
+                    continue
+        else:
+            self.queue.put({"_bytes": data})
+
+    def close_audio_stream(self):
+        if self.audio_stream_closed:
+            return
+        self.audio_stream_closed = True
+        try:
+            self.audio_queue.put_nowait(None)
+        except queue.Full:
+            # Ensure a full queue cannot prevent shutdown after a client leaves.
+            try:
+                self.audio_queue.get_nowait()
+            except queue.Empty:
+                pass
+            self.audio_queue.put_nowait(None)
 
 
 class JobManager:

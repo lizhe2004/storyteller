@@ -1,7 +1,10 @@
 from fastapi.testclient import TestClient
+import shutil
+import subprocess
 
 from storyteller.core.config import Config
 from storyteller.web.app import create_app
+from storyteller.web.jobs import JobParams
 
 
 def _app(tmp_path):
@@ -91,3 +94,28 @@ def test_static_javascript_assets_share_the_assets_directory(tmp_path):
         spa_route = client.get("/stories")
         assert spa_route.status_code == 200
         assert "text/html" in spa_route.headers["content-type"]
+
+
+def test_native_audio_job_streams_mp3_from_pcm_queue(tmp_path):
+    if not shutil.which("ffmpeg"):
+        import pytest
+        pytest.skip("ffmpeg is required for native MP3 streaming")
+    app = _app(tmp_path)
+    job = app.state.jobs.create(JobParams(topic="native stream", audio_mode="native_mp3"))
+    job.emit_bytes(b"\x01\x00" * 24000)
+    job.emit({"type": "complete"})
+
+    with TestClient(app) as client:
+        client.cookies.set("storyteller_session", app.state.issuer.issue())
+        response = client.get(f"/api/streaming-jobs/{job.id}/audio")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("audio/mpeg")
+    assert response.headers["cache-control"] == "no-store"
+    assert response.content
+    decoded = subprocess.run(
+        [shutil.which("ffmpeg"), "-hide_banner", "-loglevel", "error", "-i",
+         "pipe:0", "-f", "null", "-"], input=response.content,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+    )
+    assert decoded.returncode == 0, decoded.stderr.decode("utf-8", errors="replace")
