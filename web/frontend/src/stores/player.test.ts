@@ -29,6 +29,52 @@ describe('player script display', () => {
 
     expect(store.lines[0].text).toBe('月亮升起来了。')
   })
+
+  it('does not let a late script preview erase matched character voices', () => {
+    const store = usePlayerStore()
+    const voice = { provider: 'volcengine', voice_id: 'voice-fox', name: '亮嗓萌仔' }
+    store.applyScriptReady({
+      type: 'script_ready',
+      title: '冬夜小狐狸',
+      characters: [{ id: 'fox', name: '小狐狸', voice }],
+      lines: [{ line_id: '1', line_type: 'dialogue', character_id: 'fox', speaker: '小狐狸', text: '回家吧。' }],
+    })
+
+    store.applyScriptPreview({
+      type: 'script_preview',
+      title: '冬夜小狐狸',
+      characters: [{ id: 'fox', name: '小狐狸' }],
+      lines: [{ line_id: '1', line_type: 'dialogue', character_id: 'fox', speaker: '小狐狸', text: '回家吧。' }],
+    })
+
+    expect(store.characters[0].voice).toEqual(voice)
+  })
+
+  it('applies matched voices before script_ready and carries them across later previews', () => {
+    const store = usePlayerStore()
+    const voice = { provider: 'volcengine', voice_id: 'voice-fox', name: '亮嗓萌仔' }
+    store.applyScriptPreview({
+      type: 'script_preview',
+      title: '冬夜小狐狸',
+      characters: [{ id: 'fox', name: '小狐狸' }],
+      lines: [],
+    })
+
+    store.applyEvent({
+      type: 'characters_matched',
+      characters: [{ id: 'fox', name: '小狐狸', voice }],
+    })
+    expect(store.characters[0].voice).toEqual(voice)
+
+    store.applyScriptPreview({
+      type: 'script_preview',
+      title: '冬夜小狐狸',
+      characters: [{ id: 'fox', name: '小狐狸' }],
+      lines: [],
+    })
+
+    expect(store.characters[0].voice).toEqual(voice)
+  })
 })
 
 describe('player opening / start notice events', () => {

@@ -47,5 +47,27 @@ describe('playback controls', () => {
     expect(button.getAttribute('aria-pressed')).toBe('false')
     expect(button.classList.contains('is-playing')).toBe(false)
     expect(button.textContent).toContain('▶')
+
+    player.phase = 'completed'
+    timeline.playing.value = true
+    await nextTick()
+    expect(element.querySelector('.round')).not.toBeNull()
+
+    timeline.playing.value = false
+    timeline.paused.value = true
+    await nextTick()
+    expect(element.querySelector('.round')).not.toBeNull()
+    expect(element.querySelector('.round')?.getAttribute('aria-label')).toBe('继续播放')
+
+    timeline.paused.value = false
+    timeline.hasCapturedAudio.value = true
+    timeline.ended.value = true
+    await nextTick()
+    const replayButton = element.querySelector('.round') as HTMLButtonElement
+    expect(replayButton.getAttribute('aria-label')).toBe('重新播放')
+    expect(replayButton.textContent).toContain('↻')
+    const replay = vi.spyOn(timeline, 'replay').mockReturnValue(true)
+    replayButton.click()
+    expect(replay).toHaveBeenCalledOnce()
   })
 })

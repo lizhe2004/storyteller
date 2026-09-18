@@ -9,10 +9,13 @@ const timeline = useAudioTimeline()
 const playbackMode = ref<'webaudio' | 'native_mp3'>('webaudio')
 const nativeAudio = ref<HTMLAudioElement | null>(null)
 const nativePlaying = ref(false)
+const nativeEnded = ref(false)
 const nativeNeedsTap = ref(false)
 const nativeError = ref('')
 const nativeCurrentMs = ref(0)
 const isPlaying = computed(() => playbackMode.value === 'native_mp3' ? nativePlaying.value : timeline.playing.value)
+const isPaused = computed(() => playbackMode.value === 'native_mp3' ? Boolean(nativeAudio.value?.src && nativeAudio.value.paused && !nativeEnded.value) : timeline.paused.value)
+const isEnded = computed(() => playbackMode.value === 'native_mp3' ? nativeEnded.value : timeline.ended.value)
 const playedMs = computed(() => playbackMode.value === 'native_mp3' ? nativeCurrentMs.value : timeline.playedMs.value)
 const hasCapturedAudio = timeline.hasCapturedAudio
 const topic = ref('')
@@ -67,6 +70,7 @@ function chooseStoryIdea(idea: string) {
 function submit() {
   if (!topic.value.trim() || busy.value) return
   nativeError.value = ''; nativeNeedsTap.value = false
+  nativeEnded.value = false; nativeCurrentMs.value = 0
   if (nativeAudio.value) { nativeAudio.value.pause(); nativeAudio.value.removeAttribute('src'); nativeAudio.value.load() }
   if (playbackMode.value === 'webaudio') timeline.begin()
   else timeline.stop()
@@ -100,16 +104,25 @@ function stopGeneration() {
 }
 
 function togglePlayback() {
-  if (playbackMode.value !== 'native_mp3' || !nativeAudio.value) {
-    void timeline.togglePause()
-    return
-  }
-  if (nativeAudio.value.paused) {
+  if (playbackMode.value === 'native_mp3' && nativeAudio.value) {
+    if (isEnded.value) {
+      if (!player.finalUrl) {
+        nativeError.value = '实时音频流不能倒带；请等待故事完成后重播。'
+        return
+      }
+      nativeAudio.value.src = player.finalUrl
+      nativeAudio.value.currentTime = 0
+      nativeEnded.value = false
+    } else if (!nativeAudio.value.paused) {
+      nativeAudio.value.pause()
+      return
+    }
     void nativeAudio.value.play().then(() => { nativeNeedsTap.value = false }).catch(() => {
       nativeNeedsTap.value = true
       nativeError.value = '无法开始播放，请重新点击播放按钮。'
     })
-  } else nativeAudio.value.pause()
+  } else if (isEnded.value) timeline.replay()
+  else void timeline.togglePause()
 }
 </script>
 
@@ -134,7 +147,7 @@ function togglePlayback() {
     </div>
 
     <div class="player-panel">
-      <audio ref="nativeAudio" preload="none" @playing="nativePlaying = true" @pause="nativePlaying = false" @timeupdate="nativeCurrentMs = ($event.target as HTMLAudioElement).currentTime * 1000" @ended="nativePlaying = false" @error="nativeError = '原生 MP3 流播放失败，请查看服务端日志或切回 Web Audio。'" />
+      <audio ref="nativeAudio" preload="none" @playing="nativePlaying = true; nativeNeedsTap = false" @pause="nativePlaying = false" @timeupdate="nativeCurrentMs = ($event.target as HTMLAudioElement).currentTime * 1000" @ended="nativePlaying = false; nativeEnded = true" @error="nativeError = '原生 MP3 流播放失败，请查看服务端日志或切回 Web Audio。'" />
       <div class="panel-head"><span class="live-dot" :class="{on: player.phase !== 'idle'}"></span><span>{{ player.phase === 'idle' ? '还没有正在播放的故事' : player.message || player.phase }}</span></div>
       <p v-if="player.error" class="error error-detail">{{ player.error }}</p>
       <div v-if="player.title || player.lines.length" class="now-playing">
@@ -145,9 +158,9 @@ function togglePlayback() {
           <div class="character-list"><span v-for="character in player.characters" :key="character.id" class="character-chip"><b>{{ character.name }}</b><small>{{ character.voice?.name || character.voice?.voice_id || '待匹配音色' }}</small></span></div>
         </div>
         <div class="player-controls">
-          <button v-if="isPlaying || !['completed', 'failed', 'canceled'].includes(player.phase)" class="round" :class="{ 'is-playing': isPlaying }" :aria-pressed="isPlaying" :aria-label="isPlaying ? '暂停播放' : '继续播放'" :title="isPlaying ? '暂停播放' : '继续播放'" @click="togglePlayback"><span aria-hidden="true">{{ isPlaying ? 'Ⅱ' : '▶' }}</span><small>{{ isPlaying ? '暂停' : (nativeNeedsTap ? '开始原生播放' : '继续') }}</small></button>
+          <button v-if="isPlaying || isPaused || isEnded || !['completed', 'failed', 'canceled'].includes(player.phase)" class="round" :class="{ 'is-playing': isPlaying }" :aria-pressed="isPlaying" :aria-label="isPlaying ? '暂停播放' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" :title="isPlaying ? '暂停播放' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" @click="togglePlayback"><span aria-hidden="true">{{ isPlaying ? 'Ⅱ' : isEnded ? '↻' : '▶' }}</span><small>{{ isPlaying ? '暂停' : nativeNeedsTap ? '开始原生播放' : isEnded ? '重播' : '继续' }}</small></button>
           <div class="meter"><i :style="{width: `${progressWidth}%`}"></i></div>
-          <button v-if="hasCapturedAudio" class="cancel replay" @click="timeline.replay">↻ 重播缓存</button>
+          <button v-if="hasCapturedAudio && !isEnded" class="cancel replay" @click="timeline.replay">↻ 重播缓存</button>
           <button v-if="hasCapturedAudio" class="cancel replay" @click="timeline.replayDirect">◌ 对照重播</button>
           <button v-if="!['completed', 'failed', 'canceled'].includes(player.phase)" class="cancel" @click="stopGeneration">停止生成</button>
         </div>

@@ -10,6 +10,7 @@ from storyteller.providers.mock.llm import DEFAULT_SCRIPT, MockLLMProvider
 from storyteller.providers.mock.tts import MockStreamingTTS
 from storyteller.web.app import create_app
 from storyteller.web.fillers import START_NOTICE
+from storyteller.web.jobs import JobParams
 
 
 def test_ws_streams_pcm_and_completes(tmp_path):
@@ -38,7 +39,42 @@ def test_ws_streams_pcm_and_completes(tmp_path):
     assert ready["audio"] == {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}
     assert ready["server_time"]
     assert any(e["type"] == "script_preview" for e in events)
+    matched_index = next(i for i, event in enumerate(events) if event["type"] == "characters_matched")
+    script_ready_index = next(i for i, event in enumerate(events) if event["type"] == "script_ready")
+    matched = events[matched_index]
+    assert matched["characters"]
+    assert all(character["voice"] for character in matched["characters"])
+    assert matched_index < script_ready_index
     assert events[-1]["type"] == "complete" and len(audio) > 0 and len(audio) % 2 == 0
+
+
+def test_ws_reconnect_replays_matched_characters_before_script_ready(tmp_path):
+    cfg = Config()
+    cfg.set("web.passwords", ["pw"]); cfg.set("web.secret", "x")
+    cfg.set("web.rate_limit_per_min", 0); cfg.set("data_dir", str(tmp_path))
+    cfg.set("project_dir", str(tmp_path / "stories"))
+    app = create_app(cfg)
+    job = app.state.jobs.create(JobParams(topic="小狐狸"))
+    job.phase = "completed"
+    job.script_preview = {"type": "script_preview", "characters": [{"id": "fox", "name": "小狐狸"}], "lines": []}
+    job.characters_matched = {"type": "characters_matched", "characters": [{
+        "id": "fox", "name": "小狐狸",
+        "voice": {"provider": "mock", "voice_id": "fox_01", "name": "狐狸音色"},
+    }]}
+    job.script_ready = {"type": "script_ready", "characters": job.characters_matched["characters"], "lines": []}
+    job.emit({"type": "complete", "project_id": "proj_test", "audio_url": "/audio"})
+
+    with TestClient(app) as client:
+        token = app.state.issuer.issue()
+        with client.websocket_connect("/ws?token={}&job_id={}".format(token, job.id)) as ws:
+            events = []
+            while True:
+                events.append(json.loads(ws.receive_text()))
+                if events[-1]["type"] == "complete":
+                    break
+
+    types = [event["type"] for event in events]
+    assert types.index("characters_matched") < types.index("script_ready")
 
 
 def test_ws_streams_opening_start_notice_then_ordered_line_audio(tmp_path, monkeypatch):

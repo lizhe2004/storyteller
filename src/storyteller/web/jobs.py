@@ -45,6 +45,7 @@ class Job:
         self.project_id = None
         self.script_ready = None
         self.script_preview = None
+        self.characters_matched = None
         self.line_index = 0
         self.total = 0
         self.cancel_event = threading.Event()

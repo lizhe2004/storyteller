@@ -5,11 +5,13 @@ type AudioContextWithWorklet = AudioContext & { audioWorklet?: { addModule(url: 
 export function useAudioTimeline() {
   const context = ref<AudioContext | null>(null)
   const cursor = ref(0); const played = ref(0); const buffered = ref(0); const paused = ref(false); const playing = ref(false)
-  const hasCapturedAudio = ref(false)
+  const hasCapturedAudio = ref(false); const ended = ref(false)
   const underruns = ref(0)
   let sampleRate = 24000; let unit = 'unknown'; let previousUnit: string | null = null
   let frameCount = 0; let previousLastSample: number | null = null; let previousArrivalMs: number | null = null
   let worklet: AudioWorkletNode | null = null; let workletReady: Promise<void> | null = null; let useWorklet = false
+  let lastSource: AudioBufferSourceNode | null = null; let lastSourceEnded = false; let finishRequested = false
+  let generation = 0
   let pending: Float32Array[] = []; let queuedSamples = 0; let totalPlayedMs = 0; let storyStartMs: number | null = null; let reportedWorkletUnderruns = 0
   type AudioDiagnostics = { download: () => void; downloadPcm: () => void; downloadManifest: () => void }
   let captureParts: Uint8Array[] = []; let captureBytes = 0; let captureTruncated = false; let captureStartedAt = ''
@@ -34,11 +36,23 @@ export function useAudioTimeline() {
     source.buffer = audio
     source.connect(audioContext.destination)
     const at = Math.max(audioContext.currentTime + 0.05, cursor.value)
+    lastSource = source; lastSourceEnded = false
+    source.onended = () => {
+      if (context.value !== audioContext || source !== lastSource) return
+      lastSourceEnded = true
+      if (finishRequested) markEnded()
+    }
     source.start(at)
     cursor.value = at + audio.duration
   }
 
+  function markEnded() {
+    playing.value = false; paused.value = false; ended.value = true; buffered.value = 0; finishRequested = false
+  }
+
   function begin(rate = 24000) {
+    generation += 1
+    const activeGeneration = generation
     sampleRate = rate
     if (context.value) {
       worklet?.port.postMessage({ type: 'reset' })
@@ -57,7 +71,7 @@ export function useAudioTimeline() {
     const audioContext = context.value as AudioContextWithWorklet
     console.info('[storyteller-audio] AudioContext configured', { inputSampleRate: sampleRate, outputSampleRate: audioContext.sampleRate, nativeRate: audioContext.sampleRate === sampleRate })
     void audioContext.resume()
-    cursor.value = audioContext.currentTime; paused.value = false; playing.value = true; frameCount = 0
+    cursor.value = audioContext.currentTime; paused.value = false; playing.value = true; ended.value = false; finishRequested = false; lastSource = null; lastSourceEnded = false; frameCount = 0
     previousUnit = null; previousLastSample = null; previousArrivalMs = null; pending = []; queuedSamples = 0; totalPlayedMs = 0; storyStartMs = null; played.value = 0; reportedWorkletUnderruns = 0; underruns.value = 0
     captureParts = []; captureManifest.length = 0; captureBytes = 0; captureTruncated = false; captureStartedAt = new Date().toISOString()
     hasCapturedAudio.value = false
@@ -66,9 +80,11 @@ export function useAudioTimeline() {
     worklet = null; useWorklet = canUseWorklet(audioContext)
     if (useWorklet) {
       workletReady = audioContext.audioWorklet!.addModule('/assets/pcm-ring-buffer-worklet.js').then(() => {
-        if (!context.value) return
-        worklet = new AudioWorkletNode(context.value, 'pcm-ring-buffer', { processorOptions: { inputSampleRate: sampleRate } })
-        worklet.port.onmessage = ({ data }) => {
+        if (generation !== activeGeneration || !context.value) return
+        const node = new AudioWorkletNode(context.value, 'pcm-ring-buffer', { processorOptions: { inputSampleRate: sampleRate } })
+        worklet = node
+        node.port.onmessage = ({ data }) => {
+          if (worklet !== node) return
           if (data.type === 'state') {
             queuedSamples = data.bufferedSamples
             totalPlayedMs = (data.playedSamples / sampleRate) * 1000
@@ -82,7 +98,7 @@ export function useAudioTimeline() {
             if (data.expanded) console.warn('[storyteller-audio] PCM ring buffer expanded', { capacitySamples: data.capacity, capacityMs: Math.round(data.capacity * 1000 / sampleRate) })
             return
           }
-          if (data.type === 'ended') { playing.value = false; paused.value = false; buffered.value = 0; return }
+          if (data.type === 'ended') { markEnded(); return }
           if (data.type === 'underrun-start') {
             console.warn('[storyteller-audio] AudioWorklet underrun start', { wallClock: new Date().toISOString(), outputSample: data.outputSample, lastOutputSample: Number(data.lastOutputSample.toFixed(4)), bufferedMs: Math.round(data.bufferedSamples * 1000 / sampleRate) })
             return
@@ -92,6 +108,7 @@ export function useAudioTimeline() {
         worklet.connect(context.value.destination)
         flushPending()
       }).catch((error) => {
+        if (generation !== activeGeneration) return
         worklet = null
         useWorklet = false
         console.warn('[storyteller-audio] AudioWorklet unavailable; switching to scheduled AudioBuffer playback', error)
@@ -165,9 +182,15 @@ export function useAudioTimeline() {
   }
 
   function finish() {
+    const finishContext = context.value
+    finishRequested = true
     if (worklet) worklet.port.postMessage({ type: 'end' })
-    else if (useWorklet && workletReady) void workletReady.then(() => worklet?.port.postMessage({ type: 'end' }))
-    else playing.value = false
+    else if (useWorklet && workletReady) void workletReady.then(() => {
+      if (context.value !== finishContext) return
+      if (worklet) worklet.port.postMessage({ type: 'end' })
+      else if (!lastSource || lastSourceEnded) markEnded()
+    })
+    else if (!lastSource || lastSourceEnded) markEnded()
   }
 
   function replay() {
@@ -202,11 +225,12 @@ export function useAudioTimeline() {
       offset += part.byteLength / 2
     }
 
+    generation += 1
     worklet?.port.postMessage({ type: 'reset' }); worklet?.disconnect(); worklet = null; useWorklet = false; pending = []; workletReady = null
     void context.value?.close()
     context.value = new AudioContext()
     void context.value.resume()
-    cursor.value = context.value.currentTime; paused.value = false; playing.value = true; played.value = 0; buffered.value = 0; underruns.value = 0; storyStartMs = 0; totalPlayedMs = 0
+    cursor.value = context.value.currentTime; paused.value = false; playing.value = true; ended.value = false; finishRequested = false; played.value = 0; buffered.value = 0; underruns.value = 0; storyStartMs = 0; totalPlayedMs = 0
     const audio = context.value.createBuffer(1, pcm.length, sampleRate)
     const samples = audio.getChannelData(0)
     for (let i = 0; i < pcm.length; i += 1) samples[i] = pcm[i] / 32768
@@ -214,7 +238,8 @@ export function useAudioTimeline() {
     source.buffer = audio; source.connect(context.value.destination)
     const at = Math.max(context.value.currentTime + 0.05, cursor.value)
     source.start(at); cursor.value = at + audio.duration; buffered.value = audio.duration
-    source.onended = () => { playing.value = false; paused.value = false; buffered.value = 0 }
+    const replayContext = context.value
+    source.onended = () => { if (context.value === replayContext) markEnded() }
     console.info('[storyteller-audio] Direct continuous AudioBuffer replay', { frames: captureParts.length, samples: pcm.length, durationMs: Math.round(audio.duration * 1000) })
     return true
   }
@@ -249,9 +274,10 @@ export function useAudioTimeline() {
   }
 
   function stop() {
+    generation += 1
     worklet?.port.postMessage({ type: 'reset' }); worklet?.disconnect(); worklet = null; useWorklet = false; pending = []; queuedSamples = 0
-    context.value?.close(); context.value = null; cursor.value = 0; buffered.value = 0; played.value = 0; playing.value = false; storyStartMs = null; unit = 'unknown'; previousUnit = null
+    context.value?.close(); context.value = null; cursor.value = 0; buffered.value = 0; played.value = 0; playing.value = false; paused.value = false; ended.value = false; finishRequested = false; lastSource = null; lastSourceEnded = false; storyStartMs = null; unit = 'unknown'; previousUnit = null
   }
 
-  return { begin, setUnit, append, togglePause, finish, replay, replayDirect, stop, paused, playing, hasCapturedAudio, bufferedMs: computed(() => Math.round(buffered.value * 1000)), playedMs: played, underruns }
+  return { begin, setUnit, append, togglePause, finish, replay, replayDirect, stop, paused, playing, ended, hasCapturedAudio, bufferedMs: computed(() => Math.round(buffered.value * 1000)), playedMs: played, underruns }
 }

@@ -56,7 +56,8 @@ async def ws_endpoint(ws: WebSocket):
                 await ws.close(code=4404); return
             for event in (_ready(job), {"type": "status", "phase": job.phase,
                          "message": "已重连", "index": job.line_index,
-                         "total": job.total}, job.script_preview, job.script_ready):
+                         "total": job.total}, job.script_preview,
+                         job.characters_matched, job.script_ready):
                 if event is not None:
                     await ws.send_json(event)
         else:
