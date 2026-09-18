@@ -79,6 +79,12 @@ class PcmRingBufferProcessor extends AudioWorkletProcessor {
       if (this.currentSample === null) this.currentSample = this.readSample()
       if (this.nextSample === null) this.nextSample = this.readSample()
       if (this.currentSample === null || this.nextSample === null) {
+        if (this.ended && this.available === 0 && this.currentSample !== null && this.nextSample === null) {
+          channel[i] = this.currentSample
+          this.lastOutputSample = channel[i]
+          this.currentSample = null
+          continue
+        }
         channel[i] = 0
         missing += 1
       } else {

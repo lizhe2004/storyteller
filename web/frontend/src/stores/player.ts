@@ -3,14 +3,22 @@ import type { ReadyAudio, StoryCharacter, StoryLine } from '../types'
 
 type EventRecord = Record<string, any>
 export const usePlayerStore = defineStore('player', {
-  state: () => ({ socket: null as WebSocket | null, phase: 'idle', message: '', title: '', characters: [] as StoryCharacter[], lines: [] as StoryLine[], currentIndex: -1, lineDurations: {} as Record<string, number>, openingText: '', fillerText: '', noticeText: '', warning: '', jobId: '', finalUrl: '', audio: null as ReadyAudio | null, error: '', previewFrame: null as number | null, pendingPreview: null as EventRecord | null }),
+  state: () => ({ socket: null as WebSocket | null, phase: 'idle', message: '', title: '', characters: [] as StoryCharacter[], matchedCharacterVoices: {} as Record<string, NonNullable<StoryCharacter['voice']>>, lines: [] as StoryLine[], currentIndex: -1, lineDurations: {} as Record<string, number>, openingText: '', fillerText: '', noticeText: '', warning: '', jobId: '', finalUrl: '', audio: null as ReadyAudio | null, error: '', scriptReadyReceived: false, previewFrame: null as number | null, pendingPreview: null as EventRecord | null }),
   actions: {
+    withMatchedVoices(characters: StoryCharacter[]) {
+      return characters.map((character) => ({
+        ...character,
+        voice: this.matchedCharacterVoices[character.id] || character.voice || null,
+      }))
+    },
     applyScriptPreview(item: EventRecord) {
+      if (this.scriptReadyReceived) return
       this.title = item.title || this.title
-      this.characters = item.characters || this.characters
+      this.characters = this.withMatchedVoices(item.characters || this.characters)
       this.lines = (item.lines || []).map((line: any) => ({...line}))
     },
     scheduleScriptPreview(item: EventRecord) {
+      if (this.scriptReadyReceived) return
       this.pendingPreview = item
       if (this.previewFrame !== null) return
       this.previewFrame = window.requestAnimationFrame(() => {
@@ -20,14 +28,21 @@ export const usePlayerStore = defineStore('player', {
         if (preview) this.applyScriptPreview(preview)
       })
     },
+    applyCharactersMatched(item: EventRecord) {
+      for (const character of item.characters || []) {
+        if (character.voice) this.matchedCharacterVoices[character.id] = character.voice
+      }
+      this.characters = this.withMatchedVoices(this.characters)
+    },
     applyScriptReady(item: EventRecord) {
       if (this.previewFrame !== null) {
         window.cancelAnimationFrame(this.previewFrame)
         this.previewFrame = null
       }
       this.pendingPreview = null
+      this.scriptReadyReceived = true
       this.title = item.title
-      this.characters = item.characters || []
+      this.characters = this.withMatchedVoices(item.characters || [])
       this.lines = (item.lines || []).map((line: any) => ({...line, text: line.text || ''}))
     },
     applyLineTextDelta(item: EventRecord) {
@@ -44,6 +59,7 @@ export const usePlayerStore = defineStore('player', {
       if (item.type === 'ready') this.audio = item.audio
       if (item.type === 'status') { this.phase = item.phase; this.message = item.message || ({ queued: '排队等待中…', script: '正在生成剧本…', voices: '正在匹配音色…', line: '正在生成故事…', finalizing: '正在整理完整音频…' } as Record<string, string>)[item.phase] || item.phase }
       if (item.type === 'script_preview') this.scheduleScriptPreview(item)
+      if (item.type === 'characters_matched') this.applyCharactersMatched(item)
       if (item.type === 'script_ready') this.applyScriptReady(item)
       // Opening narration streams in while the rest of the script is still being written.
       if (item.type === 'opening_text_delta') {
@@ -79,7 +95,7 @@ export const usePlayerStore = defineStore('player', {
     },
     start(payload: Record<string, unknown>, onBytes: (bytes: ArrayBuffer) => void, onEvent?: (event: EventRecord) => void) {
       this.socket?.close()
-      this.error = ''; this.warning = ''; this.message = ''; this.title = ''; this.characters = []; this.lines = []; this.currentIndex = -1; this.lineDurations = {}; this.openingText = ''; this.fillerText = ''; this.noticeText = ''; this.jobId = ''; this.finalUrl = ''; this.audio = null; this.phase = 'connecting'; this.pendingPreview = null; if (this.previewFrame !== null) { window.cancelAnimationFrame(this.previewFrame); this.previewFrame = null }
+      this.error = ''; this.warning = ''; this.message = ''; this.title = ''; this.characters = []; this.matchedCharacterVoices = {}; this.lines = []; this.currentIndex = -1; this.lineDurations = {}; this.openingText = ''; this.fillerText = ''; this.noticeText = ''; this.jobId = ''; this.finalUrl = ''; this.audio = null; this.phase = 'connecting'; this.scriptReadyReceived = false; this.pendingPreview = null; if (this.previewFrame !== null) { window.cancelAnimationFrame(this.previewFrame); this.previewFrame = null }
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
       const socket = new WebSocket(`${protocol}//${location.host}/ws`); socket.binaryType = 'arraybuffer'; this.socket = socket
       socket.onopen = () => socket.send(JSON.stringify({ type: 'start', ...payload }))

@@ -74,6 +74,28 @@ def _script_preview_event(preview):
     }
 
 
+def _characters_matched_event(script):
+    return {
+        "type": "characters_matched",
+        "characters": [
+            {
+                "id": character.id,
+                "name": character.name,
+                "description": character.description,
+                "voice": (
+                    {
+                        "provider": character.voice_config.provider,
+                        "voice_id": character.voice_config.voice_id,
+                        "name": character.voice_config.name,
+                    }
+                    if character.voice_config else None
+                ),
+            }
+            for character in script.characters
+        ],
+    }
+
+
 class _AudioPump:
     """Drain one scheduled session on a dedicated reader without blocking text input."""
 
@@ -865,6 +887,9 @@ class StreamOrchestrator:
                 try:
                     voice_matching_result = run_voice_matching(provisional)
                     line_coordinator.set_provisional_voice_context(voice_matching_result)
+                    matched_event = _characters_matched_event(voice_matching_result)
+                    job.characters_matched = matched_event
+                    job.emit(matched_event)
                 except Exception as exc:
                     voice_matching_error = exc
                     log_event(
@@ -968,13 +993,7 @@ class StreamOrchestrator:
         names = {c.id: c.name for c in state.script.characters}
         script_ready = {"type": "script_ready", "title": state.script.title,
                         "total": len(state.script.lines),
-                        "characters": [{"id": c.id, "name": c.name,
-                                        "description": c.description,
-                                        "voice": ({"provider": c.voice_config.provider,
-                                                   "voice_id": c.voice_config.voice_id,
-                                                   "name": c.voice_config.name}
-                                                  if c.voice_config else None)}
-                                       for c in state.script.characters],
+                        "characters": _characters_matched_event(state.script)["characters"],
                         "lines": [{"line_id": l.line_id, "line_type": l.line_type,
                                    "character_id": l.character_id,
                                    "speaker": names.get(l.character_id) or ("旁白" if l.line_type == "narration" else "未知角色"),
