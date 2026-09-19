@@ -61,8 +61,12 @@ def test_ws_reconnect_replays_matched_characters_before_script_ready(tmp_path):
         "id": "fox", "name": "小狐狸",
         "voice": {"provider": "mock", "voice_id": "fox_01", "name": "狐狸音色"},
     }]}
-    job.script_ready = {"type": "script_ready", "characters": job.characters_matched["characters"], "lines": []}
+    job.script_ready = {"type": "script_ready", "title": "小狐狸", "characters": job.characters_matched["characters"], "lines": [
+        {"line_id": "l1", "line_type": "narration", "speaker": "旁白", "text": "完整的故事台词。"},
+    ]}
     job.emit({"type": "complete", "project_id": "proj_test", "audio_url": "/audio"})
+    assert job.terminal_event["type"] == "complete"
+    job.queue.get_nowait()  # The original viewer already consumed the terminal event.
 
     with TestClient(app) as client:
         token = app.state.issuer.issue()
@@ -75,6 +79,9 @@ def test_ws_reconnect_replays_matched_characters_before_script_ready(tmp_path):
 
     types = [event["type"] for event in events]
     assert types.index("characters_matched") < types.index("script_ready")
+    assert events[types.index("script_ready")]["lines"][0]["text"] == "完整的故事台词。"
+    assert types[-1] == "complete"
+    assert events[-1]["audio_url"] == "/audio"
 
 
 def test_ws_streams_opening_start_notice_then_ordered_line_audio(tmp_path, monkeypatch):

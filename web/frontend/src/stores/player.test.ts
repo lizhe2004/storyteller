@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { usePlayerStore } from './player'
 
@@ -16,6 +16,7 @@ function scriptReady(store: ReturnType<typeof usePlayerStore>) {
 
 describe('player script display', () => {
   beforeEach(() => setActivePinia(createPinia()))
+  afterEach(() => vi.unstubAllGlobals())
 
   it('keeps preview text when the authoritative script arrives', () => {
     const store = usePlayerStore()
@@ -154,6 +155,46 @@ describe('player opening / start notice events', () => {
     expect(store.finalUrl).toBe('/api/stories/proj_1/audio')
     expect(store.jobId).toBe('proj_1')
     expect(store.fillerText).toBe('')
+  })
+
+  it('remembers the job id from ready so the same streamed story can be recovered after backgrounding', () => {
+    const store = usePlayerStore()
+
+    store.applyEvent({ type: 'ready', job_id: 'job_recover_me', audio: { encoding: 'pcm_s16le', sample_rate: 24000, channels: 1 } })
+
+    expect(store.streamJobId).toBe('job_recover_me')
+  })
+
+  it('restores the full script and terminal URL from a recovered job socket', () => {
+    class MockWebSocket {
+      static instances: MockWebSocket[] = []
+      binaryType = ''
+      onmessage: ((event: { data: string | ArrayBuffer }) => void) | null = null
+      onerror: ((event: Event) => void) | null = null
+      closed = false
+      constructor(readonly url: string) { MockWebSocket.instances.push(this) }
+      close() { this.closed = true }
+    }
+    vi.stubGlobal('WebSocket', MockWebSocket)
+    const store = usePlayerStore()
+    store.applyEvent({ type: 'ready', job_id: 'job_recover_me', audio: {} })
+    const onEvent = vi.fn()
+
+    expect(store.reconnect(() => {}, onEvent)).toBe(true)
+    const socket = MockWebSocket.instances[0]
+    expect(socket.url).toContain('/ws?job_id=job_recover_me')
+    socket.onmessage?.({ data: JSON.stringify({
+      type: 'script_ready', title: '后台播放的故事', characters: [],
+      lines: [{ line_id: 'l1', line_type: 'narration', speaker: '旁白', text: '返回前没有显示的完整台词。' }],
+    }) })
+    socket.onmessage?.({ data: JSON.stringify({
+      type: 'complete', project_id: 'proj_1', audio_url: '/api/stories/proj_1/audio',
+    }) })
+
+    expect(store.lines[0].text).toBe('返回前没有显示的完整台词。')
+    expect(store.phase).toBe('completed')
+    expect(store.terminalEventReceived).toBe(true)
+    expect(store.finalUrl).toBe('/api/stories/proj_1/audio')
   })
 
   it('still completes formal lines when opening is missing/aborted', () => {

@@ -57,9 +57,12 @@ async def ws_endpoint(ws: WebSocket):
             for event in (_ready(job), {"type": "status", "phase": job.phase,
                          "message": "已重连", "index": job.line_index,
                          "total": job.total}, job.script_preview,
-                         job.characters_matched, job.script_ready):
+                         job.characters_matched, job.script_ready,
+                         job.terminal_event):
                 if event is not None:
                     await ws.send_json(event)
+                    if event.get("type") in TERMINAL:
+                        return
         else:
             first = await asyncio.wait_for(inbox.get(), timeout=120)
             if first.get("type") != "start":

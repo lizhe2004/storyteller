@@ -46,6 +46,7 @@ class Job:
         self.script_ready = None
         self.script_preview = None
         self.characters_matched = None
+        self.terminal_event = None
         self.line_index = 0
         self.total = 0
         self.cancel_event = threading.Event()
@@ -59,8 +60,11 @@ class Job:
         if isinstance(obj, dict) and "_bytes" not in obj:
             obj = dict(obj)
             obj.setdefault("server_time", server_time())
+        terminal = isinstance(obj, dict) and obj.get("type") in {"complete", "error", "canceled"}
+        if terminal:
+            self.terminal_event = obj
         self.queue.put(obj)
-        if isinstance(obj, dict) and obj.get("type") in {"complete", "error", "canceled"}:
+        if terminal:
             self.close_audio_stream()
 
     def emit_bytes(self, data):
