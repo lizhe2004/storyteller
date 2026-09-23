@@ -1,16 +1,19 @@
 import logging
 import secrets
 import threading
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 
+from ..core.project import ProjectManager
 from ..core.runtime_settings import RuntimeSettingsStore
 from .auth import RateLimiter, TokenIssuer
 from .jobs import JobManager
 from .routes_auth import router as auth_router
 from .routes_options import router as options_router
 from .routes_settings import router as settings_router
+from .voice_catalog import VoiceClipCatalog
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +44,12 @@ def create_app(config, registry=None):
 
     update_setup_code(runtime_config)
     app.state.registry = registry
+    project_dir = runtime_config.get("project_dir") or (
+        Path(runtime_config.get("data_dir") or ".storyteller") / "stories"
+    )
+    app.state.voice_catalog = VoiceClipCatalog(
+        registry, ProjectManager(project_dir)
+    )
     # Per-process fallback signing key: keeps sessions valid across runtime
     # config reloads when no web.secret is configured.
     app.state.auth_fallback_secret = secrets.token_hex(32)
@@ -86,10 +95,12 @@ def create_app(config, registry=None):
     from .routes_stories import router as stories_router
     from .routes_ws import router as ws_router
     from .routes_voice_analysis import router as voice_analysis_router, ws_router as voice_analysis_ws_router
+    from .routes_voices import router as voices_router
     app.include_router(stories_router)
     app.include_router(ws_router)
     app.include_router(voice_analysis_router)
     app.include_router(voice_analysis_ws_router)
+    app.include_router(voices_router)
     static = __import__("pathlib").Path(__file__).parent / "static"
     if static.is_dir():
         from fastapi.staticfiles import StaticFiles
