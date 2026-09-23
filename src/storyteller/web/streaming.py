@@ -655,7 +655,15 @@ class StreamOrchestrator:
 
     def run(self, job):
         if job.config_snapshot is not None:
-            self._configure(job.config_snapshot.to_config())
+            config = job.config_snapshot.to_config()
+            has_model_override = self._apply_job_model_overrides(config, job)
+            self._configure(
+                config,
+                projects=self.projects,
+                registry=None if has_model_override else self.registry,
+            )
+        else:
+            self._apply_job_model_overrides(self.config, job)
         self._active_state = None
         try:
             self._run(job)
@@ -672,10 +680,54 @@ class StreamOrchestrator:
                 self.projects.save_project(self._active_state)
             job.emit({"type": "error", "message": str(exc)})
 
+    def _apply_job_model_overrides(self, config, job):
+        """Apply per-job model choices to the immutable job configuration."""
+        changed = False
+        llm_selection = job.params.llm_model
+        if llm_selection:
+            if isinstance(llm_selection, dict):
+                provider = str(llm_selection.get("provider") or "").strip()
+                model = str(llm_selection.get("model") or "").strip()
+            else:
+                provider = str(config.get("llm.default_provider") or "").strip()
+                model = str(llm_selection).strip()
+            providers = config.get("llm.providers", []) or []
+            if not provider and len(providers) == 1:
+                provider = str(providers[0])
+            if provider not in providers or not model:
+                raise LLMError("本次选择的大模型不可用")
+            config.set("llm.default_provider", provider)
+            config.set("llm.provider_config.{}.model".format(provider), model)
+            changed = True
+
+        audio_selection = job.params.tts_model
+        if audio_selection:
+            if not isinstance(audio_selection, dict):
+                raise TTSError("本次选择的音频模型格式无效")
+            provider = str(audio_selection.get("provider") or "").strip()
+            model = str(audio_selection.get("model") or "").strip()
+            providers = config.get("tts.providers", []) or []
+            if provider not in providers or not model:
+                raise TTSError("本次选择的音频模型不可用")
+            if provider.lower() == "aliyun":
+                config.set("tts.provider_config.{}.models".format(provider), model)
+            elif provider.lower() == "volcengine":
+                config.set(
+                    "tts.provider_config.{}.resource_id_override".format(provider),
+                    model,
+                )
+            else:
+                config.set("tts.provider_config.{}.model".format(provider), model)
+            changed = True
+        return changed
+
     def _run(self, job):
         params = job.params
         job_logger = with_context(logger, job_id=job.id)
-        log_event(job_logger, logging.INFO, "job_started", topic=params.topic)
+        log_event(
+            job_logger, logging.INFO, "job_started", topic=params.topic,
+            llm_model=params.llm_model, tts_model=params.tts_model,
+        )
         tts_names = params.tts_providers or self.config.get("tts.providers") or self.registry.list_tts_names()
         llm_name = self._llm_name()
         if not tts_names or not llm_name:
@@ -683,7 +735,9 @@ class StreamOrchestrator:
         state = self.projects.create_project(
             topic=params.topic,
             config={"topic": params.topic, "length": params.length,
-                    "complexity": params.complexity},
+                    "complexity": params.complexity,
+                    "llm_model": params.llm_model,
+                    "tts_model": params.tts_model},
         )
         self._active_state = state
         job.project_id = state.project_id

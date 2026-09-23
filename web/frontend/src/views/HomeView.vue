@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import { usePlayerStore } from '../stores/player'
 import { useAudioTimeline } from '../composables/useAudioTimeline'
+import type { ModelOption } from '../types'
 
 const player = usePlayerStore()
 const timeline = useAudioTimeline()
@@ -24,6 +25,10 @@ const complexity = ref('simple')
 const withSound = ref(false)
 const providers = ref<{ name: string }[]>([])
 const selected = ref<string[]>([])
+const llmModels = ref<ModelOption[]>([])
+const audioModels = ref<ModelOption[]>([])
+const selectedLlmModel = ref('')
+const selectedAudioModel = ref('')
 const busy = ref(false)
 const storyIdeas = [
   '一只怕黑的小狐狸，在月亮下交到了朋友',
@@ -35,8 +40,13 @@ onMounted(async () => {
   try {
     const opts = await api.options()
     providers.value = opts.tts_providers
-    // An empty selection means "use the configured default candidate set".
-    // A future provider picker can populate this for a per-story override.
+    llmModels.value = opts.llm_models || []
+    audioModels.value = opts.audio_models || []
+    selectedLlmModel.value = llmModels.value[0]
+      ? `${llmModels.value[0].provider}::${llmModels.value[0].model}` : ''
+    selectedAudioModel.value = audioModels.value[0]
+      ? `${audioModels.value[0].provider}::${audioModels.value[0].model}` : ''
+    // An empty provider selection means "use the configured candidate set".
     selected.value = []
   } catch {}
 })
@@ -75,7 +85,16 @@ function submit() {
   if (playbackMode.value === 'webaudio') timeline.begin()
   else timeline.stop()
   busy.value = true
-  player.start({ topic: topic.value, length: length.value, complexity: complexity.value, with_sound: withSound.value, tts_providers: selected.value, audio_mode: playbackMode.value }, b => timeline.append(b), e => {
+  const selectedAudio = audioModels.value.find(option => `${option.provider}::${option.model}` === selectedAudioModel.value)
+  const llmSelection = llmModels.value.find(option => `${option.provider}::${option.model}` === selectedLlmModel.value)
+  player.start({
+    topic: topic.value, length: length.value, complexity: complexity.value,
+    with_sound: withSound.value,
+    tts_providers: selectedAudio ? [selectedAudio.provider] : selected.value,
+    audio_mode: playbackMode.value,
+    llm_model: llmSelection ? { provider: llmSelection.provider, model: llmSelection.model } : undefined,
+    tts_model: selectedAudio ? { provider: selectedAudio.provider, model: selectedAudio.model } : undefined,
+  }, b => timeline.append(b), e => {
     if (e.type === 'ready' && playbackMode.value === 'native_mp3' && nativeAudio.value) {
       nativeAudio.value.src = `/api/streaming-jobs/${encodeURIComponent(e.job_id)}/audio`
       nativeAudio.value.load()
@@ -138,6 +157,10 @@ function togglePlayback() {
         <div class="form-row">
           <label>长度<select v-model="length"><option value="short">短篇</option><option value="medium">中篇</option><option value="long">长篇</option></select></label>
           <label>气质<select v-model="complexity"><option value="simple">轻柔</option><option value="medium">丰富</option><option value="rich">饱满</option></select></label>
+        </div>
+        <div v-if="llmModels.length || audioModels.length" class="form-row model-row">
+          <label v-if="llmModels.length">故事模型<select v-model="selectedLlmModel" :disabled="busy"><option v-for="option in llmModels" :key="`${option.provider}:${option.model}`" :value="`${option.provider}::${option.model}`">{{ option.label }}</option></select></label>
+          <label v-if="audioModels.length">音频模型<select v-model="selectedAudioModel" :disabled="busy"><option v-for="option in audioModels" :key="`${option.provider}:${option.model}`" :value="`${option.provider}::${option.model}`">{{ option.label }}</option></select></label>
         </div>
         <label>播放方式<select v-model="playbackMode" aria-label="播放方式" :disabled="busy"><option value="webaudio">Web Audio（当前）</option><option value="native_mp3">原生 audio（MP3 实验）</option></select></label>
         <p class="playback-hint">原生 audio 用于测试息屏/后台播放；若浏览器拦截自动播放，请在播放器中手动开始。</p>

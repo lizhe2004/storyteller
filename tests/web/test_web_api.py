@@ -16,6 +16,12 @@ def _app(tmp_path):
     cfg.set("data_dir", str(tmp_path))
     cfg.set("tts.providers", ["mock"])
     cfg.set("tts.provider_config.mock", {"type": "mock"})
+    cfg.set("llm.providers", ["openai"])
+    cfg.set("llm.default_provider", "openai")
+    cfg.set("llm.provider_config.openai", {
+        "type": "openai_compatible", "model": "story-model-a",
+        "models": "story-model-b, story-model-c",
+    })
     return create_app(cfg)
 
 
@@ -27,6 +33,13 @@ def test_auth_and_options(tmp_path):
         assert client.get("/api/me").json()["authenticated"] is True
         body = client.get("/api/config/options").json()
         assert body["tts_providers"] == [{"name": "mock"}]
+        assert body["llm_models"] == [
+            {"provider": "openai", "model": "story-model-a", "label": "openai / story-model-a"},
+            {"provider": "openai", "model": "story-model-b", "label": "openai / story-model-b"},
+            {"provider": "openai", "model": "story-model-c", "label": "openai / story-model-c"},
+            {"provider": "openai", "model": "gpt-4o-mini", "label": "openai / gpt-4o-mini"},
+        ]
+        assert body["audio_models"] == []
         assert "api_key" not in str(body)
 
 

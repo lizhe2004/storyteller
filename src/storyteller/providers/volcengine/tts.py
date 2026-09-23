@@ -348,6 +348,7 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         self.resource_id = (
             provider_config.get("resource_id") or _DEFAULT_RESOURCE_ID
         )
+        self.resource_id_override = provider_config.get("resource_id_override")
         self.realtime_endpoint = (
             provider_config.get("realtime_endpoint") or _DEFAULT_REALTIME_ENDPOINT
         ).rstrip("/")
@@ -379,6 +380,8 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         All shipped voices are seed-tts-2.0, but the lookup lets future
         voices (e.g. seed-icl-2.0 clones) carry their own resource id.
         """
+        if self.resource_id_override:
+            return self.resource_id_override
         record = load_voice_index().get(voice_id)
         if record:
             return record.get("resource_id", self.resource_id)

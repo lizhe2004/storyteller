@@ -28,6 +28,8 @@ class JobParams:
     with_sound: bool = False
     tts_providers: object = None
     audio_mode: str = "webaudio"
+    llm_model: object = None
+    tts_model: object = None
 
 
 class Job:

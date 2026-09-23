@@ -26,7 +26,11 @@ def test_ws_streams_pcm_and_completes(tmp_path):
     with TestClient(app) as client:
         token = app.state.issuer.issue()
         with client.websocket_connect("/ws?token=" + token) as ws:
-            ws.send_json({"type": "start", "topic": "小恐龙", "tts_providers": ["mock"]})
+            ws.send_json({
+                "type": "start", "topic": "小恐龙", "tts_providers": ["mock"],
+                "llm_model": {"provider": "mock", "model": "story-model"},
+                "tts_model": {"provider": "mock", "model": "audio-model"},
+            })
             while True:
                 message = ws.receive()
                 if message.get("bytes") is not None:
@@ -37,6 +41,10 @@ def test_ws_streams_pcm_and_completes(tmp_path):
                     break
     ready = next(e for e in events if e["type"] == "ready")
     assert ready["audio"] == {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}
+    assert ready["model_selection"] == {
+        "llm": {"provider": "mock", "model": "story-model"},
+        "audio": {"provider": "mock", "model": "audio-model"},
+    }
     assert ready["server_time"]
     assert any(e["type"] == "script_preview" for e in events)
     matched_index = next(i for i, event in enumerate(events) if event["type"] == "characters_matched")
