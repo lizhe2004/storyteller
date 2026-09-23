@@ -118,6 +118,9 @@ describe('HomeView empty state', () => {
     player.characters = [{
       id: 'fox',
       name: '小狐狸',
+      description: '一只怕黑、正在寻找朋友的小狐狸',
+      gender: 'female',
+      age: 'child',
       voice: {
         provider: 'aliyun',
         model: 'qwen-tts-latest',
@@ -132,11 +135,17 @@ describe('HomeView empty state', () => {
     await nextTick()
 
     const chip = element.querySelector('[data-testid="character-chip"]') as HTMLElement
-    expect(chip.textContent).toContain('aliyun')
+    const characterSummary = chip.querySelector('[data-testid="character-summary"]') as HTMLElement
+    expect(characterSummary.textContent).toContain('小狐狸')
+    expect(characterSummary.textContent).toContain('一只怕黑、正在寻找朋友的小狐狸')
+    expect(characterSummary.textContent).toContain('女')
+    expect(characterSummary.textContent).toContain('儿童')
+    expect(characterSummary.textContent).not.toContain('aliyun')
     expect(chip.querySelector('[data-testid="voice-popover"]')).not.toBeNull()
     chip.focus()
     await nextTick()
     const popover = chip.querySelector('[data-testid="voice-popover"]') as HTMLElement
+    expect(popover.textContent).toContain('aliyun')
     expect(popover.textContent).toContain('qwen-tts-latest')
     expect(popover.textContent).toContain('龙安灵心')
     expect(popover.textContent).toContain('女')

@@ -188,6 +188,7 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--teal);outline-offse
 .audio-model-option:hover{background:#20334c}
 .audio-model-option input{accent-color:var(--teal);margin:0}
 .character-chip{position:relative;cursor:help}
+.character-summary{display:flex;flex-direction:column}
 .character-chip:hover .voice-popover,.character-chip:focus .voice-popover{display:block}
 .voice-popover dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:10px 0 0;font-size:11px;line-height:1.4}
 .voice-popover dt{color:#91a2b6}.voice-popover dd{margin:0;color:#d0dbe7;overflow-wrap:anywhere}

@@ -53,6 +53,12 @@ function voiceAgeLabel(age?: string | null) {
   return age ? (voiceAgeLabels[age] || age) : '未标注'
 }
 
+function characterIdentityLabel(gender?: string | null, age?: string | null) {
+  const genderLabel = gender ? (voiceGenderLabels[gender] || gender) : ''
+  const ageLabel = age ? (voiceAgeLabels[age] || age) : ''
+  return [genderLabel, ageLabel].filter(Boolean).join(' · ') || '未标注年龄/性别'
+}
+
 const selectedAudioModelSummary = computed(() => selectedAudioModels.value.length
   ? `已选 ${selectedAudioModels.value.length} 个模型`
   : '请选择音频模型')
@@ -260,7 +266,7 @@ function togglePlayback() {
         <h2>{{ player.title || '正在写下标题…' }}</h2>
         <div v-if="player.characters.length" class="character-area">
           <p class="section-label">角色</p>
-          <div class="character-list"><span v-for="character in player.characters" :key="character.id" data-testid="character-chip" class="character-chip" tabindex="0"><b>{{ character.name }}</b><small>{{ character.voice?.provider || '待匹配 provider' }}</small><span v-if="character.voice" data-testid="voice-popover" class="voice-popover"><b>{{ character.voice.name || character.voice.voice_id || '未命名音色' }}</b><dl><dt>模型</dt><dd>{{ character.voice.model || '未标注' }}</dd><dt>音色</dt><dd>{{ character.voice.name || character.voice.voice_id }}</dd><dt>性别</dt><dd>{{ voiceGenderLabel(character.voice.gender) }}</dd><dt>年龄</dt><dd>{{ voiceAgeLabel(character.voice.age) }}</dd><dt v-if="character.voice.category">分类</dt><dd v-if="character.voice.category">{{ character.voice.category }}</dd></dl><p v-if="character.voice.description">{{ character.voice.description }}</p></span></span></div>
+          <div class="character-list"><span v-for="character in player.characters" :key="character.id" data-testid="character-chip" class="character-chip" tabindex="0"><span data-testid="character-summary"><b>{{ character.name }}</b><small>{{ character.description || '暂无角色描述' }}</small><small>{{ characterIdentityLabel(character.gender, character.age) }}</small></span><span v-if="character.voice" data-testid="voice-popover" class="voice-popover"><b>{{ character.voice.name || character.voice.voice_id || '未命名音色' }}</b><dl><dt>Provider</dt><dd>{{ character.voice.provider }}</dd><dt>模型</dt><dd>{{ character.voice.model || '未标注' }}</dd><dt>音色 ID</dt><dd>{{ character.voice.voice_id }}</dd><dt>性别</dt><dd>{{ voiceGenderLabel(character.voice.gender) }}</dd><dt>年龄</dt><dd>{{ voiceAgeLabel(character.voice.age) }}</dd><dt v-if="character.voice.category">分类</dt><dd v-if="character.voice.category">{{ character.voice.category }}</dd></dl><p v-if="character.voice.description">{{ character.voice.description }}</p></span></span></div>
         </div>
         <div class="player-controls">
           <button v-if="isPlaying || isPaused || isEnded || !['completed', 'failed', 'canceled'].includes(player.phase)" class="round" :class="{ 'is-playing': isPlaying }" :aria-pressed="isPlaying" :aria-label="isPlaying ? '暂停播放' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" :title="isPlaying ? '暂停播放' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" @click="togglePlayback"><span aria-hidden="true">{{ isPlaying ? 'Ⅱ' : isEnded ? '↻' : '▶' }}</span><small>{{ isPlaying ? '暂停' : nativeNeedsTap ? '开始原生播放' : isEnded ? '重播' : '继续' }}</small></button>

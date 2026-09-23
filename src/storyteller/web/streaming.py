@@ -83,6 +83,8 @@ def _characters_matched_event(script, registry=None):
                 "id": character.id,
                 "name": character.name,
                 "description": character.description,
+                "gender": character.gender,
+                "age": character.age,
                 "voice": (
                     {
                         "provider": character.voice_config.provider,
