@@ -36,6 +36,23 @@ def test_voice_config_neutral_gender_defaults_none():
     assert not hasattr(vc, "voice_type")
 
 
+def test_voice_config_normalizes_age_values():
+    vc = VoiceConfig(
+        provider="p",
+        voice_id="alloy",
+        age=["child", "teen", "teen", "unknown", "senior"],
+    )
+    assert vc.age == ["child", "teen", "senior"]
+
+
+def test_voice_config_normalizes_scalar_and_empty_ages():
+    assert VoiceConfig(provider="p", voice_id="scalar", age="child").age == [
+        "child"
+    ]
+    assert VoiceConfig(provider="p", voice_id="empty", age=None).age == []
+    assert VoiceConfig(provider="p", voice_id="unknown", age="unknown").age == []
+
+
 # ========== Character ==========
 def test_character_creation():
     char = Character(id="narrator", name="旁白", description="故事旁白")

@@ -296,7 +296,7 @@ def _voice_to_dict(vc):
         "volume": vc.volume,
         "name": vc.name,
         "gender": vc.gender,
-        "age": vc.age,
+        "age": list(vc.age or []),
         "category": vc.category,
         "description": vc.description,
     }

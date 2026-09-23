@@ -1,9 +1,11 @@
+import json
+
 import pytest
 
 from pathlib import Path
 
 from storyteller.core.project import ProjectManager
-from storyteller.core.models import Character, Script
+from storyteller.core.models import Character, Script, VoiceConfig
 from storyteller.core.exceptions import ProjectError
 
 
@@ -99,6 +101,62 @@ def test_serialization_roundtrip_character_voice_preferences(temp_dir):
     ]
     assert loaded.script.characters[0].gender == "female"
     assert loaded.script.characters[0].age == "child"
+
+
+def test_voice_age_serialization_roundtrip_writes_array(temp_dir):
+    manager = ProjectManager(temp_dir)
+    state = manager.create_project(topic="测试")
+    state.script = Script(
+        script_id="s1",
+        title="小猫",
+        topic="测试",
+        characters=[Character(
+            id="cat",
+            name="小猫",
+            description="活泼的女孩",
+            voice_config=VoiceConfig(
+                provider="p", voice_id="child", age=["child", "teen"]
+            ),
+        )],
+    )
+    manager.save_project(state)
+
+    payload = json.loads(
+        (manager.get_project_dir(state.project_id) / "project.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["script"]["characters"][0]["voice_config"]["age"] == [
+        "child",
+        "teen",
+    ]
+    loaded = manager.load_project(state.project_id)
+    assert loaded.script.characters[0].voice_config.age == ["child", "teen"]
+
+
+def test_voice_age_serialization_loads_legacy_scalar(temp_dir):
+    manager = ProjectManager(temp_dir)
+    state = manager.create_project(topic="测试")
+    state.script = Script(
+        script_id="s1",
+        title="小猫",
+        topic="测试",
+        characters=[Character(
+            id="cat",
+            name="小猫",
+            description="活泼的女孩",
+            voice_config=VoiceConfig(provider="p", voice_id="child"),
+        )],
+    )
+    manager.save_project(state)
+
+    project_file = manager.get_project_dir(state.project_id) / "project.json"
+    payload = json.loads(project_file.read_text(encoding="utf-8"))
+    payload["script"]["characters"][0]["voice_config"]["age"] = "child"
+    project_file.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = manager.load_project(state.project_id)
+    assert loaded.script.characters[0].voice_config.age == ["child"]
 
 
 # ---------- human-readable date-title directories ----------
