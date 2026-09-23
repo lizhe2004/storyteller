@@ -1,5 +1,6 @@
 import json
 import threading
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -11,6 +12,33 @@ from storyteller.providers.mock.tts import MockStreamingTTS
 from storyteller.web.app import create_app
 from storyteller.web.fillers import START_NOTICE
 from storyteller.web.jobs import JobParams
+from storyteller.web.streaming import _characters_matched_event
+
+
+def test_characters_matched_event_copies_voice_age():
+    voice_age = ["child", "teen"]
+    voice = SimpleNamespace(
+        provider="mock",
+        voice_id="child_01",
+        name="童声",
+        gender="female",
+        age=voice_age,
+        category="儿童",
+        description="儿童音色",
+    )
+    character = SimpleNamespace(
+        id="child",
+        name="孩子",
+        description="一个孩子",
+        gender="female",
+        age="child",
+        voice_config=voice,
+    )
+
+    event = _characters_matched_event(SimpleNamespace(characters=[character]))
+    voice_age.append("senior")
+
+    assert event["characters"][0]["voice"]["age"] == ["child", "teen"]
 
 
 def test_ws_streams_pcm_and_completes(tmp_path):
@@ -57,7 +85,12 @@ def test_ws_streams_pcm_and_completes(tmp_path):
     assert first_voice["provider"] == "mock"
     assert first_voice["model"] == "audio-model"
     assert first_voice["gender"]
+    assert isinstance(first_voice["age"], list)
     assert first_voice["age"]
+    assert all(
+        character["age"] is None or isinstance(character["age"], str)
+        for character in matched["characters"]
+    )
     assert first_voice["category"]
     assert first_voice["description"]
     assert matched_index < script_ready_index

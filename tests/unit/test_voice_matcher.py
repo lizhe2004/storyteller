@@ -3,12 +3,14 @@ import json
 import pytest
 
 from storyteller.core.config import Config
-from storyteller.core.models import Character, Script
+from storyteller.core.models import Character, Script, VoiceConfig
 from storyteller.core.voice_matcher import (
     VoiceMatcher,
+    _age_distance,
     _infer_age,
     _infer_gender,
     _sample_voice_candidates,
+    _voice_sort_key,
     is_narration_voice,
 )
 from storyteller.core.exceptions import ProviderError
@@ -100,7 +102,7 @@ def test_match_voices_child_by_description():
     kid = Character(id="kid", name="小明", description="一个五六岁的小男孩")
     script = _make_script_with_characters(kid)
     matcher.match_voices(script)
-    assert kid.voice_config.age == "child"
+    assert kid.voice_config.age == ["child", "teen"]
 
 
 def test_adult_described_with_child_word_is_not_child():
@@ -113,7 +115,7 @@ def test_adult_described_with_child_word_is_not_child():
     script = _make_script_with_characters(granny, kid)
     matcher.match_voices(script)
     assert granny.voice_config.gender == "female"
-    assert kid.voice_config.age == "child"
+    assert "child" in kid.voice_config.age
 
 
 def test_match_voices_child_by_numeric_age():
@@ -122,7 +124,7 @@ def test_match_voices_child_by_numeric_age():
     teen = Character(id="teen", name="阿杰", description="15岁，男孩")
     script = _make_script_with_characters(kid, teen)
     matcher.match_voices(script)
-    assert kid.voice_config.age == "child"
+    assert "child" in kid.voice_config.age
     # 13+ is a teenager: matched by gender, not collapsed to the child voice.
     assert teen.voice_config.gender == "male"
 
@@ -136,14 +138,14 @@ def test_match_voices_does_not_reuse_same_voice():
     assert a.voice_config.voice_id != b.voice_config.voice_id
 
 
-def test_match_voices_dialogue_prefers_character_female_before_narration():
+def test_match_voices_dialogue_prefers_nearest_age_before_category():
     matcher = _make_matcher()
     first = Character(id="g0", name="女0", description="女孩")
     script = _make_script_with_characters(first)
     matcher.match_voices(script)
-    # female_01 is a normal 通用场景 female voice; narrator_01 is the
-    # 有声阅读 female voice and must not be grabbed first for dialogue.
-    assert first.voice_config.voice_id == "female_01"
+    # narrator_01 is a young_adult voice and is closer to a child than the
+    # middle_aged female_01, so age distance outranks the category signal.
+    assert first.voice_config.voice_id == "narrator_01"
 
 
 def test_dialogue_never_gets_opposite_gender():
@@ -179,6 +181,40 @@ def test_match_voices_writes_config_on_script_characters():
     script = _make_script_with_characters(narrator)
     matcher.match_voices(script)
     assert script.characters[0].voice_config is not None
+
+
+def test_dialogue_age_match_beats_empty_or_mismatched_narration_voice():
+    class _CrossCategoryTTS:
+        def __init__(self, config):
+            pass
+
+        def list_voices(self, **kwargs):
+            return [
+                VoiceConfig(
+                    provider="p", voice_id="empty-narration", gender="male",
+                    age=[], category="日常对话",
+                ),
+                VoiceConfig(
+                    provider="p", voice_id="senior-narration", gender="male",
+                    age=["senior"], category="日常对话",
+                ),
+                VoiceConfig(
+                    provider="p", voice_id="child-teen-dialogue", gender="male",
+                    age=["child", "teen"], category="有声阅读",
+                ),
+            ]
+
+    config = Config()
+    registry = ProviderRegistry(config)
+    registry.register_tts("cross-category", _CrossCategoryTTS)
+    matcher = VoiceMatcher(registry, mode="rule")
+    child = Character(
+        id="child", name="小明", description="男孩", gender="male", age="child"
+    )
+
+    matcher.match_voices(_make_script_with_characters(child))
+
+    assert child.voice_config.voice_id == "child-teen-dialogue"
 
 
 def test_match_voices_overwrites_existing_config():
@@ -259,7 +295,7 @@ def test_llm_pick_uses_script_generated_child_metadata():
     script = _make_script_with_characters(boy)
     matcher.match_voices(script)
     assert boy.voice_config.voice_id == "child_01"
-    assert boy.voice_config.age == "child"
+    assert "child" in boy.voice_config.age
 
 
 def test_llm_pick_falls_back_on_out_of_range_index():
@@ -402,3 +438,94 @@ def test_candidate_sampling_uses_all_eligible_voices_when_no_preference_matches(
         rng=__import__("random").Random(1),
     )
     assert {voice.voice_id for voice in selected} == {"v0", "v1", "v2"}
+
+
+def test_candidate_sampling_matches_child_teen_voice_for_both_ages():
+    child_teen = VoiceConfig(
+        provider="p", voice_id="child-teen", gender="male",
+        age=["child", "teen"],
+    )
+    senior = VoiceConfig(
+        provider="p", voice_id="senior", gender="male", age=["senior"],
+    )
+    voices = [child_teen, senior]
+
+    assert _sample_voice_candidates(voices, "male", "child", []) == [child_teen]
+    assert _sample_voice_candidates(voices, "male", "teen", []) == [child_teen]
+
+
+def test_candidate_sampling_matches_young_middle_voice_but_not_senior():
+    young_middle = VoiceConfig(
+        provider="p", voice_id="young-middle", gender="male",
+        age=["young_adult", "middle_aged"],
+    )
+    senior = VoiceConfig(
+        provider="p", voice_id="senior", gender="male", age=["senior"],
+    )
+    voices = [young_middle, senior]
+
+    assert _sample_voice_candidates(
+        voices, "male", "young_adult", []
+    ) == [young_middle]
+    assert _sample_voice_candidates(
+        voices, "male", "middle_aged", []
+    ) == [young_middle]
+    assert _sample_voice_candidates(voices, "male", "senior", []) == [senior]
+
+
+def test_age_distance_uses_nearest_declared_age():
+    assert _age_distance(["child", "middle_aged"], "senior") == 1
+
+
+def test_voice_sort_prefers_singleton_exact_age_over_multi_age_exact():
+    multi_age = VoiceConfig(
+        provider="p", voice_id="a-multi", gender="male",
+        age=["child", "teen"],
+    )
+    singleton = VoiceConfig(
+        provider="p", voice_id="z-singleton", gender="male", age=["teen"],
+    )
+
+    ranked = sorted(
+        [multi_age, singleton],
+        key=lambda voice: _voice_sort_key(voice, "teen", narrator=False),
+    )
+
+    assert ranked == [singleton, multi_age]
+
+
+def test_candidate_sampling_uses_unknown_age_only_in_fallback_pool():
+    unknown = VoiceConfig(
+        provider="p", voice_id="unknown", gender="female", age=[],
+    )
+    child = VoiceConfig(
+        provider="p", voice_id="child", gender="female", age=["child"],
+    )
+    voices = [unknown, child]
+
+    assert _sample_voice_candidates(voices, "female", "child", []) == [child]
+    assert _sample_voice_candidates(voices, "female", "senior", []) == voices
+
+
+def test_llm_context_renders_multi_age_candidates_and_explains_ranges():
+    llm = _assignment_llm({"assignments": []})
+    matcher = _make_matcher(llm=llm, mode="llm")
+    character = Character(
+        id="kid", name="小明", description="少年男孩",
+        gender="male", age="teen",
+    )
+    voices = [
+        VoiceConfig(
+            provider="p", voice_id="child-teen", name="成长童声",
+            gender="male", age=["child", "teen"], category="角色扮演",
+        )
+    ]
+
+    matcher._request_llm(
+        [character], {character.id: (character.gender, character.age)}, voices
+    )
+
+    messages = llm.calls[0]["messages"]
+    assert "可覆盖多个相邻年龄段" in messages[0]["content"]
+    assert "儿童 / 少年" in messages[1]["content"]
+    assert "年龄=少年" in messages[1]["content"]

@@ -59,6 +59,27 @@ class SoundEffect:
 
 
 # ========== Voice ==========
+_AGE_BANDS = ("child", "teen", "young_adult", "middle_aged", "senior")
+
+
+def normalize_voice_ages(value) -> list[str]:
+    """Return valid, ordered, unique age bands as a fresh list."""
+    if value is None:
+        values = []
+    elif isinstance(value, str):
+        values = [value]
+    elif isinstance(value, (list, tuple)):
+        values = value
+    else:
+        values = []
+
+    normalized = []
+    for age in values:
+        if age in _AGE_BANDS and age not in normalized:
+            normalized.append(age)
+    return normalized
+
+
 @dataclass
 class VoiceConfig:
     provider: str
@@ -72,9 +93,12 @@ class VoiceConfig:
     # gender is male/female, or None for gender-neutral voices.
     name: Optional[str] = None
     gender: Optional[str] = None
-    age: Optional[str] = None
+    age: list[str] = field(default_factory=list)
     category: Optional[str] = None
     description: Optional[str] = None
+
+    def __post_init__(self):
+        self.age = normalize_voice_ages(self.age)
 
 
 # ========== Character ==========

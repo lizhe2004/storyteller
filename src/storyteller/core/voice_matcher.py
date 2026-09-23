@@ -70,7 +70,8 @@ _LLM_SYSTEM_PROMPT = (
     "3. 旁白角色优先选择「有声阅读」类、语气平稳连贯的音色；"
     "儿童故事也可以根据气质选择温暖的年轻音色或儿童音色。\n"
     "4. 年龄和气质要贴合：例如慈祥的老婆婆要避免年轻御姐音，"
-    "优先中年/老年、语气温和缓慢的音色；孩子选儿童年龄段音色。\n"
+    "优先中年/老年、语气温和缓慢的音色；孩子选儿童年龄段音色。"
+    "一个音色可覆盖多个相邻年龄段。\n"
     "5. 结合音色的名称、分类和描述里的语气、风格来判断，不要只看性别。\n"
     "6. 不同角色尽量选择不同的音色，序号不可重复。\n"
     "7. 只输出 JSON，不要任何额外文字，格式：\n"
@@ -130,8 +131,22 @@ def _is_narrator(character):
     return any(kw in text for kw in _NARRATOR_KEYWORDS)
 
 
-def _age_distance(a, b):
-    return abs(_AGE_RANK.get(a, 2) - _AGE_RANK.get(b, 2))
+def _voice_age_rank(ages):
+    """Return the youngest declared age rank, with unknown ages last."""
+    ranks = [_AGE_RANK[age] for age in ages if age in _AGE_RANK]
+    return min(ranks, default=9)
+
+
+def _age_distance(ages, target):
+    """Return the nearest distance from any declared age to the target."""
+    if not ages or target not in _AGE_RANK:
+        return 9
+    return min(abs(_AGE_RANK[age] - _AGE_RANK[target]) for age in ages)
+
+
+def _age_labels(ages):
+    """Render normalized voice ages for the LLM candidate context."""
+    return " / ".join(_AGE_LABELS.get(age, age) for age in ages) or "-"
 
 
 def _gender_pool(voices, gender):
@@ -150,14 +165,15 @@ def _voice_sort_key(voice, age, narrator):
         # Narration-suited voices first; ties by age then stable id.
         return (
             0 if is_narration_voice(voice) else 1,
-            _AGE_RANK.get(voice.age, 9),
+            _voice_age_rank(voice.age),
             voice.voice_id,
         )
     # Dialogue: reading voices are the last resort; otherwise nearest age.
     return (
-        1 if is_narration_voice(voice) else 0,
         _age_distance(voice.age, age),
-        _AGE_RANK.get(voice.age, 9),
+        0 if voice.age == [age] else 1,
+        1 if is_narration_voice(voice) else 0,
+        _voice_age_rank(voice.age),
         voice.voice_id,
     )
 
@@ -170,7 +186,7 @@ def _sample_voice_candidates(voices, gender, age, preferences,
     rng = rng or random
     eligible = _gender_pool(voices, gender) if gender is not None else list(voices)
     if age is not None:
-        same_age = [voice for voice in eligible if voice.age == age]
+        same_age = [voice for voice in eligible if age in voice.age]
         if same_age:
             eligible = same_age
     if len(eligible) <= limit:
@@ -367,7 +383,7 @@ class VoiceMatcher:
             key=lambda v: (
                 0 if is_narration_voice(v) else 1,
                 _GENDER_ORDER.get(v.gender, 9),
-                _AGE_RANK.get(v.age, 9),
+                _voice_age_rank(v.age),
                 v.voice_id,
             ),
         )
@@ -380,7 +396,7 @@ class VoiceMatcher:
                     index,
                     voice.name or voice.voice_id,
                     gender_label,
-                    _AGE_LABELS.get(voice.age, voice.age or "-"),
+                    _age_labels(voice.age),
                     voice.category or "-",
                     voice.description or "-",
                 )

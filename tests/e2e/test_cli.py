@@ -37,6 +37,7 @@ def test_list_voices_shows_mock():
         assert "Mock（测试）" in result.output
         assert "narrator_01" in result.output
         assert "男" in result.output and "女" in result.output
+        assert "儿童 / 少年" in result.output
         assert "有声阅读" in result.output
         # Table headers present, and the old confusing 类型 column is gone.
         for header in ("名称", "音色ID", "性别", "年龄段", "场景"):
@@ -78,8 +79,10 @@ def test_list_voices_json():
         assert isinstance(data, list) and data
         row = next(v for v in data if v["voice_id"] == "female_01")
         assert row["gender"] == "female"
-        assert row["age"] == "middle_aged"
+        assert row["age"] == ["middle_aged"]
         assert row["category"] == "通用场景"
+        child_row = next(v for v in data if v["voice_id"] == "child_01")
+        assert child_row["age"] == ["child", "teen"]
         assert all("voice_type" not in v for v in data)
 
 

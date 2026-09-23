@@ -1,5 +1,5 @@
 export interface StoryLine { line_id: string; line_type: string; character_id?: string | null; speaker: string; text: string; duration_ms?: number | null }
-export interface StoryCharacter { id: string; name: string; description?: string; gender?: string | null; age?: string | null; voice?: { provider: string; model?: string | null; voice_id: string; name?: string | null; gender?: string | null; age?: string | null; category?: string | null; description?: string | null } | null }
+export interface StoryCharacter { id: string; name: string; description?: string; gender?: string | null; age?: string | null; voice?: { provider: string; model?: string | null; voice_id: string; name?: string | null; gender?: string | null; age?: string[] | string | null; category?: string | null; description?: string | null } | null }
 export interface CharactersMatchedEvent { type: 'characters_matched'; characters: StoryCharacter[] }
 export interface StoryDetail { id: string; title: string; topic: string; state: string; characters: { id: string; name: string }[]; lines: StoryLine[] }
 export interface ReadyAudio { encoding: string; sample_rate: number; channels: number }

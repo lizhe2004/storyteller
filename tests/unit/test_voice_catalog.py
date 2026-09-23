@@ -25,7 +25,8 @@ def test_catalog_records_have_required_fields():
         assert v["name"]
         assert "voice_type" not in v
         assert v["gender"] in VALID_GENDERS
-        assert v["age"] in VALID_AGES
+        ages = v["age"] if isinstance(v["age"], list) else [v["age"]]
+        assert ages and all(age in VALID_AGES for age in ages)
         assert v["language"] == "zh-CN"
         assert v["resource_id"] in VALID_RESOURCES
         assert isinstance(v["bilingual"], bool)
@@ -47,8 +48,19 @@ def test_catalog_excludes_service_and_accent_voices():
 def test_catalog_has_narration_and_child_voices():
     voices = load_voice_catalog()
     assert any(v["category"] == NARRATION_CATEGORY for v in voices)
-    children = [v for v in voices if v["age"] == "child"]
+    children = [
+        v for v in voices
+        if "child" in (v["age"] if isinstance(v["age"], list) else [v["age"]])
+    ]
     assert len(children) >= 5
+
+
+def test_catalog_preserves_scalar_and_array_age_values():
+    index = {voice["voice_id"]: voice for voice in load_voice_catalog()}
+    assert index["ICL_uranus_zh_male_wennuanshaonian_tob"]["age"] == [
+        "child", "teen"
+    ]
+    assert index["zh_male_m191_uranus_bigtts"]["age"] == "young_adult"
 
 
 def test_catalog_narration_voices_sort_first():

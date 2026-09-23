@@ -52,7 +52,7 @@ MOCK_VOICES = [
         language="zh-CN",
         name="稚嫩童声",
         gender="male",
-        age="child",
+        age=["child", "teen"],
         category="角色扮演",
         description="天真活泼的儿童声音",
     ),

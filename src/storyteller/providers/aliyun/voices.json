@@ -105,7 +105,10 @@
       "name": "龙泡泡",
       "model": "qwen-audio-3.0-tts-flash",
       "gender": "female",
-      "age": "child",
+      "age": [
+        "child",
+        "teen"
+      ],
       "category": "儿童陪伴",
       "description": "5岁软糯可爱音，软萌稚气的小女孩声音",
       "tags": [],
