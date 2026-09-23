@@ -40,3 +40,6 @@ sounds/
 
 # Claude Code local
 .claude/
+
+# Agent worktrees
+.worktrees/
