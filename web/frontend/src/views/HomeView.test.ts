@@ -6,8 +6,12 @@ import HomeView from './HomeView.vue'
 
 const mounted: { app: App; element: HTMLElement }[] = []
 
-async function mountHome() {
-  vi.spyOn(api, 'options').mockResolvedValue({ lengths: ['short'], complexities: ['simple'], tts_providers: [], sound_enabled: false })
+async function mountHome(withModels = false) {
+  vi.spyOn(api, 'options').mockResolvedValue({
+    lengths: ['short'], complexities: ['simple'], tts_providers: [], sound_enabled: false,
+    llm_models: withModels ? [{ provider: 'mock', model: 'story-v1', label: 'mock / story-v1', is_default: true }] : [],
+    audio_models: withModels ? [{ provider: 'mock', model: 'voice-v1', label: 'mock / voice-v1' }] : [],
+  })
   const element = document.createElement('div')
   document.body.appendChild(element)
   const app = createApp(HomeView).use(createPinia())
@@ -44,6 +48,25 @@ describe('HomeView empty state', () => {
 
     expect(textarea.value).toBe('一只怕黑的小狐狸，在月亮下交到了朋友')
     expect(document.activeElement).toBe(textarea)
+  })
+
+  it('shows per-story LLM and audio model selectors when configured', async () => {
+    const element = await mountHome(true)
+    const selects = Array.from(element.querySelectorAll('.model-row select')) as HTMLSelectElement[]
+
+    expect(selects).toHaveLength(1)
+    expect(selects[0].value).toBe('mock::story-v1')
+    expect(element.querySelector('[data-testid="audio-model-trigger"]')).toBeTruthy()
+    expect(element.querySelector('[data-testid="audio-model-menu"]')).toBeNull()
+    ;(element.querySelector('[data-testid="audio-model-trigger"]') as HTMLButtonElement).click()
+    await nextTick()
+    const checkboxes = Array.from(element.querySelectorAll('[data-testid="audio-model-option"] input')) as HTMLInputElement[]
+    expect(checkboxes).toHaveLength(1)
+    expect(checkboxes[0].checked).toBe(true)
+    document.body.click()
+    await nextTick()
+    expect(element.querySelector('[data-testid="audio-model-menu"]')).toBeNull()
+    expect(selects[0].textContent).toContain('（默认）')
   })
 
 })

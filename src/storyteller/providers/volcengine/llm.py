@@ -28,7 +28,7 @@ class VolcengineLLM(BaseProvider, LLMProvider):
             "llm.provider_config.volcengine", {}
         ) or {}
         self.api_key = provider_config.get("api_key")
-        self.model = provider_config.get("model", "deepseek-v4-flash-260425")
+        self.model = provider_config.get("model", "deepseek-v4-flash-ga-260731")
         self.endpoint = _DEFAULT_ENDPOINT
 
         if not self.api_key:
@@ -78,6 +78,50 @@ class VolcengineLLM(BaseProvider, LLMProvider):
             raise LLMError(
                 "Unexpected Volcengine LLM response shape: {}".format(data)
             ) from exc
+
+    def list_models(self):
+        """List chat-capable models visible to this Ark API key.
+
+        Ark serves an OpenAI-compatible ``GET /models``. Entries carry a
+        ``domain`` and an optional ``status``: a missing status means the
+        model is active. ``Retiring`` entries are still callable and are
+        listed after the active ones; ``Shutdown`` entries are dead and
+        excluded. Both ``LLM`` and ``VLM`` entries are kept — the seed-2.x
+        families are tagged VLM but handle text-only chat fine.
+        """
+        url = "{}/models".format(self.endpoint)
+        headers = {"Authorization": "Bearer {}".format(self.api_key)}
+        try:
+            response = self._session.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as exc:
+            raise LLMError(
+                "Volcengine model list request failed: {}".format(exc)
+            ) from exc
+        except ValueError as exc:
+            raise LLMError("Invalid JSON from Volcengine model list") from exc
+        items = data.get("data")
+        if not isinstance(items, list):
+            raise LLMError(
+                "Unexpected Volcengine model list shape: {}".format(data)
+            )
+        active, retiring = [], []
+        for item in items:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            if item.get("domain") not in ("LLM", "VLM"):
+                continue
+            status = item.get("status")
+            if not status:
+                active.append(item["id"])
+            elif status == "Retiring":
+                retiring.append(item["id"])
+        return [
+            {"id": model, "retiring": False} for model in sorted(active)
+        ] + [
+            {"id": model, "retiring": True} for model in sorted(retiring)
+        ]
 
     def chat_stream(self, messages, temperature=0.7, max_tokens=None, **kwargs):
         url = "{}/chat/completions".format(self.endpoint)

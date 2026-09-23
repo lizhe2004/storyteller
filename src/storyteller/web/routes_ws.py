@@ -18,6 +18,10 @@ def _ready(job):
     return {"type": "ready", "job_id": job.id,
             "playback_mode": job.params.audio_mode,
             "server_time": server_time(),
+            "model_selection": {
+                "llm": job.params.llm_model,
+                "audio": job.params.tts_model,
+            },
             "audio": {"encoding": "pcm_s16le",
                       "sample_rate": STREAM_SAMPLE_RATE, "channels": STREAM_CHANNELS}}
 
@@ -69,6 +73,8 @@ async def ws_endpoint(ws: WebSocket):
                 complexity=first.get("complexity", "simple"),
                 with_sound=bool(first.get("with_sound", False)),
                 tts_providers=first.get("tts_providers"),
+                llm_model=first.get("llm_model"),
+                tts_model=first.get("tts_model"),
                 audio_mode=("native_mp3" if first.get("audio_mode") == "native_mp3" else "webaudio")))
             await ws.send_json(_ready(job))
             state.jobs.submit(job, lambda j: StreamOrchestrator(

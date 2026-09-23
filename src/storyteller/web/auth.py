@@ -50,9 +50,15 @@ def hash_password(password):
 
 
 class TokenIssuer:
-    def __init__(self, secret=None, ttl_days=30):
+    def __init__(self, secret=None, ttl_days=30, fallback_secret=None):
         self.ephemeral = not secret
-        self._serializer = URLSafeTimedSerializer(secret or secrets.token_hex(32), salt="storyteller-web")
+        # Without a configured secret the signing key is ephemeral, but it
+        # must stay stable for the app's lifetime so runtime config reloads
+        # do not invalidate every session.
+        self._serializer = URLSafeTimedSerializer(
+            secret or fallback_secret or secrets.token_hex(32),
+            salt="storyteller-web",
+        )
         self.ttl_seconds = int(ttl_days) * 86400
 
     def issue(self):

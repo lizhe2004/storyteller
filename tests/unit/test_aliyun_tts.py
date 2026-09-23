@@ -171,10 +171,14 @@ def test_enabled_models_allowlist_filters_list_voices():
 
 
 def test_enabled_models_supports_multiple_and_whitespace():
-    # Both plus and flash explicitly listed -> both visible.
+    # Both 3.0 tiers explicitly listed -> all 3.0 voices visible, 3.1 hidden.
     config = _config(models=" qwen-audio-3.0-tts-plus , qwen-audio-3.0-tts-flash ")
     voices = AliyunTTS(config).list_voices()
-    assert len(voices) == len(load_voice_catalog())
+    assert len(voices) == 1189
+    assert all(
+        load_voice_index()[v.voice_id]["model"] != "qwen-audio-3.1-tts-flash"
+        for v in voices
+    )
 
 
 def test_enabled_models_unset_exposes_all_catalog_voices():

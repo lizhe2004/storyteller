@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { api } from '../api'
 import type { ConnectionTestPayload, SettingsPatch, SettingsResponse } from '../types'
@@ -35,10 +35,15 @@ function providerNames(group: string) {
   }
   return String(draft[group].providers_text || '').split(',').map((name: string) => name.trim()).filter(Boolean)
 }
-function syncProviderDrafts(group: string) {
-  for (const name of providerNames(group)) {
-    if (!draft[group].provider_config[name]) draft[group].provider_config[name] = { type: '' }
-  }
+// Cards render for every provider that is enabled, built-in (fixed names),
+// or already configured — configuration is independent of enablement.
+function cardNames(group: string): string[] {
+  if (group !== 'tts') return providerNames(group)
+  const schema = settings.value?.provider_schemas.tts
+  const names = [...providerNames('tts')]
+  for (const name of schema?.fixed_names || []) if (!names.includes(name)) names.push(name)
+  for (const name of Object.keys(draft.tts.provider_config || {})) if (!names.includes(name)) names.push(name)
+  return names
 }
 function providerFormType(group: string, name: string) {
   const schema = settings.value?.provider_schemas[group as 'llm' | 'tts' | 'sound']
@@ -46,7 +51,9 @@ function providerFormType(group: string, name: string) {
   if (group === 'llm' || group === 'sound') {
     return draft[group].provider_type || draft[group].provider_config[name]?.type || null
   }
-  if (schema.fixed_names.includes(name)) return schema.providers[name] || null
+  // Fixed providers (aliyun/volcengine) resolve by name even when they were
+  // not enabled at load time and thus lack a schema.providers entry.
+  if (schema.fixed_names.includes(name)) return schema.providers[name] || name
   const configured = draft[group].provider_config[name]?.type
   return (configured && schema.types[configured] ? configured : schema.providers[name]) || null
 }
@@ -116,8 +123,8 @@ function copyGroupDraft(value: SettingsResponse, group: string) {
     }
     return
   }
+  const providerSchema = value.provider_schemas[group as 'llm' | 'tts' | 'sound']
   for (const [name, config] of Object.entries(original.provider_config || {})) {
-    const providerSchema = value.provider_schemas[group as 'llm' | 'tts' | 'sound']
     const configuredType = (config as any).type
     const resolvedType = providerSchema.fixed_names.includes(name)
       ? providerSchema.providers[name]
@@ -125,6 +132,13 @@ function copyGroupDraft(value: SettingsResponse, group: string) {
         ? configuredType
         : providerSchema.providers[name])
     draft[group].provider_config[name] = { ...(config as any), type: resolvedType || '', api_key: '' }
+  }
+  // Built-in providers always get an editable card so they can be configured
+  // before (or without ever) being enabled.
+  for (const name of providerSchema.fixed_names) {
+    if (!draft[group].provider_config[name]) {
+      draft[group].provider_config[name] = { type: providerSchema.providers[name] || name, api_key: '' }
+    }
   }
 }
 
@@ -141,7 +155,10 @@ function providerPatch(group: string) {
   if (group === 'sound' && value.enabled && names.length !== 1) throw new Error('启用音效前，请选择一个音效服务类型')
   const patch: any = { providers: names, provider_config: {} }
   if (group === 'llm' || group === 'tts') patch.default_provider = null
-  for (const name of names) {
+  // TTS persists every configured card, including providers that are not
+  // currently enabled; `providers` above stays limited to the enabled set.
+  const configNames = group === 'tts' ? cardNames(group) : names
+  for (const name of configNames) {
     const config = value.provider_config[name] || {}
     const type = providerFormType(group, name)
     const typeSchema = type && schema?.types[type]
@@ -153,7 +170,8 @@ function providerPatch(group: string) {
         if (config.api_key) item.api_key = config.api_key
       } else if (config[key] !== undefined) item[key] = config[key]
     }
-    patch.provider_config[name] = item
+    // Skip untouched built-in providers that carry no values at all.
+    if (Object.keys(item).length || (settings.value as any)?.[group]?.provider_config?.[name]) patch.provider_config[name] = item
   }
   if (group === 'sound') patch.enabled = value.enabled
   if (group === 'sound' && value.dir !== undefined) patch.dir = value.dir
@@ -192,6 +210,168 @@ async function testConnection(group: 'llm' | 'tts') {
   finally { testing.value = null }
 }
 
+interface RemoteModel { id: string; retiring?: boolean }
+
+const fetchingModels = ref<string | null>(null)
+const modelFetchStatus = reactive<Record<string, string>>({})
+const candidateFilter = reactive<Record<string, string>>({})
+const remoteModels = reactive<Record<string, RemoteModel[]>>({})
+const collapsedCards = reactive(new Set<string>())
+const providerPickerOpen = ref(false)
+
+// Fetch/editor state is keyed by group:name — LLM and TTS providers can
+// share a name (e.g. volcengine) and must not leak lists into each other.
+const stateKey = (group: string, name: string) => `${group}:${name}`
+
+// 'llm': candidates + a default; 'multi': candidates only (voice pool
+// whitelist); 'single': exactly one selected model.
+function modelEditorKind(group: string, name: string): 'llm' | 'multi' | 'single' | null {
+  const type = providerFormType(group, name)
+  if (!type || type === 'mock') return null
+  if (group === 'llm') return 'llm'
+  if (group !== 'tts') return null
+  return providerFormFields(group, name).includes('models') ? 'multi' : 'single'
+}
+
+function modelTargetField(group: string, name: string) {
+  const fields = providerFormFields(group, name)
+  if (fields.includes('models')) return 'models'
+  return fields.includes('model') ? 'model' : 'resource_id'
+}
+
+// The form field the editor replaces with its listbox.
+function modelEditorField(group: string, name: string) {
+  return modelEditorKind(group, name) === 'llm' ? 'models' : modelTargetField(group, name)
+}
+
+function selectedModelValue(group: string, name: string): string {
+  const config = draft[group].provider_config[name] || {}
+  // LLM keeps its whitelist in `models` but the default lives in `model`.
+  if (modelEditorKind(group, name) === 'llm') return config.model || ''
+  return config[modelTargetField(group, name)] || ''
+}
+
+function candidateList(group: string, name: string): string[] {
+  return String(draft[group].provider_config[name]?.models || '').split(',').map((v: string) => v.trim()).filter(Boolean)
+}
+
+function candidatePool(group: string, name: string): RemoteModel[] {
+  const pool = [...(remoteModels[stateKey(group, name)] || [])]
+  for (const model of candidateList(group, name)) if (!pool.some(m => m.id === model)) pool.push({ id: model })
+  if (modelEditorKind(group, name) !== 'multi') {
+    const current = selectedModelValue(group, name)
+    if (current && !pool.some(m => m.id === current)) pool.unshift({ id: current })
+  }
+  return pool
+}
+
+function filteredPool(group: string, name: string): RemoteModel[] {
+  const keyword = (candidateFilter[stateKey(group, name)] || '').trim().toLowerCase()
+  const pool = candidatePool(group, name)
+  return keyword ? pool.filter(m => m.id.toLowerCase().includes(keyword)) : pool
+}
+
+function writeCandidates(group: string, name: string, list: string[]) {
+  draft[group].provider_config[name].models = list.join(', ')
+  markDirty(group)
+}
+
+function isDefaultModel(group: string, name: string, model: string) {
+  return modelEditorKind(group, name) === 'llm' && model === selectedModelValue(group, name)
+}
+
+function setDefaultModel(group: string, name: string, model: string) {
+  const list = candidateList(group, name)
+  draft[group].provider_config[name].model = model
+  if (!list.includes(model)) writeCandidates(group, name, [...list, model])
+  else markDirty(group)
+}
+
+function toggleCandidate(group: string, name: string, model: string) {
+  if (isDefaultModel(group, name, model)) return
+  const list = candidateList(group, name)
+  writeCandidates(group, name, list.includes(model) ? list.filter(m => m !== model) : [...list, model])
+}
+
+function selectSingleModel(group: string, name: string, model: string) {
+  draft[group].provider_config[name][modelTargetField(group, name)] = model
+  markDirty(group)
+}
+
+function customCandidateKeyword(group: string, name: string): string {
+  const keyword = (candidateFilter[stateKey(group, name)] || '').trim()
+  return keyword && !candidatePool(group, name).some(m => m.id === keyword) ? keyword : ''
+}
+
+function addCustomCandidate(group: string, name: string) {
+  const keyword = customCandidateKeyword(group, name)
+  if (!keyword) return
+  if (modelEditorKind(group, name) === 'single') {
+    const key = stateKey(group, name)
+    remoteModels[key] = [...(remoteModels[key] || []), { id: keyword }]
+    selectSingleModel(group, name, keyword)
+    return
+  }
+  const list = candidateList(group, name)
+  if (!list.includes(keyword)) writeCandidates(group, name, [...list, keyword])
+}
+
+async function fetchProviderModels(group: 'llm' | 'tts', name: string) {
+  const key = stateKey(group, name)
+  fetchingModels.value = key; modelFetchStatus[key] = ''
+  try {
+    const config = { ...(draft[group].provider_config?.[name] || {}) }
+    if (!config.api_key) delete config.api_key
+    const result = await api.fetchModels(group, { provider: name, config })
+    remoteModels[key] = result.models
+    modelFetchStatus[key] = result.models.length
+      ? `已拉取 ${result.models.length} 个模型`
+      : '没有识别到可用模型，可直接输入添加'
+  } catch (err: any) {
+    modelFetchStatus[key] = err?.message || '拉取模型列表失败'
+  } finally { fetchingModels.value = null }
+}
+
+// Only auto-fetch when a key is available (typed in the draft or saved).
+function providerHasKey(group: string, name: string): boolean {
+  if (draft[group].provider_config?.[name]?.api_key) return true
+  return Boolean((settings.value as any)?.[group]?.provider_config?.[name]?.api_key?.configured)
+}
+
+function ttsProviderOptions(): { name: string; label: string }[] {
+  const schema = settings.value?.provider_schemas.tts
+  const names = ['aliyun', 'volcengine', 'openai', 'mock']
+  for (const name of providerNames('tts')) if (!names.includes(name)) names.push(name)
+  return names.map(name => {
+    const type = name === 'openai' ? 'openai_compatible' : schema?.providers[name]
+    return { name, label: (type && schema?.types[type]?.label) || name }
+  })
+}
+
+function toggleTtsProvider(name: string) {
+  const names = providerNames('tts')
+  if (names.includes(name)) {
+    draft.tts.providers_text = names.filter(n => n !== name).join(',')
+  } else {
+    if (!draft.tts.provider_config[name]) {
+      const schema = settings.value?.provider_schemas.tts
+      const type = schema?.fixed_names.includes(name)
+        ? name
+        : name === 'openai' ? 'openai_compatible' : schema?.providers[name] || ''
+      draft.tts.provider_config[name] = { type, api_key: '' }
+    }
+    draft.tts.providers_text = [...names, name].join(',')
+    if (modelEditorKind('tts', name) && providerHasKey('tts', name) && !remoteModels[stateKey('tts', name)]) fetchProviderModels('tts', name)
+  }
+  markDirty('tts')
+}
+
+function toggleCard(group: string, name: string) {
+  const key = stateKey(group, name)
+  if (collapsedCards.has(key)) collapsedCards.delete(key)
+  else collapsedCards.add(key)
+}
+
 async function resetGroup(group: string) {
   if (!window.confirm('确定恢复这一组配置的环境变量值吗？')) return
   const paths: string[] = []
@@ -219,6 +399,15 @@ const settingsSections = [
   { id: 'sound', title: '音效服务', description: '音效生成与存储' },
 ]
 const activeSection = computed(() => settingsSections.find(section => section.id === activeGroup.value) || settingsSections[0])
+
+// Auto-populate the LLM candidate pool from the provider when the group
+// is opened; failed fetches simply leave the pool at the saved selection.
+watch(activeGroup, group => {
+  if (group !== 'llm' && group !== 'tts') return
+  for (const name of cardNames(group)) {
+    if (modelEditorKind(group, name) && providerHasKey(group, name) && !remoteModels[stateKey(group, name)]) fetchProviderModels(group as 'llm' | 'tts', name)
+  }
+})
 </script>
 
 <template>
@@ -313,10 +502,21 @@ const activeSection = computed(() => settingsSections.find(section => section.id
                   <option v-for="type in singleProviderTypeChoices(activeGroup as 'llm' | 'sound')" :key="type" :value="type">{{ settings.provider_schemas[activeGroup as 'llm' | 'sound'].types[type].label }}</option>
                 </select>
               </label>
-              <label v-if="activeGroup === 'tts'">启用 Provider
-                <input :data-testid="`${activeGroup}-providers`" v-model="draft[activeGroup].providers_text" @input="markDirty" @change="syncProviderDrafts(activeGroup)">
-                <small :class="sourceClass(sourceAt(activeGroup, 'providers'))">可填写多个名称，以逗号分隔，用于构建音色池。</small>
-              </label>
+              <div v-if="activeGroup === 'tts'" class="provider-picker">
+                <span class="provider-picker-label">启用 Provider</span>
+                <div class="provider-picker-dropdown">
+                  <button type="button" class="settings-button secondary" data-testid="tts-provider-picker-toggle" @click="providerPickerOpen = !providerPickerOpen">
+                    {{ providerNames('tts').length ? `已选 ${providerNames('tts').length} 个` : '选择 Provider' }} ▾
+                  </button>
+                  <div v-if="providerPickerOpen" class="provider-picker-panel" data-testid="tts-provider-picker-panel">
+                    <label v-for="option in ttsProviderOptions()" :key="option.name" class="provider-picker-option">
+                      <input type="checkbox" :checked="providerNames('tts').includes(option.name)" :data-testid="`tts-provider-option-${option.name}`" @change="toggleTtsProvider(option.name)">
+                      <span>{{ option.label }}</span>
+                    </label>
+                  </div>
+                </div>
+                <small :class="sourceClass(sourceAt('tts', 'providers'))">勾选参与音色匹配的语音服务，可组合音色池。</small>
+              </div>
               <label v-if="activeGroup === 'sound'" class="settings-checkbox">
                 <input type="checkbox" v-model="draft.sound.enabled" @change="markDirty"><span>启用音效</span>
               </label>
@@ -328,39 +528,83 @@ const activeSection = computed(() => settingsSections.find(section => section.id
           </section>
 
           <section class="settings-block provider-settings">
-            <div class="settings-block-heading"><h3>服务凭据与参数</h3><p>{{ activeGroup === 'tts' ? '各语音服务分别配置，可组合音色池。' : '凭据按所选服务类型配置。' }}密钥只显示遮罩状态，不会回填。</p></div>
-            <template v-for="name in providerNames(activeGroup)" :key="name">
-              <article v-if="draft[activeGroup].provider_config[name]" class="provider-card" :data-testid="`provider-card-${activeGroup}-${name}`">
-                <header><h4>{{ name }}</h4><span>{{ providerTypeLabel(activeGroup, name) }}</span></header>
-                <div v-if="activeGroup === 'tts' && !providerTypeIsFixed(activeGroup, name)" class="settings-form settings-form-compact">
-                  <label>服务类型
-                    <select :data-testid="`provider-type-${activeGroup}-${name}`" v-model="draft[activeGroup].provider_config[name].type" @change="markDirty">
-                      <option value="">选择后端支持的类型</option>
-                      <option v-for="type in providerTypeChoices(activeGroup, name)" :key="type" :value="type">{{ settings.provider_schemas[activeGroup as 'llm' | 'tts' | 'sound'].types[type].label }}</option>
-                    </select>
-                    <small>服务类型决定后端使用的接口和配置项。</small>
-                  </label>
+            <div class="settings-block-heading"><h3>服务凭据与参数</h3><p>{{ activeGroup === 'tts' ? '各语音服务分别配置；配置与启用相互独立，未启用也可先完成配置。' : '凭据按所选服务类型配置。' }}密钥只显示遮罩状态，不会回填。</p></div>
+            <template v-for="name in cardNames(activeGroup)" :key="name">
+              <article v-if="draft[activeGroup].provider_config[name]" class="provider-card" :class="{ collapsed: collapsedCards.has(`${activeGroup}:${name}`) }" :data-testid="`provider-card-${activeGroup}-${name}`">
+                <header :data-testid="`provider-card-toggle-${activeGroup}-${name}`" @click="toggleCard(activeGroup, name)">
+                  <h4>{{ name }}</h4><span>{{ providerTypeLabel(activeGroup, name) }}</span>
+                  <span v-if="activeGroup === 'tts'" class="provider-card-state" :class="{ enabled: providerNames('tts').includes(name) }" :data-testid="`provider-card-state-tts-${name}`">{{ providerNames('tts').includes(name) ? '已启用' : '未启用' }}</span>
+                  <i class="provider-card-chevron"></i>
+                </header>
+                <div v-show="!collapsedCards.has(`${activeGroup}:${name}`)">
+                  <div v-if="activeGroup === 'tts' && !providerTypeIsFixed(activeGroup, name)" class="settings-form settings-form-compact">
+                    <label>服务类型
+                      <select :data-testid="`provider-type-${activeGroup}-${name}`" v-model="draft[activeGroup].provider_config[name].type" @change="markDirty">
+                        <option value="">选择后端支持的类型</option>
+                        <option v-for="type in providerTypeChoices(activeGroup, name)" :key="type" :value="type">{{ settings.provider_schemas[activeGroup as 'llm' | 'tts' | 'sound'].types[type].label }}</option>
+                      </select>
+                      <small>服务类型决定后端使用的接口和配置项。</small>
+                    </label>
+                  </div>
+                  <div v-if="providerFormType(activeGroup, name)" class="settings-form provider-fields">
+                    <template v-for="field in providerFormFields(activeGroup, name)" :key="field">
+                      <div v-if="modelEditorKind(activeGroup, name) && field === modelEditorField(activeGroup, name)" class="candidate-editor">
+                        <div class="candidate-editor-head">
+                          <span class="candidate-editor-title">{{ modelEditorKind(activeGroup, name) === 'llm' ? '可选模型清单' : modelEditorKind(activeGroup, name) === 'multi' ? '模型白名单' : (providerFieldLabels[modelTargetField(activeGroup, name)] || '模型') }}</span>
+                          <span v-if="modelEditorKind(activeGroup, name) !== 'multi'" class="candidate-current" :data-testid="`candidate-current-${activeGroup}-${name}`">{{ modelEditorKind(activeGroup, name) === 'llm' ? '默认' : '当前' }}：{{ selectedModelValue(activeGroup, name) || '未设置' }}</span>
+                          <button type="button" class="settings-button secondary" :data-testid="`candidate-refresh-${activeGroup}-${name}`" :disabled="fetchingModels === `${activeGroup}:${name}`" @click="fetchProviderModels(activeGroup as 'llm' | 'tts', name)">{{ fetchingModels === `${activeGroup}:${name}` ? '拉取中…' : '刷新列表' }}</button>
+                        </div>
+                        <div class="candidate-listbox">
+                          <div class="candidate-search">
+                            <input type="search" placeholder="筛选模型，或输入自定义模型 ID" v-model="candidateFilter[`${activeGroup}:${name}`]" :data-testid="`candidate-filter-${activeGroup}-${name}`" @keyup.enter="addCustomCandidate(activeGroup, name)">
+                          </div>
+                          <ul class="candidate-list" :data-testid="`candidate-list-${activeGroup}-${name}`">
+                            <li v-if="customCandidateKeyword(activeGroup, name)" class="candidate-add-row">
+                              <button type="button" class="candidate-action" :data-testid="`candidate-add-${activeGroup}-${name}`" @click="addCustomCandidate(activeGroup, name)">添加“{{ customCandidateKeyword(activeGroup, name) }}”</button>
+                            </li>
+                            <li v-for="candidate in filteredPool(activeGroup, name)" :key="candidate.id">
+                              <label class="candidate-check">
+                                <input v-if="modelEditorKind(activeGroup, name) === 'single'" type="radio" :name="`candidate-${activeGroup}-${name}`" :checked="selectedModelValue(activeGroup, name) === candidate.id" :data-testid="`candidate-select-${activeGroup}-${name}-${candidate.id}`" @change="selectSingleModel(activeGroup, name, candidate.id)">
+                                <input v-else type="checkbox" :checked="isDefaultModel(activeGroup, name, candidate.id) || candidateList(activeGroup, name).includes(candidate.id)" :disabled="isDefaultModel(activeGroup, name, candidate.id)" :data-testid="`candidate-check-${activeGroup}-${name}-${candidate.id}`" @change="toggleCandidate(activeGroup, name, candidate.id)">
+                                <span class="candidate-name">{{ candidate.id }}</span>
+                              </label>
+                              <span v-if="candidate.retiring" class="candidate-retiring">即将下线</span>
+                              <template v-if="modelEditorKind(activeGroup, name) === 'llm'">
+                                <span v-if="isDefaultModel(activeGroup, name, candidate.id)" class="candidate-default">默认模型</span>
+                                <button v-else type="button" class="candidate-action" :data-testid="`candidate-default-${activeGroup}-${name}-${candidate.id}`" @click="setDefaultModel(activeGroup, name, candidate.id)">设置为默认</button>
+                              </template>
+                            </li>
+                            <li v-if="!filteredPool(activeGroup, name).length && !customCandidateKeyword(activeGroup, name)" class="candidate-empty-row">没有匹配的模型</li>
+                          </ul>
+                        </div>
+                        <p v-if="modelFetchStatus[`${activeGroup}:${name}`]" class="model-fetch-status" :data-testid="`fetch-models-status-${activeGroup}-${name}`">{{ modelFetchStatus[`${activeGroup}:${name}`] }}</p>
+                        <p v-if="!candidatePool(activeGroup, name).length" class="provider-empty">配置 API Key 后自动拉取模型列表，也可直接输入自定义模型 ID 添加。</p>
+                        <small v-if="modelEditorKind(activeGroup, name) === 'llm'">勾选的模型会出现在首页"故事模型"下拉中；默认模型始终选中。列表来自服务商接口。</small>
+                        <small v-else-if="modelEditorKind(activeGroup, name) === 'multi'">勾选的模型才参与音色匹配；全部取消则表示不限制。列表来自服务商接口与本地音色目录。</small>
+                        <small v-else>选择语音合成使用的模型。列表来自服务商接口与本地音色目录。</small>
+                      </div>
+                      <label v-else-if="!(activeGroup === 'llm' && field === 'model')">{{ providerFieldLabels[field] || field }}
+                        <input
+                          :type="field === 'api_key' ? 'password' : field === 'base_url' ? 'url' : 'text'"
+                          :autocomplete="field === 'api_key' ? 'new-password' : undefined"
+                          :data-testid="field === 'api_key' ? `${activeGroup}-${name}-api-key` : `field-${activeGroup}-${name}-${field}`"
+                          :placeholder="field === 'api_key' ? '留空保持不变' : undefined"
+                          v-model="draft[activeGroup].provider_config[name][field]"
+                          @input="markDirty"
+                        >
+                        <small v-if="field === 'api_key'">当前：{{ (settings as any)?.[activeGroup]?.provider_config?.[name]?.api_key?.masked || '未配置' }} · {{ sourceLabel(providerSourceAt(activeGroup, name, field)) }}</small>
+                        <small v-else-if="providerFieldHelp[field]">{{ providerFieldHelp[field] }}</small>
+                        <small v-else :class="sourceClass(providerSourceAt(activeGroup, name, field))">{{ sourceLabel(providerSourceAt(activeGroup, name, field)) }}</small>
+                      </label>
+                    </template>
+                    <p v-if="!providerFormFields(activeGroup, name).length" class="provider-empty">此服务无需额外参数。</p>
+                  </div>
+                  <p v-else class="provider-empty">先选择一种后端支持的服务类型。</p>
                 </div>
-                <div v-if="providerFormType(activeGroup, name)" class="settings-form provider-fields">
-                  <label v-for="field in providerFormFields(activeGroup, name)" :key="field">{{ providerFieldLabels[field] || field }}
-                    <input
-                      :type="field === 'api_key' ? 'password' : field === 'base_url' ? 'url' : 'text'"
-                      :autocomplete="field === 'api_key' ? 'new-password' : undefined"
-                      :data-testid="field === 'api_key' ? `${activeGroup}-${name}-api-key` : `field-${activeGroup}-${name}-${field}`"
-                      :placeholder="field === 'api_key' ? '留空保持不变' : undefined"
-                      v-model="draft[activeGroup].provider_config[name][field]"
-                      @input="markDirty"
-                    >
-                    <small v-if="field === 'api_key'">当前：{{ (settings as any)?.[activeGroup]?.provider_config?.[name]?.api_key?.masked || '未配置' }} · {{ sourceLabel(providerSourceAt(activeGroup, name, field)) }}</small>
-                    <small v-else-if="providerFieldHelp[field]">{{ providerFieldHelp[field] }}</small>
-                    <small v-else :class="sourceClass(providerSourceAt(activeGroup, name, field))">{{ sourceLabel(providerSourceAt(activeGroup, name, field)) }}</small>
-                  </label>
-                  <p v-if="!providerFormFields(activeGroup, name).length" class="provider-empty">此服务无需额外参数。</p>
-                </div>
-                <p v-else class="provider-empty">先选择一种后端支持的服务类型。</p>
               </article>
             </template>
-            <p v-if="!providerNames(activeGroup).length" class="provider-empty">先选择一种服务类型。</p>
+            <p v-if="activeGroup === 'tts' && !providerNames('tts').length" class="provider-empty">尚未启用语音服务；可在下方完成配置，保存后在上方勾选启用。</p>
+            <p v-else-if="activeGroup !== 'tts' && !providerNames(activeGroup).length" class="provider-empty">先选择一种服务类型。</p>
           </section>
         </template>
 

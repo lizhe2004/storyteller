@@ -16,6 +16,12 @@ def _app(tmp_path):
     cfg.set("data_dir", str(tmp_path))
     cfg.set("tts.providers", ["mock"])
     cfg.set("tts.provider_config.mock", {"type": "mock"})
+    cfg.set("llm.providers", ["openai"])
+    cfg.set("llm.default_provider", "openai")
+    cfg.set("llm.provider_config.openai", {
+        "type": "openai_compatible", "model": "story-model-a",
+        "models": "story-model-b, story-model-c",
+    })
     return create_app(cfg)
 
 
@@ -27,7 +33,110 @@ def test_auth_and_options(tmp_path):
         assert client.get("/api/me").json()["authenticated"] is True
         body = client.get("/api/config/options").json()
         assert body["tts_providers"] == [{"name": "mock"}]
+        assert body["llm_models"] == [
+            {"provider": "openai", "model": "story-model-a", "label": "openai / story-model-a", "is_default": True},
+            {"provider": "openai", "model": "story-model-b", "label": "openai / story-model-b", "is_default": False},
+            {"provider": "openai", "model": "story-model-c", "label": "openai / story-model-c", "is_default": False},
+        ]
+        assert body["audio_models"] == []
         assert "api_key" not in str(body)
+
+
+def test_options_audio_models_include_aliyun_catalog(tmp_path):
+    cfg = Config()
+    cfg.set("web.passwords", ["pw"])
+    cfg.set("web.secret", "test-secret")
+    cfg.set("web.rate_limit_per_min", 0)
+    cfg.set("data_dir", str(tmp_path))
+    cfg.set("tts.providers", ["aliyun"])
+    cfg.set("llm.providers", ["openai"])
+    cfg.set("llm.default_provider", "openai")
+    cfg.set("llm.provider_config.openai", {"type": "mock"})
+    app = create_app(cfg)
+
+    with TestClient(app) as client:
+        assert client.post("/api/auth", json={"password": "pw"}).status_code == 204
+        response = client.get("/api/config/options")
+        assert response.status_code == 200
+        aliyun_models = {
+            item["model"]
+            for item in response.json()["audio_models"]
+            if item["provider"] == "aliyun"
+        }
+        assert aliyun_models == {
+            "qwen-audio-3.0-tts-plus",
+            "qwen-audio-3.0-tts-flash",
+            "qwen-audio-3.1-tts-flash",
+        }
+
+
+def test_options_audio_models_accept_string_catalog_records(tmp_path, monkeypatch):
+    # Older/generated catalogs may expose model names directly instead of
+    # voice-record dictionaries; the options endpoint must not return 500.
+    import storyteller.web.routes_options as routes_options
+
+    monkeypatch.setattr(
+        routes_options,
+        "load_voice_catalog",
+        lambda: ["qwen-audio-3.0-tts-plus", "qwen-audio-3.1-tts-flash"],
+    )
+    cfg = Config()
+    cfg.set("web.passwords", ["pw"])
+    cfg.set("web.secret", "test-secret")
+    cfg.set("web.rate_limit_per_min", 0)
+    cfg.set("data_dir", str(tmp_path))
+    cfg.set("tts.providers", ["aliyun"])
+    cfg.set("llm.providers", ["openai"])
+    cfg.set("llm.default_provider", "openai")
+    cfg.set("llm.provider_config.openai", {"type": "mock"})
+
+    with TestClient(create_app(cfg)) as client:
+        assert client.post("/api/auth", json={"password": "pw"}).status_code == 204
+        response = client.get("/api/config/options")
+
+    assert response.status_code == 200
+    assert response.json()["audio_models"] == [
+        {
+            "provider": "aliyun",
+            "model": "qwen-audio-3.0-tts-plus",
+            "label": "aliyun / qwen-audio-3.0-tts-plus",
+        },
+        {
+            "provider": "aliyun",
+            "model": "qwen-audio-3.1-tts-flash",
+            "label": "aliyun / qwen-audio-3.1-tts-flash",
+        },
+    ]
+
+
+def test_options_audio_models_respect_aliyun_whitelist(tmp_path):
+    # 后台勾选了模型时，下拉严格等于勾选集合，不再并入整个目录。
+    cfg = Config()
+    cfg.set("web.passwords", ["pw"])
+    cfg.set("web.secret", "test-secret")
+    cfg.set("web.rate_limit_per_min", 0)
+    cfg.set("data_dir", str(tmp_path))
+    cfg.set("tts.providers", ["aliyun"])
+    cfg.set(
+        "tts.provider_config.aliyun",
+        {"models": "qwen-audio-3.0-tts-plus, qwen-audio-3.1-tts-flash"},
+    )
+    cfg.set("llm.providers", ["openai"])
+    cfg.set("llm.default_provider", "openai")
+    cfg.set("llm.provider_config.openai", {"type": "mock"})
+    app = create_app(cfg)
+
+    with TestClient(app) as client:
+        assert client.post("/api/auth", json={"password": "pw"}).status_code == 204
+        aliyun_models = {
+            item["model"]
+            for item in client.get("/api/config/options").json()["audio_models"]
+            if item["provider"] == "aliyun"
+        }
+        assert aliyun_models == {
+            "qwen-audio-3.0-tts-plus",
+            "qwen-audio-3.1-tts-flash",
+        }
 
 
 def test_first_run_setup_is_one_time_and_persisted(tmp_path):

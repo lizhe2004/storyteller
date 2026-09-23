@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import { usePlayerStore } from '../stores/player'
 import { useAudioTimeline } from '../composables/useAudioTimeline'
+import type { ModelOption } from '../types'
 
 const player = usePlayerStore()
 const timeline = useAudioTimeline()
@@ -24,22 +25,42 @@ const complexity = ref('simple')
 const withSound = ref(false)
 const providers = ref<{ name: string }[]>([])
 const selected = ref<string[]>([])
+const llmModels = ref<ModelOption[]>([])
+const audioModels = ref<ModelOption[]>([])
+const selectedLlmModel = ref('')
+const selectedAudioModels = ref<string[]>([])
+const audioModelPicker = ref<HTMLElement | null>(null)
+const audioModelMenuOpen = ref(false)
 const busy = ref(false)
 const storyIdeas = [
   '一只怕黑的小狐狸，在月亮下交到了朋友',
   '深海灯塔里，最后一条鲸鱼的来信',
   '搬到新城市的孩子，发现窗台住着一颗星星',
 ]
+const selectedAudioModelSummary = computed(() => selectedAudioModels.value.length
+  ? `已选 ${selectedAudioModels.value.length} 个模型`
+  : '请选择音频模型')
+
+function closeAudioModelMenu(event: MouseEvent) {
+  if (!audioModelPicker.value?.contains(event.target as Node)) audioModelMenuOpen.value = false
+}
 
 onMounted(async () => {
+  document.addEventListener('click', closeAudioModelMenu)
   try {
     const opts = await api.options()
     providers.value = opts.tts_providers
-    // An empty selection means "use the configured default candidate set".
-    // A future provider picker can populate this for a per-story override.
+    llmModels.value = opts.llm_models || []
+    audioModels.value = opts.audio_models || []
+    selectedLlmModel.value = llmModels.value[0]
+      ? `${llmModels.value[0].provider}::${llmModels.value[0].model}` : ''
+    selectedAudioModels.value = audioModels.value.map(option => `${option.provider}::${option.model}`)
+    // An empty provider selection means "use the configured candidate set".
     selected.value = []
   } catch {}
 })
+
+onBeforeUnmount(() => document.removeEventListener('click', closeAudioModelMenu))
 
 watch(() => player.phase, phase => {
   if (['completed', 'failed', 'canceled'].includes(phase)) busy.value = false
@@ -75,7 +96,20 @@ function submit() {
   if (playbackMode.value === 'webaudio') timeline.begin()
   else timeline.stop()
   busy.value = true
-  player.start({ topic: topic.value, length: length.value, complexity: complexity.value, with_sound: withSound.value, tts_providers: selected.value, audio_mode: playbackMode.value }, b => timeline.append(b), e => {
+  const selectedAudio = audioModels.value.filter(option =>
+    selectedAudioModels.value.includes(`${option.provider}::${option.model}`))
+  const llmSelection = llmModels.value.find(option => `${option.provider}::${option.model}` === selectedLlmModel.value)
+  const selectedAudioProviders = [...new Set(selectedAudio.map(option => option.provider))]
+  player.start({
+    topic: topic.value, length: length.value, complexity: complexity.value,
+    with_sound: withSound.value,
+    tts_providers: selectedAudioProviders.length ? selectedAudioProviders : selected.value,
+    audio_mode: playbackMode.value,
+    llm_model: llmSelection ? { provider: llmSelection.provider, model: llmSelection.model } : undefined,
+    tts_model: selectedAudio.length
+      ? selectedAudio.map(option => ({ provider: option.provider, model: option.model }))
+      : undefined,
+  }, b => timeline.append(b), e => {
     if (e.type === 'ready' && playbackMode.value === 'native_mp3' && nativeAudio.value) {
       nativeAudio.value.src = `/api/streaming-jobs/${encodeURIComponent(e.job_id)}/audio`
       nativeAudio.value.load()
@@ -138,6 +172,21 @@ function togglePlayback() {
         <div class="form-row">
           <label>长度<select v-model="length"><option value="short">短篇</option><option value="medium">中篇</option><option value="long">长篇</option></select></label>
           <label>气质<select v-model="complexity"><option value="simple">轻柔</option><option value="medium">丰富</option><option value="rich">饱满</option></select></label>
+        </div>
+        <div v-if="llmModels.length || audioModels.length" class="form-row model-row">
+          <label v-if="llmModels.length">故事模型<select v-model="selectedLlmModel" :disabled="busy"><option v-for="option in llmModels" :key="`${option.provider}:${option.model}`" :value="`${option.provider}::${option.model}`">{{ option.label }}{{ option.is_default ? '（默认）' : '' }}</option></select></label>
+          <div v-if="audioModels.length" ref="audioModelPicker" class="audio-model-picker">
+            <span class="field-label">音频模型</span>
+            <button data-testid="audio-model-trigger" class="audio-model-trigger" type="button" :disabled="busy" :aria-expanded="audioModelMenuOpen" aria-haspopup="listbox" @click.stop="audioModelMenuOpen = !audioModelMenuOpen">
+              <span>{{ selectedAudioModelSummary }}</span><b aria-hidden="true">{{ audioModelMenuOpen ? '⌃' : '⌄' }}</b>
+            </button>
+            <div v-if="audioModelMenuOpen" data-testid="audio-model-menu" class="audio-model-menu" role="listbox" aria-label="音频模型">
+              <label v-for="option in audioModels" :key="`${option.provider}:${option.model}`" data-testid="audio-model-option" class="audio-model-option">
+                <input v-model="selectedAudioModels" type="checkbox" :value="`${option.provider}::${option.model}`" :disabled="busy">
+                <span>{{ option.label }}</span>
+              </label>
+            </div>
+          </div>
         </div>
         <label>播放方式<select v-model="playbackMode" aria-label="播放方式" :disabled="busy"><option value="webaudio">Web Audio（当前）</option><option value="native_mp3">原生 audio（MP3 实验）</option></select></label>
         <p class="playback-hint">原生 audio 用于测试息屏/后台播放；若浏览器拦截自动播放，请在播放器中手动开始。</p>

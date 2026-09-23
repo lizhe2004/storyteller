@@ -209,7 +209,8 @@ def test_tts_provider_auto_discovered_without_providers_list(monkeypatch):
 
 
 def test_explicit_tts_provider_list_excludes_other_configured_providers(monkeypatch):
-    """An explicit TTS list is an allowlist, not a display order."""
+    """An explicit TTS list is an allowlist for enablement, but env-configured
+    providers still surface their provider_config (config != enablement)."""
     monkeypatch.setenv("STORYTELLER_TTS_PROVIDERS", "volcengine")
     monkeypatch.setenv("STORYTELLER_TTS_VOLCENGINE_API_KEY", "vkey")
     monkeypatch.setenv("STORYTELLER_TTS_MOCK_API_KEY", "unused")
@@ -222,8 +223,10 @@ def test_explicit_tts_provider_list_excludes_other_configured_providers(monkeypa
     )
     config = Config.from_env()
     assert config.get("tts.providers") == ["volcengine"]
-    assert config.get("tts.provider_config.aliyun") is None
-    assert config.get("tts.provider_config.mock") is None
+    assert config.get("tts.provider_config.aliyun.api_key") == "akey"
+    assert config.get("tts.provider_config.mock.api_key") == "unused"
+    # Undeclared OpenAI-compatible providers stay fully excluded: the
+    # OPENAI_COMPATIBLE_*_NAME convention is a declaration, not just config.
     assert config.get("tts.provider_config.custom-tts") is None
 
 

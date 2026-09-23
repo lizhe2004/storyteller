@@ -90,6 +90,34 @@ class OpenAICompatibleLLM(BaseProvider, LLMProvider):
                 )
             ) from exc
 
+    def list_models(self):
+        """List models from the OpenAI-compatible ``GET /models`` endpoint."""
+        url = "{}/models".format(self.base_url.rstrip("/"))
+        headers = {"Authorization": "Bearer {}".format(self.api_key)}
+        try:
+            response = self._session.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as exc:
+            raise LLMError(
+                "OpenAI-compatible model list request failed: {}".format(exc)
+            ) from exc
+        except ValueError as exc:
+            raise LLMError("Invalid JSON from model list endpoint") from exc
+        items = data.get("data")
+        if not isinstance(items, list):
+            raise LLMError(
+                "Unexpected model list response shape: {}".format(data)
+            )
+        return [
+            {"id": model, "retiring": False}
+            for model in sorted(
+                item["id"]
+                for item in items
+                if isinstance(item, dict) and item.get("id")
+            )
+        ]
+
     def chat_stream(self, messages, temperature=0.7, max_tokens=None, **kwargs):
         url = "{}/chat/completions".format(self.base_url.rstrip("/"))
         body = {

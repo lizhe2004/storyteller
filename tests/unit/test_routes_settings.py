@@ -50,6 +50,8 @@ def client(settings_app):
         ("patch", "/api/settings", {"web": {"port": 9001}}),
         ("post", "/api/settings/test/llm", {"provider": "mock"}),
         ("post", "/api/settings/test/tts", {"provider": "mock"}),
+        ("post", "/api/settings/models/llm", {"provider": "mock"}),
+        ("post", "/api/settings/models/tts", {"provider": "mock"}),
         ("post", "/api/settings/reset", {"paths": ["web.host"]}),
         ("get", "/api/settings/history", None),
     ],
@@ -86,7 +88,7 @@ def test_get_settings_returns_groups_sources_and_redacted_secrets(client):
     schemas = body["provider_schemas"]
     assert schemas["llm"]["providers"]["mock"] == "mock"
     assert schemas["llm"]["types"]["openai_compatible"]["fields"] == [
-        "api_key", "model", "base_url"
+        "api_key", "model", "models", "base_url"
     ]
     assert schemas["tts"]["types"]["aliyun"]["fields"] == [
         "api_key", "models", "workspace_id"
@@ -159,7 +161,7 @@ def test_provider_schema_tracks_new_openai_compatible_provider(client):
     schemas = response.json()["settings"]["provider_schemas"]["llm"]
     assert schemas["providers"]["writer"] == "openai_compatible"
     assert schemas["types"][schemas["providers"]["writer"]]["fields"] == [
-        "api_key", "model", "base_url"
+        "api_key", "model", "models", "base_url"
     ]
 
 
@@ -207,6 +209,29 @@ def test_web_settings_update_refreshes_auth_runtime_objects(client, settings_app
         assert old_client.get("/api/me").json() == {"authenticated": False}
     assert settings_app.state.config.get("web.token_ttl_days") == 7
     assert settings_app.state.limiter.per_minute == 3
+
+
+def test_settings_save_keeps_session_with_ephemeral_secret(tmp_path):
+    # Without a configured web.secret the signing key is ephemeral, but a
+    # settings save must not rotate it and force re-login.
+    config = Config()
+    config.set("data_dir", str(tmp_path))
+    config.set("web.passwords", ["login-password"])
+    config.set("llm.providers", ["mock"])
+    config.set("llm.default_provider", "mock")
+    config.set("tts.providers", ["mock"])
+    app = create_app(config)
+
+    with TestClient(app) as test_client:
+        test_client.cookies.set(SESSION_COOKIE, app.state.issuer.issue())
+        assert test_client.get("/api/me").json() == {"authenticated": True}
+
+        response = test_client.patch(
+            "/api/settings", json={"web": {"token_ttl_days": 7}}
+        )
+        assert response.status_code == 200
+
+        assert test_client.get("/api/me").json() == {"authenticated": True}
 
 
 def test_patch_accepts_aliyun_workspace_and_model_allowlist(client, settings_app):
@@ -418,7 +443,98 @@ def test_provider_connection_test_sanitizes_provider_errors(
     assert response.status_code == 502
     assert response.json()["detail"] == "连接测试失败，请检查供应商配置和网络连接"
     assert secret not in response.text
+
+
+@pytest.mark.parametrize("kind", ["llm", "tts"])
+def test_model_fetch_rejects_providers_without_listing(client, kind):
+    response = client.post(
+        "/api/settings/models/{}".format(kind),
+        json={
+            "provider": "mock",
+            "config": {"type": "mock"},
+            "timeout_seconds": 1.0,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "该服务不支持拉取模型列表"
+
+
+@pytest.mark.parametrize("kind", ["llm", "tts"])
+def test_model_fetch_succeeds_without_persisting(
+    client, tmp_path, monkeypatch, kind
+):
+    target = MockLLMProvider if kind == "llm" else MockTTSProvider
+    monkeypatch.setattr(
+        target, "list_models", lambda self: ["m-b", "m-a"], raising=False
+    )
+
+    response = client.post(
+        "/api/settings/models/{}".format(kind),
+        json={
+            "provider": "mock",
+            "config": {"type": "mock", "api_key": "fetch-secret"},
+            "timeout_seconds": 1.0,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "provider": "mock",
+        "models": [
+            {"id": "m-b", "retiring": False},
+            {"id": "m-a", "retiring": False},
+        ],
+    }
+    assert "fetch-secret" not in response.text
     assert not (tmp_path / "config" / "settings.json").exists()
+
+
+@pytest.mark.parametrize("kind", ["llm", "tts"])
+def test_model_fetch_times_out(client, monkeypatch, kind):
+    def slow_list(self):
+        time.sleep(0.1)
+        return ["late"]
+
+    target = MockLLMProvider if kind == "llm" else MockTTSProvider
+    monkeypatch.setattr(target, "list_models", slow_list, raising=False)
+
+    response = client.post(
+        "/api/settings/models/{}".format(kind),
+        json={
+            "provider": "mock",
+            "config": {"type": "mock"},
+            "timeout_seconds": 0.01,
+        },
+    )
+
+    assert response.status_code == 504
+    assert "超时" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("kind", ["llm", "tts"])
+def test_model_fetch_sanitizes_provider_errors(client, monkeypatch, kind):
+    secret = "model-fetch-secret"
+
+    def fail_list(self):
+        raise RuntimeError("upstream rejected {}".format(secret))
+
+    target = MockLLMProvider if kind == "llm" else MockTTSProvider
+    monkeypatch.setattr(target, "list_models", fail_list, raising=False)
+
+    response = client.post(
+        "/api/settings/models/{}".format(kind),
+        json={
+            "provider": "mock",
+            "config": {"type": "mock", "api_key": secret},
+            "timeout_seconds": 1.0,
+        },
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "拉取模型列表失败，请检查供应商配置和网络连接"
+    assert secret not in response.text
 
 
 def test_history_contains_no_sensitive_values(client, settings_app, tmp_path):

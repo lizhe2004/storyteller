@@ -7,6 +7,7 @@ VALID_AGES = {"child", "teen", "young_adult", "middle_aged", "senior"}
 VALID_MODELS = {
     "qwen-audio-3.0-tts-plus",
     "qwen-audio-3.0-tts-flash",
+    "qwen-audio-3.1-tts-flash",
 }
 
 
@@ -18,7 +19,7 @@ def _clear_cache():
 
 
 def test_catalog_loads_and_is_nonempty():
-    assert len(load_voice_catalog()) == 1189
+    assert len(load_voice_catalog()) == 1242
 
 
 def test_catalog_records_have_required_fields():
@@ -102,3 +103,26 @@ def test_markdown_english_voices_are_excluded():
     ids = {v["voice_id"] for v in load_voice_catalog()}
     assert "qwen-audio-3.0-tts-flash-loongolivialin" not in ids
     assert "qwen-audio-3.0-tts-plus-loongolivialin" not in ids
+    assert "Emily_v3.1" not in ids
+    assert "Andy_v3.1" not in ids
+
+
+def test_31_voices_cover_all_sections_with_normalized_metadata():
+    index = {v["voice_id"]: v for v in load_voice_catalog()}
+
+    # Multilingual voices keep their persona metadata and note the dialects.
+    multi = index["longanlingxin_v3.1"]
+    assert multi["model"] == "qwen-audio-3.1-tts-flash"
+    assert multi["category"] == "社交陪伴"
+    assert "多语种" in multi["description"]
+    assert "方言" in multi["tags"]
+
+    # Premium Chinese narration voice.
+    narration = index["xieshurou_v3.1"]
+    assert narration["category"] == "有声阅读"
+    assert narration["tags"] == ["精品音色"]
+
+    # Child persona from the "other" table inherits the v3.6 twin's age.
+    child = index["longjielidou_v3.1"]
+    assert child["age"] == "child"
+    assert child["category"] == "儿童陪伴"

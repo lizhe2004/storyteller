@@ -26,7 +26,11 @@ def test_ws_streams_pcm_and_completes(tmp_path):
     with TestClient(app) as client:
         token = app.state.issuer.issue()
         with client.websocket_connect("/ws?token=" + token) as ws:
-            ws.send_json({"type": "start", "topic": "小恐龙", "tts_providers": ["mock"]})
+            ws.send_json({
+                "type": "start", "topic": "小恐龙", "tts_providers": ["mock"],
+                "llm_model": {"provider": "mock", "model": "story-model"},
+                "tts_model": {"provider": "mock", "model": "audio-model"},
+            })
             while True:
                 message = ws.receive()
                 if message.get("bytes") is not None:
@@ -37,6 +41,10 @@ def test_ws_streams_pcm_and_completes(tmp_path):
                     break
     ready = next(e for e in events if e["type"] == "ready")
     assert ready["audio"] == {"encoding": "pcm_s16le", "sample_rate": 24000, "channels": 1}
+    assert ready["model_selection"] == {
+        "llm": {"provider": "mock", "model": "story-model"},
+        "audio": {"provider": "mock", "model": "audio-model"},
+    }
     assert ready["server_time"]
     assert any(e["type"] == "script_preview" for e in events)
     matched_index = next(i for i, event in enumerate(events) if event["type"] == "characters_matched")
@@ -46,6 +54,81 @@ def test_ws_streams_pcm_and_completes(tmp_path):
     assert all(character["voice"] for character in matched["characters"])
     assert matched_index < script_ready_index
     assert events[-1]["type"] == "complete" and len(audio) > 0 and len(audio) % 2 == 0
+
+
+def _ws_collect_first_terminal(ws):
+    events = []
+    while True:
+        message = ws.receive()
+        if message.get("bytes") is not None:
+            continue
+        event = json.loads(message["text"])
+        events.append(event)
+        if event["type"] in ("complete", "error", "canceled"):
+            return events
+
+
+def _candidate_list_config(tmp_path):
+    cfg = Config()
+    cfg.set("web.passwords", ["pw"]); cfg.set("web.secret", "x")
+    cfg.set("web.rate_limit_per_min", 0); cfg.set("data_dir", str(tmp_path))
+    cfg.set("project_dir", str(tmp_path / "stories")); cfg.set("voice_matcher", "rule")
+    cfg.set("tts.providers", ["mock"]); cfg.set("tts.provider_config.mock", {"type": "mock"})
+    cfg.set("llm.providers", ["mock"])
+    cfg.set("llm.provider_config.mock", {
+        "type": "mock", "model": "story-model", "models": "alt-model",
+    })
+    cfg.set("web.filler_voice", "mock:narrator_01")
+    return cfg
+
+
+def test_ws_rejects_llm_model_outside_candidate_list(tmp_path):
+    app = create_app(_candidate_list_config(tmp_path))
+    with TestClient(app) as client:
+        token = app.state.issuer.issue()
+        with client.websocket_connect("/ws?token=" + token) as ws:
+            ws.send_json({
+                "type": "start", "topic": "小恐龙", "tts_providers": ["mock"],
+                "llm_model": {"provider": "mock", "model": "not-allowed"},
+            })
+            events = _ws_collect_first_terminal(ws)
+    assert events[-1]["type"] == "error"
+    assert "可选模型清单" in events[-1]["message"]
+
+
+def test_ws_accepts_llm_model_from_candidate_list(tmp_path):
+    app = create_app(_candidate_list_config(tmp_path))
+    with TestClient(app) as client:
+        token = app.state.issuer.issue()
+        with client.websocket_connect("/ws?token=" + token) as ws:
+            ws.send_json({
+                "type": "start", "topic": "小恐龙", "tts_providers": ["mock"],
+                "llm_model": {"provider": "mock", "model": "alt-model"},
+            })
+            events = _ws_collect_first_terminal(ws)
+    assert events[-1]["type"] == "complete"
+
+
+def test_ws_accepts_multiple_audio_model_selections(tmp_path):
+    cfg = _candidate_list_config(tmp_path)
+    cfg.set("tts.provider_config.mock", {
+        "type": "mock", "models": "audio-model-a, audio-model-b",
+    })
+    app = create_app(cfg)
+    with TestClient(app) as client:
+        token = app.state.issuer.issue()
+        with client.websocket_connect("/ws?token=" + token) as ws:
+            ws.send_json({
+                "type": "start",
+                "topic": "小恐龙",
+                "tts_providers": ["mock"],
+                "tts_model": [
+                    {"provider": "mock", "model": "audio-model-a"},
+                    {"provider": "mock", "model": "audio-model-b"},
+                ],
+            })
+            events = _ws_collect_first_terminal(ws)
+    assert events[-1]["type"] == "complete"
 
 
 def test_ws_reconnect_replays_matched_characters_before_script_ready(tmp_path):

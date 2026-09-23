@@ -25,7 +25,7 @@ describe('playback controls', () => {
     player.phase = 'line'
     const timeline = useAudioTimeline()
     vi.spyOn(audioTimelineModule, 'useAudioTimeline').mockReturnValue(timeline)
-    vi.spyOn(api, 'options').mockResolvedValue({ lengths: ['short'], complexities: ['simple'], tts_providers: [], sound_enabled: false })
+    vi.spyOn(api, 'options').mockResolvedValue({ lengths: ['short'], complexities: ['simple'], tts_providers: [], sound_enabled: false, llm_models: [], audio_models: [] })
     const element = document.createElement('div')
     document.body.appendChild(element)
     const app = createApp(HomeView).use(pinia)

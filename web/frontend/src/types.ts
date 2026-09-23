@@ -3,6 +3,7 @@ export interface StoryCharacter { id: string; name: string; description?: string
 export interface CharactersMatchedEvent { type: 'characters_matched'; characters: StoryCharacter[] }
 export interface StoryDetail { id: string; title: string; topic: string; state: string; characters: { id: string; name: string }[]; lines: StoryLine[] }
 export interface ReadyAudio { encoding: string; sample_rate: number; channels: number }
+export interface ModelOption { provider: string; model: string; label: string; is_default?: boolean }
 
 /** Streamed host opening narration; a waiting-period filler, not part of `lines`. */
 export interface OpeningTextDeltaEvent { type: 'opening_text_delta'; text: string }
