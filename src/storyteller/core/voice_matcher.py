@@ -489,7 +489,7 @@ class VoiceMatcher:
         ):
             response = self.llm.chat(
                 messages,
-                temperature=0.0,
+                temperature=0.3,
             )
         return candidates, response
 
