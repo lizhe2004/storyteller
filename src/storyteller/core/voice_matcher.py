@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import random
 import logging
@@ -382,9 +383,34 @@ class VoiceMatcher:
         by_id = {}
         for character in ordered:
             gender, age = wanted[character.id]
-            for voice in _sample_voice_candidates(
+            character_candidates = _sample_voice_candidates(
                 voices, gender, age, character.voice_preferences
-            ):
+            )
+            candidate_details = [
+                {
+                    "provider": voice.provider,
+                    "voice_id": voice.voice_id,
+                    "language": voice.language,
+                    "name": voice.name,
+                    "gender": voice.gender,
+                    "age": voice.age,
+                    "category": voice.category,
+                    "description": voice.description,
+                }
+                for voice in character_candidates
+            ]
+            logger.info(
+                "event=voice_matching_character_candidates "
+                "character_id={} character_name={} gender={} age={}\n"
+                "voice_candidates={}".format(
+                    character.id,
+                    character.name,
+                    gender or "-",
+                    age or "-",
+                    json.dumps(candidate_details, ensure_ascii=False),
+                )
+            )
+            for voice in character_candidates:
                 by_id[voice.voice_id] = voice
         candidates = sorted(
             by_id.values(),

@@ -590,3 +590,41 @@ def test_narrator_metadata_restricts_rule_fallback():
     matcher.match_voices(_make_script_with_characters(narrator))
 
     assert narrator.voice_config.voice_id == "female_01"
+
+
+def test_llm_logs_each_character_candidate_pool_before_merged_prompt(caplog):
+    llm = _assignment_llm({"assignments": []})
+    matcher = _make_matcher(llm=llm, mode="llm")
+    narrator = Character(
+        id="narrator", name="旁白", description="故事旁白",
+        gender="female", age="young_adult",
+    )
+    child = Character(
+        id="child", name="小明", description="五岁男孩",
+        gender="male", age="child",
+    )
+
+    with caplog.at_level("INFO", logger="storyteller.core.voice_matcher"):
+        matcher._request_llm(
+            [narrator, child],
+            {
+                "narrator": ("female", "young_adult"),
+                "child": ("male", "child"),
+            },
+            matcher.registry.list_tts_voices(["mock"]),
+        )
+
+    messages = [record.getMessage() for record in caplog.records]
+    character_logs = [
+        message for message in messages
+        if "event=voice_matching_character_candidates" in message
+    ]
+    assert len(character_logs) == 2
+    assert "character_id=narrator" in character_logs[0]
+    assert '"voice_id": "narrator_01"' in character_logs[0]
+    assert "character_id=child" in character_logs[1]
+    assert '"voice_id": "child_01"' in character_logs[1]
+    assert messages.index(character_logs[1]) < next(
+        index for index, message in enumerate(messages)
+        if "event=voice_matching_prompt" in message
+    )
