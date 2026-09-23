@@ -463,6 +463,71 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             if enabled is None or record.get("model") in enabled
         ]
 
+    def list_models(self):
+        """List selectable TTS models for the per-story model picker.
+
+        Queries the Bailian model catalog (``GET /api/v1/models``) with
+        the TTS capability filters when ``workspace_id`` is configured,
+        and always merges in models from the packaged voice catalog so
+        locally-known tiers remain selectable. Without ``workspace_id``
+        only the catalog models are returned.
+        """
+        models = {
+            record["model"]: False
+            for record in load_voice_catalog()
+            if record.get("model")
+        }
+        if not self.workspace_id:
+            return [
+                {"id": model, "retiring": False} for model in sorted(models)
+            ]
+        base = _WORKSPACE_HTTP_ENDPOINT_TEMPLATE.format(
+            workspace_id=self.workspace_id
+        )
+        headers = {
+            "Authorization": "Bearer {}".format(self.api_key),
+            "Content-Type": "application/json",
+        }
+        page = 1
+        while True:
+            params = [
+                ("capabilities", "TTS"),
+                ("capabilities", "Realtime-Text-to-Speech"),
+                ("page_no", str(page)),
+                ("page_size", "100"),
+            ]
+            try:
+                response = self._session.get(
+                    base + "/api/v1/models",
+                    headers=headers,
+                    params=params,
+                    timeout=30,
+                )
+                response.raise_for_status()
+                data = response.json()
+            except requests.RequestException as exc:
+                raise TTSError(
+                    "Aliyun model list request failed: {}".format(exc)
+                ) from exc
+            except ValueError as exc:
+                raise TTSError("Invalid JSON from Aliyun model list") from exc
+            output = data.get("output") or {}
+            records = output.get("models") or []
+            for record in records:
+                model = record.get("model")
+                if model:
+                    offline = (record.get("inference_offline_info") or {}).get(
+                        "offline_time"
+                    )
+                    models[model] = models.get(model, False) or bool(offline)
+            total = output.get("total") or 0
+            if not records or page * 100 >= total:
+                return [
+                    {"id": model, "retiring": retiring}
+                    for model, retiring in sorted(models.items())
+                ]
+            page += 1
+
     def open_stream(self, voice, *, directives=None, context=None):
         if not self.websocket_api_url:
             raise TTSError(

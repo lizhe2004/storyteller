@@ -348,6 +348,11 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         self.resource_id = (
             provider_config.get("resource_id") or _DEFAULT_RESOURCE_ID
         )
+        self._enabled_models = frozenset(
+            item.strip()
+            for item in (provider_config.get("models") or "").split(",")
+            if item.strip()
+        ) or None
         self.resource_id_override = provider_config.get("resource_id_override")
         self.realtime_endpoint = (
             provider_config.get("realtime_endpoint") or _DEFAULT_REALTIME_ENDPOINT
@@ -387,6 +392,20 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             return record.get("resource_id", self.resource_id)
         return self.resource_id
 
+    def list_models(self):
+        """Selectable TTS models: distinct resource ids from the catalog.
+
+        Ark's model listing covers LLM/VLM/etc. but not speech models, so
+        the packaged voice catalog is the source of truth here.
+        """
+        ids = {
+            record.get("resource_id")
+            for record in load_voice_catalog()
+            if record.get("resource_id")
+        }
+        ids.add(self.resource_id)
+        return [{"id": model, "retiring": False} for model in sorted(ids)]
+
     def list_voices(self, **kwargs):
         return [
             VoiceConfig(
@@ -400,6 +419,8 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
                 description=record.get("description"),
             )
             for record in load_voice_catalog()
+            if self._enabled_models is None
+            or record.get("resource_id") in self._enabled_models
         ]
 
     def open_stream(self, voice, *, directives=None, context=None):

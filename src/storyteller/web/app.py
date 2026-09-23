@@ -41,7 +41,14 @@ def create_app(config, registry=None):
 
     update_setup_code(runtime_config)
     app.state.registry = registry
-    app.state.issuer = TokenIssuer(runtime_config.get("web.secret"), runtime_config.get("web.token_ttl_days"))
+    # Per-process fallback signing key: keeps sessions valid across runtime
+    # config reloads when no web.secret is configured.
+    app.state.auth_fallback_secret = secrets.token_hex(32)
+    app.state.issuer = TokenIssuer(
+        runtime_config.get("web.secret"),
+        runtime_config.get("web.token_ttl_days"),
+        fallback_secret=app.state.auth_fallback_secret,
+    )
     app.state.limiter = RateLimiter(runtime_config.get("web.rate_limit_per_min"))
     app.state.jobs = JobManager(
         runtime_config.get("web.concurrency"),
@@ -53,7 +60,9 @@ def create_app(config, registry=None):
         app.state.config = current
         update_setup_code(current)
         app.state.issuer = TokenIssuer(
-            current.get("web.secret"), current.get("web.token_ttl_days")
+            current.get("web.secret"),
+            current.get("web.token_ttl_days"),
+            fallback_secret=app.state.auth_fallback_secret,
         )
         app.state.limiter.reconfigure(current.get("web.rate_limit_per_min"))
         app.state.jobs.reconfigure(current.get("web.concurrency"))

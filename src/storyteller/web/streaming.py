@@ -14,6 +14,7 @@ from ..core.story_generator import StoryGenerator, _script_from_json
 from ..core.tts import CHUNK_AUDIO, STREAM_SAMPLE_RATE
 from ..core.voice_matcher import VoiceMatcher
 from .fillers import cached_start_notice, choose_host_voice, start_notice_text
+from .routes_options import configured_models
 from .tts_chunks import audio_file_to_standard_pcm, iter_pcm_frames, pcm_duration_ms, pcm_to_mp3_file
 from .tts_scheduler import TTSScheduler
 from ..core.observability import (
@@ -654,18 +655,20 @@ class StreamOrchestrator:
         publisher.skip("start_notice")
 
     def run(self, job):
-        if job.config_snapshot is not None:
-            config = job.config_snapshot.to_config()
-            has_model_override = self._apply_job_model_overrides(config, job)
-            self._configure(
-                config,
-                projects=self.projects,
-                registry=None if has_model_override else self.registry,
-            )
-        else:
-            self._apply_job_model_overrides(self.config, job)
         self._active_state = None
         try:
+            if job.config_snapshot is not None:
+                config = job.config_snapshot.to_config()
+                has_model_override = self._apply_job_model_overrides(config, job)
+                self._configure(
+                    config,
+                    projects=self.projects,
+                    registry=None if has_model_override else self.registry,
+                )
+            elif job.params.llm_model or job.params.tts_model:
+                # Refuse to mutate the shared orchestrator config: without a
+                # per-job snapshot the model choice would leak into other jobs.
+                raise LLMError("缺少任务配置快照，无法应用本次模型选择")
             self._run(job)
         except Exception as exc:
             job.phase = "failed"
@@ -696,28 +699,53 @@ class StreamOrchestrator:
                 provider = str(providers[0])
             if provider not in providers or not model:
                 raise LLMError("本次选择的大模型不可用")
+            candidates = configured_models(
+                config, "llm", provider, include_fallback=False
+            )
+            if candidates and model not in candidates:
+                raise LLMError("本次选择的大模型不在可选模型清单中")
             config.set("llm.default_provider", provider)
             config.set("llm.provider_config.{}.model".format(provider), model)
             changed = True
 
         audio_selection = job.params.tts_model
         if audio_selection:
-            if not isinstance(audio_selection, dict):
-                raise TTSError("本次选择的音频模型格式无效")
-            provider = str(audio_selection.get("provider") or "").strip()
-            model = str(audio_selection.get("model") or "").strip()
-            providers = config.get("tts.providers", []) or []
-            if provider not in providers or not model:
-                raise TTSError("本次选择的音频模型不可用")
-            if provider.lower() == "aliyun":
-                config.set("tts.provider_config.{}.models".format(provider), model)
-            elif provider.lower() == "volcengine":
-                config.set(
-                    "tts.provider_config.{}.resource_id_override".format(provider),
-                    model,
-                )
+            if isinstance(audio_selection, dict):
+                selections = [audio_selection]
+            elif isinstance(audio_selection, list):
+                selections = audio_selection
             else:
-                config.set("tts.provider_config.{}.model".format(provider), model)
+                raise TTSError("本次选择的音频模型格式无效")
+            providers = config.get("tts.providers", []) or []
+            grouped = {}
+            for selection in selections:
+                if not isinstance(selection, dict):
+                    raise TTSError("本次选择的音频模型格式无效")
+                provider = str(selection.get("provider") or "").strip()
+                model = str(selection.get("model") or "").strip()
+                if provider not in providers or not model:
+                    raise TTSError("本次选择的音频模型不可用")
+                grouped.setdefault(provider, []).append(model)
+            if not grouped:
+                raise TTSError("本次选择的音频模型不可用")
+            for provider, models in grouped.items():
+                unique_models = list(dict.fromkeys(models))
+                candidates = configured_models(config, "tts", provider)
+                if candidates and any(model not in candidates for model in unique_models):
+                    raise TTSError("本次选择的音频模型不在可选模型清单中")
+                provider_path = "tts.provider_config.{}".format(provider)
+                if provider.lower() in ("aliyun", "volcengine"):
+                    config.set(
+                        "{}.models".format(provider_path),
+                        ", ".join(unique_models),
+                    )
+                    if provider.lower() == "volcengine":
+                        config.set(
+                            "{}.resource_id_override".format(provider_path),
+                            unique_models[0] if len(unique_models) == 1 else None,
+                        )
+                else:
+                    config.set("{}.model".format(provider_path), unique_models[0])
             changed = True
         return changed
 

@@ -74,6 +74,47 @@ class OpenAICompatibleTTS(BaseProvider, TTSProvider):
             for voice_id, gender in _BUILTIN_VOICES
         ]
 
+    _MODEL_LIST_HINTS = ("tts", "speech", "audio", "voice")
+
+    def list_models(self):
+        """List likely-TTS models from the OpenAI-compatible ``GET /models``.
+
+        Compatible endpoints return every modality mixed together, so ids
+        are filtered by common audio hints. When nothing matches (or the
+        endpoint does not exist) an empty list / an error tells the user
+        to keep typing the model name manually.
+        """
+        url = "{}/models".format(self.base_url.rstrip("/"))
+        headers = {"Authorization": "Bearer {}".format(self.api_key)}
+        try:
+            response = self._session.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as exc:
+            raise TTSError(
+                "OpenAI-compatible model list request failed: {}".format(exc)
+            ) from exc
+        except ValueError as exc:
+            raise TTSError("Invalid JSON from model list endpoint") from exc
+        items = data.get("data")
+        if not isinstance(items, list):
+            raise TTSError(
+                "Unexpected model list response shape: {}".format(data)
+            )
+        return [
+            {"id": model, "retiring": False}
+            for model in sorted(
+                item["id"]
+                for item in items
+                if isinstance(item, dict)
+                and item.get("id")
+                and any(
+                    hint in item["id"].lower()
+                    for hint in self._MODEL_LIST_HINTS
+                )
+            )
+        ]
+
     def synthesize(self, text, voice_config, output_path, **kwargs):
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)

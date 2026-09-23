@@ -14273,6 +14273,699 @@
       "tags": [],
       "language": "zh-CN",
       "bilingual": false
+    },
+    {
+      "voice_id": "longanhuan_v3.1",
+      "name": "龙安欢",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "25岁自然亲切的年轻女声；多语种：支持上海话、广东话、东北话、重庆话、陕西话、云南话、宁波话、甘肃话及日语、韩语、法语、德语、葡萄牙语、意大利语、越南语、印尼语",
+      "tags": [
+        "多语种",
+        "方言"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanlingxin_v3.1",
+      "name": "龙安灵心",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "25岁知心温暖音，声线亲和治愈，旗舰女声；多语种：支持上海话、广东话、东北话、重庆话、陕西话、云南话、宁波话、甘肃话及日语、韩语、法语、德语、葡萄牙语、意大利语、越南语、印尼语",
+      "tags": [
+        "旗舰音色",
+        "多语种",
+        "方言"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanfengyue_v3.1",
+      "name": "龙安风悦",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "30岁自然亲切音，语气温婉大方；多语种：支持上海话、广东话、东北话、重庆话、陕西话、云南话、宁波话、甘肃话及日语、韩语、法语、德语、葡萄牙语、意大利语、越南语、印尼语",
+      "tags": [
+        "多语种",
+        "方言"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "xunanchuan_v3.1",
+      "name": "许南川",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "多语种：支持上海话、广东话、东北话、重庆话、陕西话、云南话、宁波话、甘肃话及日语、韩语、法语、德语、葡萄牙语、意大利语、越南语、印尼语",
+      "tags": [
+        "多语种",
+        "方言"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "yuxiaoyun_v3.1",
+      "name": "于小云",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "元气、亲切、自然，适用广告营销、广播、客服助手、旁白",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "qiaoxiaojiao_v3.1",
+      "name": "乔小娇",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "俏丽、可爱，适用广告营销、客服助手、有声书",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "xiaxiaochen_v3.1",
+      "name": "夏小晨",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "元气、明亮，适用广告营销、有声书",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "anmingyuan_v3.1",
+      "name": "安明远",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "清亮、自然，适用广告营销、有声书、旁白",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "wenhuaiqing_v3.1",
+      "name": "温怀清",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "儿童陪伴",
+      "description": "清亮、柔和，适用儿童故事、客服助手、广告营销、新闻播报",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "anxiaolan_v3.1",
+      "name": "安小岚",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "清甜、纯净，适用有声书、客服助手、旁白、新闻播报、广告营销",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "xieshurou_v3.1",
+      "name": "谢舒柔",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "柔和、自然、知性，适用有声书、客服助手、旁白",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "baiqinglan_v3.1",
+      "name": "白清岚",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "智能客服",
+      "description": "明亮、清纯，适用语音助手、客服助手",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "xuyuyuan_v3.1",
+      "name": "许玉远",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "middle_aged",
+      "category": "有声阅读",
+      "description": "知性、成熟、质感，适用广告营销、新闻播报、旁白、客服助手、有声书",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "anruorou_v3.1",
+      "name": "安若柔",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "气声、知性，适用旁白、语音助手",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "wenhuaizhi_v3.1",
+      "name": "闻怀之",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "middle_aged",
+      "category": "有声阅读",
+      "description": "稳重、成熟，适用有声书、新闻播报、广告营销、客服助手、旁白",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "xiaoxingzhi_v3.1",
+      "name": "萧行之",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "端庄、贵气，适用新闻播报、有声书、旁白、客服助手",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "guyunshu_v3.1",
+      "name": "顾云舒",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "middle_aged",
+      "category": "有声阅读",
+      "description": "成熟、稳重，适用音乐电台、客服助手、有声书、旁白",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "huozhuoshi_v3.1",
+      "name": "霍拙石",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "清亮，适用有声书、广告营销、旁白",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "yeqinghe_v3.1",
+      "name": "叶清禾",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "亲切、温柔，适用有声书、广告营销、旁白、客服助手",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "yunhuanhuan_v3.1",
+      "name": "云欢欢",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "高亢、热情，适用有声书、旁白、客服助手",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "xuxiaoqiao_v3.1",
+      "name": "徐小俏",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "自然、俏皮，适用有声书、旁白、客服助手",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "baianran_v3.1",
+      "name": "白安然",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "低沉、浑厚、气声，适用配音讲解、有声书、旁白",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "xuyanchu_v3.1",
+      "name": "许言初",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "middle_aged",
+      "category": "有声阅读",
+      "description": "沉稳、磁性，适用新闻播报、有声书",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "yezhiqing_v3.1",
+      "name": "叶知晴",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "儿童陪伴",
+      "description": "轻快、自然，适用儿童故事、客服助手、语音助手",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "andi_v3.1",
+      "name": "安迪",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "智能助手",
+      "description": "ABC口音，适用语音助手",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "anyuqing_v3.1",
+      "name": "安语晴",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "甜妹，适用语音助手、旁白、新闻播报",
+      "tags": [
+        "精品音色"
+      ],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanyuanfei_v3.1",
+      "name": "龙安元妃",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "角色扮演",
+      "description": "高傲妃子音，适用社交陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longjielidou_v3.1",
+      "name": "龙杰力豆",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "child",
+      "category": "儿童陪伴",
+      "description": "天真男童音，适用儿童陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanlingxi_v3.1",
+      "name": "龙安灵希",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "可爱甜美音，适用社交陪伴（精品中文）",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longhuohuo_v3.1",
+      "name": "龙火火",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "child",
+      "category": "角色扮演",
+      "description": "顽皮少年音，适用角色音",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longyingtao_v3.1",
+      "name": "龙应桃",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "智能客服",
+      "description": "温柔淡定女，适用客服",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanya_v3.1",
+      "name": "龙安雅",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "高雅气质女，适用社交陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longwan_v3.1",
+      "name": "龙婉",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "细腻柔声女，适用社交陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longxing_v3.1",
+      "name": "龙星",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "温婉邻家女，适用社交陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longhua_v3.1",
+      "name": "龙华",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "元气甜美女，适用社交陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longhan_v3.1",
+      "name": "龙寒",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "温暖痴情男，适用社交陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanzhi_v3.1",
+      "name": "龙安智",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "middle_aged",
+      "category": "社交陪伴",
+      "description": "睿智轻熟男，适用社交陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longzhe_v3.1",
+      "name": "龙哲",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "呆板大暖男，适用社交陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanyang_v3.1",
+      "name": "龙安洋",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "社交陪伴",
+      "description": "阳光大男孩，适用社交陪伴（标杆音色）",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "libai_v3.1",
+      "name": "李白",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "古风有声书",
+      "description": "古代诗仙男，适用诗词朗诵",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longling_v3.1",
+      "name": "龙铃",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "child",
+      "category": "儿童陪伴",
+      "description": "稚气呆板女，适用童声",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longniuniu_v3.1",
+      "name": "龙牛牛",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "child",
+      "category": "儿童陪伴",
+      "description": "阳光男童声，适用消费电子-儿童有声书",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longshanshan_v3.1",
+      "name": "龙闪闪",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "child",
+      "category": "儿童陪伴",
+      "description": "戏剧化童声，适用消费电子-儿童有声书",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longpaopao_v3.1",
+      "name": "龙泡泡",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "child",
+      "category": "儿童陪伴",
+      "description": "飞天泡泡音，适用消费电子-儿童陪伴",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "loongstella_v3.1",
+      "name": "loongstella",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "新闻播报",
+      "description": "飒爽利落女，适用新闻播报",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longyuan_v3.1",
+      "name": "龙媛",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "温暖治愈女，适用有声书",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longmiao_v3.1",
+      "name": "龙妙",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "有声阅读",
+      "description": "抑扬顿挫女，适用有声书",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longsanshu_v3.1",
+      "name": "龙三叔",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "middle_aged",
+      "category": "有声阅读",
+      "description": "沉稳质感男，适用有声书",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanli_v3.1",
+      "name": "龙安莉",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "智能助手",
+      "description": "利落从容女，适用语音助手",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanwen_v3.1",
+      "name": "龙安温",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "智能助手",
+      "description": "优雅知性女，适用语音助手",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanlang_v3.1",
+      "name": "龙安朗",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "智能助手",
+      "description": "清爽利落男，适用语音助手",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longxiaoxia_v3.1",
+      "name": "龙小夏",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "female",
+      "age": "young_adult",
+      "category": "智能助手",
+      "description": "沉稳权威女，适用语音助手",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
+    },
+    {
+      "voice_id": "longanchong_v3.1",
+      "name": "龙安冲",
+      "model": "qwen-audio-3.1-tts-flash",
+      "gender": "male",
+      "age": "young_adult",
+      "category": "电商直播",
+      "description": "激情推销男，适用直播带货",
+      "tags": [],
+      "language": "zh-CN",
+      "bilingual": false
     }
   ]
 }

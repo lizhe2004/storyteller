@@ -46,11 +46,11 @@ _PROVIDER_FORM_TYPES = {
     "llm": {
         "volcengine": {
             "label": "火山引擎方舟",
-            "fields": ["api_key", "model"],
+            "fields": ["api_key", "model", "models"],
         },
         "openai_compatible": {
             "label": "OpenAI 兼容服务",
-            "fields": ["api_key", "model", "base_url"],
+            "fields": ["api_key", "model", "models", "base_url"],
         },
         "mock": {"label": "模拟服务", "fields": []},
     },
@@ -61,7 +61,7 @@ _PROVIDER_FORM_TYPES = {
         },
         "volcengine": {
             "label": "火山引擎语音",
-            "fields": ["api_key", "resource_id"],
+            "fields": ["api_key", "resource_id", "models"],
         },
         "openai_compatible": {
             "label": "OpenAI 兼容服务",
@@ -387,6 +387,53 @@ async def _test_connection(request, kind, body):
     return {"ok": True, "provider": body.provider, "message": "连接成功"}
 
 
+def _run_model_fetch(kind, config, body):
+    registry = ProviderRegistry(config)
+    register_providers_from_config(config, registry)
+    if kind == "llm":
+        provider = registry.get_llm(body.provider)
+    else:
+        provider = registry.get_tts(body.provider)
+    list_models = getattr(provider, "list_models", None)
+    if list_models is None:
+        raise NotImplementedError(body.provider)
+    normalized = []
+    for item in list_models():
+        if isinstance(item, str):
+            normalized.append({"id": item, "retiring": False})
+        else:
+            normalized.append(
+                {"id": str(item.get("id")), "retiring": bool(item.get("retiring"))}
+            )
+    return normalized
+
+
+async def _fetch_models(request, kind, body):
+    config = _temporary_config(request, kind, body)
+    loop = asyncio.get_running_loop()
+    call = partial(_run_model_fetch, kind, config, body)
+    try:
+        models = await asyncio.wait_for(
+            loop.run_in_executor(None, call), timeout=body.timeout_seconds
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="拉取模型列表超时")
+    except NotImplementedError:
+        raise HTTPException(
+            status_code=422, detail="该服务不支持拉取模型列表"
+        )
+    except Exception as exc:
+        logger.warning(
+            "provider model fetch failed: kind=%s provider=%s error_type=%s",
+            kind, body.provider, type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="拉取模型列表失败，请检查供应商配置和网络连接",
+        )
+    return {"ok": True, "provider": body.provider, "models": models}
+
+
 @router.get("")
 def get_settings(request: Request):
     return _public_settings(request)
@@ -440,6 +487,16 @@ async def test_llm(body: ProviderTestRequest, request: Request):
 @router.post("/test/tts")
 async def test_tts(body: ProviderTestRequest, request: Request):
     return await _test_connection(request, "tts", body)
+
+
+@router.post("/models/llm")
+async def fetch_llm_models(body: ProviderTestRequest, request: Request):
+    return await _fetch_models(request, "llm", body)
+
+
+@router.post("/models/tts")
+async def fetch_tts_models(body: ProviderTestRequest, request: Request):
+    return await _fetch_models(request, "tts", body)
 
 
 @router.get("/history")

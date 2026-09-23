@@ -31,6 +31,9 @@ const settings: SettingsResponse = {
     provider_config: {
       'mock-tts': { type: 'mock', api_key: { configured: true, masked: '********-tts' }, model: 'voice-model', resource_id: 'workspace-a' },
       aliyun: { api_key: { configured: true, masked: '********-ali' }, models: 'qwen-audio-3.0-tts-plus', workspace_id: 'workspace-a' },
+      // Configured but intentionally NOT enabled: exercises the independence
+      // of provider configuration from the enabled-provider set.
+      volcengine: { api_key: { configured: true, masked: '********-volc' }, resource_id: 'volc-resource' },
     },
   },
   sound: {
@@ -45,15 +48,15 @@ const settings: SettingsResponse = {
   sources: {
     web: { passwords: 'environment', secret: 'environment', token_ttl_days: 'default', host: 'environment', port: 'default', concurrency: 'admin', rate_limit_per_min: 'default', filler_voice: 'admin' },
     llm: { providers: 'environment', default_provider: 'admin', provider_config: { mock: { type: 'default', api_key: 'environment', model: 'admin' }, writer: { type: 'admin', api_key: 'environment', model: 'admin', base_url: 'admin' } } },
-    tts: { providers: 'admin', default_provider: 'admin', provider_config: { 'mock-tts': { type: 'default', api_key: 'environment', model: 'admin', resource_id: 'environment' }, aliyun: { api_key: 'environment', models: 'admin', workspace_id: 'environment' } } },
+    tts: { providers: 'admin', default_provider: 'admin', provider_config: { 'mock-tts': { type: 'default', api_key: 'environment', model: 'admin', resource_id: 'environment' }, aliyun: { api_key: 'environment', models: 'admin', workspace_id: 'environment' }, volcengine: { api_key: 'environment', resource_id: 'environment' } } },
     sound: { enabled: 'default', dir: 'environment', providers: 'admin', default_provider: 'admin', provider_config: { 'mock-sound': { type: 'default', api_key: 'default', model: 'admin' } } },
   },
   config_error: null,
   provider_schemas: {
     llm: {
       types: {
-        volcengine: { label: '火山引擎方舟', fields: ['api_key', 'model'] },
-        openai_compatible: { label: 'OpenAI 兼容服务', fields: ['api_key', 'model', 'base_url'] },
+        volcengine: { label: '火山引擎方舟', fields: ['api_key', 'model', 'models'] },
+        openai_compatible: { label: 'OpenAI 兼容服务', fields: ['api_key', 'model', 'models', 'base_url'] },
         mock: { label: '模拟服务', fields: [] },
       },
       providers: { mock: 'mock', writer: 'openai_compatible' },
@@ -202,14 +205,17 @@ describe('SettingsView', () => {
     expect(mockTtsCard.textContent).not.toContain('模型白名单')
   })
 
-  it('shows one LLM provider and one model without a default provider control', async () => {
+  it('shows one LLM provider without a default provider control or standalone model field', async () => {
     const { element } = await mountSettings()
     await selectGroup(element, 'llm')
 
     expect(element.querySelector('[data-testid="llm-providers"]')).toBeNull()
     expect(element.querySelector('[data-testid="llm-default-provider"]')).toBeNull()
     expect(element.querySelectorAll('[data-testid="llm-provider-type"]')).toHaveLength(1)
-    expect(element.querySelectorAll('[data-testid^="field-llm-"][data-testid$="-model"]')).toHaveLength(1)
+    // The standalone model input is gone; the default is managed inside
+    // the candidate-list editor instead.
+    expect(element.querySelectorAll('[data-testid^="field-llm-"][data-testid$="-model"]')).toHaveLength(0)
+    expect(element.querySelector('[data-testid="candidate-list-llm-writer"]')).not.toBeNull()
   })
 
   it('removes the unused TTS default and limits Sound settings to one provider', async () => {
@@ -260,7 +266,7 @@ describe('SettingsView', () => {
 
     input(element, 'web-concurrency', '4')
     await selectGroup(element, 'llm')
-    input(element, 'field-llm-writer-model', 'writer-model-v2')
+    input(element, 'field-llm-writer-base_url', 'https://llm.example/v2')
     click(element, 'save-llm')
     await settle()
 
@@ -286,7 +292,8 @@ describe('SettingsView', () => {
     expect(element.textContent).toContain('********-ali')
     expect(element.textContent).not.toContain(fullSecret)
     const secretInputs = Array.from(element.querySelectorAll('input[type="password"]')) as HTMLInputElement[]
-    expect(secretInputs).toHaveLength(1)
+    // aliyun + volcengine (configured but disabled) both render key fields.
+    expect(secretInputs).toHaveLength(2)
     expect(secretInputs.every(control => control.value === '')).toBe(true)
   })
 
@@ -311,7 +318,14 @@ describe('SettingsView', () => {
     await selectGroup(element, 'llm')
     choose(element, 'llm-provider-type', 'openai_compatible')
     await settle()
-    input(element, 'field-llm-openai-model', 'gemini-pro')
+    // The default model is set through the candidate editor: add a custom
+    // model from the search box, then mark it as default.
+    input(element, 'candidate-filter-llm-openai', 'gemini-pro')
+    await settle()
+    click(element, 'candidate-add-llm-openai')
+    await settle()
+    click(element, 'candidate-default-llm-openai-gemini-pro')
+    await settle()
     input(element, 'llm-openai-api-key', 'new-key')
     input(element, 'field-llm-openai-base_url', 'https://llm.example/v1')
     click(element, 'save-llm')
@@ -321,7 +335,7 @@ describe('SettingsView', () => {
       llm: {
         providers: ['openai'],
         default_provider: null,
-        provider_config: { openai: { type: 'openai_compatible', model: 'gemini-pro', api_key: 'new-key', base_url: 'https://llm.example/v1' } },
+        provider_config: { openai: { type: 'openai_compatible', model: 'gemini-pro', models: 'gemini-pro', api_key: 'new-key', base_url: 'https://llm.example/v1' } },
       },
     })
   })
@@ -339,7 +353,11 @@ describe('SettingsView', () => {
     expect(element.querySelector('[data-testid="status-llm"]')?.textContent).toContain('连接成功')
 
     await selectGroup(element, 'tts')
-    input(element, 'tts-providers', 'aliyun')
+    // Narrow the enabled providers down to aliyun via the picker.
+    click(element, 'tts-provider-picker-toggle')
+    await settle()
+    click(element, 'tts-provider-option-mock-tts')
+    await settle()
     click(element, 'test-tts')
     await settle()
     expect(element.querySelector('[data-testid="status-tts"]')?.textContent).toContain('连接测试失败')
@@ -370,5 +388,206 @@ describe('SettingsView', () => {
 
     expect(confirm).toHaveBeenCalledTimes(1)
     expect(router.currentRoute.value.path).toBe('/settings')
+  })
+
+  it('auto-fetches TTS models into the whitelist editor', async () => {
+    const fetchModels = vi.spyOn(api, 'fetchModels').mockResolvedValue({ ok: true, provider: 'aliyun', models: [{ id: 'qwen-audio-3.0-tts-plus' }, { id: 'qwen-audio-new' }] })
+    const { element } = await mountSettings()
+    await selectGroup(element, 'tts')
+
+    // Mock providers have no model editor; aliyun fetched automatically.
+    expect(element.querySelector('[data-testid="candidate-list-tts-mock-tts"]')).toBeNull()
+    expect(fetchModels).toHaveBeenCalledWith('tts', expect.objectContaining({ provider: 'aliyun' }))
+
+    const existingBox = element.querySelector('[data-testid="candidate-check-tts-aliyun-qwen-audio-3.0-tts-plus"]') as HTMLInputElement
+    const newBox = element.querySelector('[data-testid="candidate-check-tts-aliyun-qwen-audio-new"]') as HTMLInputElement
+    expect(existingBox.checked).toBe(true)
+    expect(newBox.checked).toBe(false)
+
+    newBox.click()
+    await settle()
+    expect(newBox.checked).toBe(true)
+    expect(element.querySelector('[data-testid="settings-nav-tts"]')?.textContent).toContain('未保存')
+  })
+
+  it('keeps LLM and TTS model pools separate for same-named providers', async () => {
+    const isolated = structuredClone(settings)
+    isolated.llm.providers = ['aliyun']
+    isolated.llm.default_provider = 'aliyun'
+    ;(isolated.llm.provider_config as any) = { aliyun: { type: 'openai_compatible', api_key: { configured: true, masked: '********-k' }, model: 'llm-default' } }
+    ;(isolated.provider_schemas.llm.providers as any) = { aliyun: 'openai_compatible' }
+    const fetchModels = vi.spyOn(api, 'fetchModels').mockImplementation(async (kind) => ({
+      ok: true,
+      provider: 'aliyun',
+      models: [{ id: kind === 'llm' ? 'llm-only-model' : 'tts-only-model' }],
+    }))
+    const { element } = await mountSettings(isolated)
+
+    await selectGroup(element, 'llm')
+    expect(element.querySelector('[data-testid="candidate-list-llm-aliyun"]')?.textContent).toContain('llm-only-model')
+
+    await selectGroup(element, 'tts')
+    const ttsList = element.querySelector('[data-testid="candidate-list-tts-aliyun"]') as HTMLElement
+    expect(ttsList.textContent).toContain('tts-only-model')
+    expect(ttsList.textContent).not.toContain('llm-only-model')
+    // llm:aliyun + tts:aliyun + tts:volcengine (configured, has an editor).
+    expect(fetchModels).toHaveBeenCalledTimes(3)
+  })
+
+  it('marks retiring models with a badge', async () => {
+    vi.spyOn(api, 'fetchModels').mockResolvedValue({ ok: true, provider: 'writer', models: [{ id: 'writer-model' }, { id: 'writer-old', retiring: true }] })
+    const { element } = await mountSettings()
+    await selectGroup(element, 'llm')
+
+    const list = element.querySelector('[data-testid="candidate-list-llm-writer"]') as HTMLElement
+    const rows = Array.from(list.querySelectorAll('li'))
+    const retiringRow = rows.find(row => row.textContent?.includes('writer-old'))
+    expect(retiringRow?.textContent).toContain('即将下线')
+    const activeRow = rows.find(row => row.textContent?.includes('writer-model'))
+    expect(activeRow?.textContent).not.toContain('即将下线')
+  })
+
+  it('toggles TTS providers from the multi-select picker', async () => {
+    vi.spyOn(api, 'fetchModels').mockResolvedValue({ ok: true, provider: 'volcengine', models: [{ id: 'seed-tts-2.0' }] })
+    const { element } = await mountSettings()
+    await selectGroup(element, 'tts')
+
+    // A configured-but-disabled provider still renders its card; the badge
+    // tracks enablement independently of configuration.
+    const state = () => element.querySelector('[data-testid="provider-card-state-tts-volcengine"]')?.textContent
+    expect(element.querySelector('[data-testid="provider-card-tts-volcengine"]')).not.toBeNull()
+    expect(state()).toContain('未启用')
+
+    click(element, 'tts-provider-picker-toggle')
+    await settle()
+    click(element, 'tts-provider-option-volcengine')
+    await settle()
+    expect(state()).toContain('已启用')
+    // A freshly enabled fixed provider must resolve its type and render
+    // its fields even without a schema.providers entry.
+    expect(element.querySelector('[data-testid="tts-volcengine-api-key"]')).not.toBeNull()
+    expect(element.querySelector('[data-testid="candidate-select-tts-volcengine-seed-tts-2.0"]')).not.toBeNull()
+
+    // Unchecking an enabled provider keeps its configuration card.
+    click(element, 'tts-provider-option-aliyun')
+    await settle()
+    expect(element.querySelector('[data-testid="provider-card-tts-aliyun"]')).not.toBeNull()
+    expect(element.querySelector('[data-testid="provider-card-state-tts-aliyun"]')?.textContent).toContain('未启用')
+  })
+
+  it('saves configuration for a TTS provider that stays disabled', async () => {
+    vi.spyOn(api, 'fetchModels').mockResolvedValue({ ok: true, provider: 'volcengine', models: [] })
+    const patchSettings = vi.spyOn(api, 'patchSettings').mockResolvedValue(mutationResponse())
+    const { element } = await mountSettings()
+    await selectGroup(element, 'tts')
+
+    // volcengine is configured in the fixture but not enabled; editing its
+    // card and saving must not add it to the enabled set.
+    input(element, 'tts-volcengine-api-key', 'new-volc-key')
+    input(element, 'candidate-filter-tts-volcengine', 'res-new')
+    await settle()
+    click(element, 'candidate-add-tts-volcengine')
+    await settle()
+    click(element, 'save-tts')
+    await settle()
+
+    const payload = patchSettings.mock.calls[0][0] as any
+    expect(payload.tts.providers).toEqual(['mock-tts', 'aliyun'])
+    expect(payload.tts.provider_config.volcengine).toMatchObject({ api_key: 'new-volc-key', resource_id: 'res-new' })
+    expect(payload.tts.provider_config.aliyun).toBeDefined()
+  })
+
+  it('collapses and expands a provider card from its header', async () => {
+    vi.spyOn(api, 'fetchModels').mockResolvedValue({ ok: true, provider: 'aliyun', models: [] })
+    const { element } = await mountSettings()
+    await selectGroup(element, 'tts')
+
+    const card = element.querySelector('[data-testid="provider-card-tts-aliyun"]') as HTMLElement
+    expect(card.classList.contains('collapsed')).toBe(false)
+    click(element, 'provider-card-toggle-tts-aliyun')
+    await settle()
+    expect(card.classList.contains('collapsed')).toBe(true)
+    click(element, 'provider-card-toggle-tts-aliyun')
+    await settle()
+    expect(card.classList.contains('collapsed')).toBe(false)
+  })
+
+  it('auto-fetches models into checkboxes and switches the default', async () => {
+    const fetchModels = vi.spyOn(api, 'fetchModels').mockResolvedValue({ ok: true, provider: 'writer', models: [{ id: 'writer-model' }, { id: 'writer-model-2' }] })
+    const { element } = await mountSettings()
+    await selectGroup(element, 'llm')
+
+    expect(fetchModels).toHaveBeenCalledWith('llm', expect.objectContaining({ provider: 'writer' }))
+    expect(element.querySelector('[data-testid="fetch-models-status-llm-writer"]')?.textContent).toContain('已拉取 2 个模型')
+    const list = element.querySelector('[data-testid="candidate-list-llm-writer"]') as HTMLElement
+    expect(list.textContent).toContain('writer-model')
+    expect(list.textContent).toContain('writer-model-2')
+
+    // The default row: checked + disabled checkbox, badge, no action button.
+    const defaultBox = element.querySelector('[data-testid="candidate-check-llm-writer-writer-model"]') as HTMLInputElement
+    expect(defaultBox.checked).toBe(true)
+    expect(defaultBox.disabled).toBe(true)
+    expect(element.querySelector('[data-testid="candidate-default-llm-writer-writer-model"]')).toBeNull()
+    const otherBox = element.querySelector('[data-testid="candidate-check-llm-writer-writer-model-2"]') as HTMLInputElement
+    expect(otherBox.checked).toBe(false)
+
+    otherBox.click()
+    await settle()
+    click(element, 'candidate-default-llm-writer-writer-model-2')
+    await settle()
+
+    expect(element.querySelector('[data-testid="candidate-current-llm-writer"]')?.textContent).toContain('writer-model-2')
+    // The old default stays visible but becomes an unchecked candidate row.
+    expect(defaultBox.checked).toBe(false)
+    expect(defaultBox.disabled).toBe(false)
+    expect(element.querySelector('[data-testid="candidate-default-llm-writer-writer-model"]')).not.toBeNull()
+  })
+
+  it('adds a custom model from the search box', async () => {
+    vi.spyOn(api, 'fetchModels').mockResolvedValue({ ok: true, provider: 'writer', models: [{ id: 'writer-model' }] })
+    const { element } = await mountSettings()
+    await selectGroup(element, 'llm')
+
+    input(element, 'candidate-filter-llm-writer', 'ep-custom-endpoint')
+    await settle()
+    click(element, 'candidate-add-llm-writer')
+    await settle()
+
+    const customBox = element.querySelector('[data-testid="candidate-check-llm-writer-ep-custom-endpoint"]') as HTMLInputElement
+    expect(customBox).not.toBeNull()
+    expect(customBox.checked).toBe(true)
+    // Once added, the exact keyword no longer offers the add row.
+    expect(element.querySelector('[data-testid="candidate-add-llm-writer"]')).toBeNull()
+
+    input(element, 'candidate-filter-llm-writer', '')
+    await settle()
+    expect(element.querySelector('[data-testid="candidate-list-llm-writer"]')?.textContent).toContain('ep-custom-endpoint')
+  })
+
+  it('filters the candidate pool by keyword', async () => {
+    vi.spyOn(api, 'fetchModels').mockResolvedValue({ ok: true, provider: 'writer', models: [{ id: 'writer-model' }, { id: 'writer-model-2' }] })
+    const { element } = await mountSettings()
+    await selectGroup(element, 'llm')
+
+    input(element, 'candidate-filter-llm-writer', 'model-2')
+    await settle()
+    const list = element.querySelector('[data-testid="candidate-list-llm-writer"]') as HTMLElement
+    const rows = Array.from(list.querySelectorAll('li')).filter(li => li.querySelector('.candidate-check'))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].textContent).toContain('writer-model-2')
+    // A non-matching keyword doubles as a custom-model offer.
+    expect(list.textContent).toContain('添加“model-2”')
+  })
+
+  it('surfaces model fetch failures and keeps configured models visible', async () => {
+    vi.spyOn(api, 'fetchModels').mockRejectedValue(new Error('拉取模型列表失败，请检查供应商配置和网络连接'))
+    const { element } = await mountSettings()
+    await selectGroup(element, 'tts')
+
+    expect(element.querySelector('[data-testid="fetch-models-status-tts-aliyun"]')?.textContent).toContain('拉取模型列表失败')
+    // The saved whitelist still renders as checked rows despite the failure.
+    const box = element.querySelector('[data-testid="candidate-check-tts-aliyun-qwen-audio-3.0-tts-plus"]') as HTMLInputElement
+    expect(box).not.toBeNull()
+    expect(box.checked).toBe(true)
   })
 })

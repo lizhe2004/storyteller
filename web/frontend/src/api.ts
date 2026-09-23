@@ -26,5 +26,6 @@ export const api = {
   getSettings: () => request<SettingsResponse>('/api/settings'),
   patchSettings: (patch: SettingsPatch) => request<SettingsMutationResponse>('/api/settings', {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(patch)}),
   testSettings: (kind: 'llm' | 'tts', payload: ConnectionTestPayload) => request<ConnectionTestResult>('/api/settings/test/' + kind, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}),
+  fetchModels: (kind: 'llm' | 'tts', payload: ConnectionTestPayload) => request<{ok: boolean; provider: string; models: {id: string; retiring?: boolean}[]}>('/api/settings/models/' + kind, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}),
   resetSettings: (paths: string[]) => request<SettingsMutationResponse>('/api/settings/reset', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({paths})}),
 }

@@ -251,7 +251,17 @@ class Config:
             )
             config.set("{}.default_provider".format(kind), default)
 
-        for provider in providers:
+        # Provider configuration is independent of enablement: env-configured
+        # providers get a provider_config entry even when the TTS allowlist
+        # keeps them disabled, so the settings UI can show their status.
+        configured_names = list(providers)
+        seen = {p.lower() for p in providers}
+        for name in sorted(discovered):
+            if name not in seen:
+                configured_names.append(name)
+                seen.add(name)
+
+        for provider in configured_names:
             provider_prefix = "STORYTELLER_{}_{}_".format(
                 upper, provider.upper()
             )

@@ -40,7 +40,7 @@ CLI 最少需要配置 LLM 和 TTS 两套互相独立的密钥；使用 Web、�
 | 变量 | 说明 |
 |------|------|
 | `STORYTELLER_LLM_VOLCENGINE_API_KEY` | 火山方舟（Ark）LLM Key |
-| `STORYTELLER_LLM_VOLCENGINE_MODEL` | 默认 `deepseek-v4-flash-260425` |
+| `STORYTELLER_LLM_VOLCENGINE_MODEL` | 默认 `deepseek-v4-flash-ga-260731` |
 | `STORYTELLER_LLM_PROVIDER` | 本次运行使用的唯一 LLM provider；未设置时仅自动使用唯一已配置 provider |
 | `STORYTELLER_TTS_VOLCENGINE_API_KEY` | 语音合成 Key（**与 LLM Key 不同**） |
 | `STORYTELLER_TTS_VOLCENGINE_RESOURCE_ID` | 默认 `seed-tts-2.0` |
