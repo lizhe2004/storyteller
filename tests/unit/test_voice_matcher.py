@@ -562,3 +562,31 @@ def test_llm_voice_matching_logs_the_complete_prompt(caplog):
     assert "成长童声" in prompt
     assert "一个喜欢冒险的少年男孩" in prompt
     assert '请为每个角色选择一个候选序号，按规定只输出 JSON。' in prompt
+
+
+def test_narrator_metadata_restricts_llm_voice_candidates():
+    llm = _assignment_llm({"assignments": []})
+    matcher = _make_matcher(llm=llm, mode="llm")
+    narrator = Character(
+        id="narrator", name="旁白", description="故事旁白",
+        gender="female", age="young_adult",
+        voice_preferences=[{"type": "有声阅读", "weight": 1.0}],
+    )
+    matcher.match_voices(_make_script_with_characters(narrator))
+
+    user_prompt = matcher.llm.calls[0]["messages"][1]["content"]
+    assert "少儿故事" in user_prompt
+    assert "青年男声" not in user_prompt
+    assert "温柔妈妈" not in user_prompt
+
+
+def test_narrator_metadata_restricts_rule_fallback():
+    matcher = _make_matcher()
+    narrator = Character(
+        id="narrator", name="旁白", description="故事旁白",
+        gender="female", age="middle_aged",
+    )
+
+    matcher.match_voices(_make_script_with_characters(narrator))
+
+    assert narrator.voice_config.voice_id == "female_01"

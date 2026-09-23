@@ -289,8 +289,16 @@ class VoiceMatcher:
         others = [c for c in script.characters if not _is_narrator(c)]
         ordered = narrators + others
 
-        # wanted[char_id] = (gender_or_None, age_or_None); narrator is (None, None).
-        wanted = {c.id: (None, None) for c in narrators}
+        # Preserve generated narrator metadata when it is valid.  Older
+        # scripts may omit it, in which case narrator matching remains
+        # unconstrained and falls back to the narration preference.
+        wanted = {
+            c.id: (
+                c.gender if c.gender in _GENDERS else None,
+                c.age if c.age in _AGE_BANDS else None,
+            )
+            for c in narrators
+        }
         for character in others:
             text = "{} {}".format(character.name, character.description)
             gender = character.gender if character.gender in _GENDERS else _infer_gender(text)
@@ -462,7 +470,11 @@ class VoiceMatcher:
     def _rule_pick(self, voices, used_ids, default_provider,
                    *, gender, age, narrator):
         """Deterministic selection used at init and as LLM fallback."""
-        pool = list(voices) if narrator else _gender_pool(voices, gender)
+        pool = _gender_pool(voices, gender) if gender is not None else list(voices)
+        if narrator and age is not None:
+            same_age = [voice for voice in pool if age in voice.age]
+            if same_age:
+                pool = same_age
         ranked = sorted(pool, key=lambda v: _voice_sort_key(v, age, narrator))
         unused = [v for v in ranked if v.voice_id not in used_ids]
         if default_provider:
