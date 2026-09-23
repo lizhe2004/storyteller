@@ -153,6 +153,24 @@ def test_registry_list_registered_names():
     assert "fake" in registry.list_tts_names()
 
 
+def test_get_tts_model_prefers_voice_model():
+    config = Config()
+    registry = ProviderRegistry(config)
+
+    class Provider:
+        model = "configured-model"
+
+        def __init__(self, _config):
+            pass
+
+    registry.register_tts("model-aware", Provider)
+    voice = VoiceConfig(
+        provider="model-aware", voice_id="v1", model="voice-model"
+    )
+
+    assert registry.get_tts_model(voice) == "voice-model"
+
+
 # ========== ProviderRegistry Sound ==========
 class FakeSound(BaseProvider, SoundEffectProvider):
     @property

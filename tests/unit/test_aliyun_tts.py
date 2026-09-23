@@ -151,6 +151,7 @@ def test_aliyun_tts_lists_catalog_voices():
     assert all(v.provider == "aliyun" for v in voices)
     # gender/age/category needed by the semantic matcher come through.
     by_id = {v.voice_id: v for v in voices}
+    assert by_id["longanlingxin"].model == "qwen-audio-3.0-tts-plus"
     assert by_id["longpaopao_v3.6"].gender == "female"
     assert by_id["longpaopao_v3.6"].age == ["child", "teen"]
     assert by_id["longanhuan_v3.6"].age == ["young_adult"]

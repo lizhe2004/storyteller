@@ -86,6 +86,8 @@ class ProviderRegistry:
 
     def get_tts_model(self, voice: VoiceConfig) -> str:
         """Resolve the provider/model resource used by ``voice`` for scheduling."""
+        if voice.model:
+            return str(voice.model)
         tts = self.get_tts(voice.provider)
         for attribute in ("model_for_voice", "_model_for", "_resource_id_for"):
             resolver = getattr(tts, attribute, None)

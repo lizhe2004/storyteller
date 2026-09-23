@@ -115,7 +115,8 @@ def test_voice_age_serialization_roundtrip_writes_array(temp_dir):
             name="小猫",
             description="活泼的女孩",
             voice_config=VoiceConfig(
-                provider="p", voice_id="child", age=["child", "teen"]
+                provider="p", voice_id="child", model="test-model",
+                age=["child", "teen"]
             ),
         )],
     )
@@ -130,8 +131,10 @@ def test_voice_age_serialization_roundtrip_writes_array(temp_dir):
         "child",
         "teen",
     ]
+    assert payload["script"]["characters"][0]["voice_config"]["model"] == "test-model"
     loaded = manager.load_project(state.project_id)
     assert loaded.script.characters[0].voice_config.age == ["child", "teen"]
+    assert loaded.script.characters[0].voice_config.model == "test-model"
 
 
 def test_voice_age_serialization_loads_legacy_scalar(temp_dir):

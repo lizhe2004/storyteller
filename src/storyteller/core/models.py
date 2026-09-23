@@ -84,6 +84,7 @@ def normalize_voice_ages(value) -> list[str]:
 class VoiceConfig:
     provider: str
     voice_id: str
+    model: Optional[str] = None
     language: str = "zh-CN"
     style: Optional[str] = None
     speed: float = 1.0

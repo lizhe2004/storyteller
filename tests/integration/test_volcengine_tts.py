@@ -166,6 +166,7 @@ def test_volcengine_tts_lists_builtin_voices():
     assert all(v.voice_id for v in voices)
     assert all(v.provider == "volcengine" for v in voices)
     by_id = {voice.voice_id: voice for voice in voices}
+    assert by_id["zh_male_m191_uranus_bigtts"].model == "seed-tts-2.0"
     assert by_id["ICL_uranus_zh_male_wennuanshaonian_tob"].age == [
         "child", "teen"
     ]
