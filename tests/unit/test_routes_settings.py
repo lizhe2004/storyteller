@@ -94,7 +94,7 @@ def test_get_settings_returns_groups_sources_and_redacted_secrets(client):
         "api_key", "models", "workspace_id"
     ]
     assert schemas["tts"]["types"]["volcengine"]["fields"] == [
-        "api_key", "resource_id"
+        "api_key", "resource_id", "models"
     ]
     assert schemas["sound"]["types"]["volcengine"]["fields"] == [
         "api_key", "model"
