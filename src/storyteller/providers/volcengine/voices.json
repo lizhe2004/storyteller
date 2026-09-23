@@ -56,7 +56,10 @@
       "voice_id": "ICL_uranus_zh_male_wennuanshaonian_tob",
       "name": "温暖少年",
       "gender": "male",
-      "age": "teen",
+      "age": [
+        "child",
+        "teen"
+      ],
       "category": "有声阅读",
       "description": "温柔清澈的体贴少年，待人谦和有礼",
       "tags": [],

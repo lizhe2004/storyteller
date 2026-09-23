@@ -65,6 +65,9 @@ def test_mock_tts_lists_voices():
     for v in voices:
         assert v.provider == "mock"
         assert v.voice_id
+    assert next(v for v in voices if v.voice_id == "child_01").age == [
+        "child", "teen"
+    ]
 
 
 def test_mock_tts_synthesize_writes_file(tmp_path):

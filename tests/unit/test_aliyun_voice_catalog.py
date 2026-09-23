@@ -28,7 +28,8 @@ def test_catalog_records_have_required_fields():
         assert v["name"]
         assert v["model"] in VALID_MODELS
         assert v["gender"] in VALID_GENDERS
-        assert v["age"] in VALID_AGES
+        ages = v["age"] if isinstance(v["age"], list) else [v["age"]]
+        assert ages and all(age in VALID_AGES for age in ages)
         assert v["language"] == "zh-CN"
         assert isinstance(v["bilingual"], bool)
         assert v["category"]
@@ -53,7 +54,10 @@ def test_catalog_excludes_english_only_voices():
 
 def test_catalog_has_child_voices_and_both_models():
     voices = load_voice_catalog()
-    children = [v for v in voices if v["age"] == "child"]
+    children = [
+        v for v in voices
+        if "child" in (v["age"] if isinstance(v["age"], list) else [v["age"]])
+    ]
     assert len(children) > 100
     assert {v["voice_id"] for v in children} >= {
         "longjielidou_v3.6",
@@ -64,6 +68,12 @@ def test_catalog_has_child_voices_and_both_models():
     }
     models = {v["model"] for v in voices}
     assert models == VALID_MODELS
+
+
+def test_catalog_preserves_scalar_and_array_age_values():
+    index = {voice["voice_id"]: voice for voice in load_voice_catalog()}
+    assert index["longpaopao_v3.6"]["age"] == ["child", "teen"]
+    assert index["longanhuan_v3.6"]["age"] == "young_adult"
 
 
 def test_known_voices_bound_to_correct_model():
