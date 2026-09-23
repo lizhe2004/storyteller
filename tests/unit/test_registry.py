@@ -171,6 +171,31 @@ def test_get_tts_model_prefers_voice_model():
     assert registry.get_tts_model(voice) == "voice-model"
 
 
+def test_registry_applies_persisted_voice_age_overrides(tmp_path):
+    config = Config()
+    config.set("data_dir", str(tmp_path))
+
+    class ModelAwareTTS:
+        def __init__(self, _config):
+            pass
+
+        def list_voices(self, **kwargs):
+            return [
+                VoiceConfig(
+                    provider="model-aware", model="model-a", voice_id="v1",
+                    age=["child"],
+                )
+            ]
+
+    registry = ProviderRegistry(config)
+    registry.register_tts("model-aware", ModelAwareTTS)
+    registry.voice_overrides.set_age("model-aware|model-a|v1", ["teen"])
+
+    voices = registry.list_tts_voices(["model-aware"])
+
+    assert voices[0].age == ["teen"]
+
+
 # ========== ProviderRegistry Sound ==========
 class FakeSound(BaseProvider, SoundEffectProvider):
     @property
