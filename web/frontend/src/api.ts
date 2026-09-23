@@ -1,4 +1,4 @@
-import type { ConnectionTestPayload, ConnectionTestResult, ModelOption, SettingsMutationResponse, SettingsPatch, SettingsResponse, StoryDetail, VoiceAnalysisJob } from './types'
+import type { ConnectionTestPayload, ConnectionTestResult, ModelOption, SettingsMutationResponse, SettingsPatch, SettingsResponse, StoryDetail, VoiceAnalysisJob, VoiceClipResponse, VoiceListResponse } from './types'
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, { credentials: 'include', ...options })
@@ -28,4 +28,11 @@ export const api = {
   testSettings: (kind: 'llm' | 'tts', payload: ConnectionTestPayload) => request<ConnectionTestResult>('/api/settings/test/' + kind, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}),
   fetchModels: (kind: 'llm' | 'tts', payload: ConnectionTestPayload) => request<{ok: boolean; provider: string; models: {id: string; retiring?: boolean}[]}>('/api/settings/models/' + kind, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}),
   resetSettings: (paths: string[]) => request<SettingsMutationResponse>('/api/settings/reset', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({paths})}),
+  voices: (filters: { provider?: string; model?: string; gender?: string; age?: string; page?: number; page_size?: number } = {}) => {
+    const params = new URLSearchParams()
+    Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== '') params.set(key, String(value)) })
+    return request<VoiceListResponse>('/api/voices?' + params.toString())
+  },
+  updateVoiceAge: (key: string, age: string[]) => request<any>('/api/voices/' + encodeURIComponent(key), {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({age})}),
+  voiceClips: (key: string) => request<VoiceClipResponse>('/api/voices/' + encodeURIComponent(key) + '/clips'),
 }

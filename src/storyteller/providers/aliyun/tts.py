@@ -452,12 +452,14 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             VoiceConfig(
                 provider=self.provider_name,
                 voice_id=record["voice_id"],
+                model=record.get("model"),
                 language=record.get("language", "zh-CN"),
                 name=record.get("name"),
                 gender=record.get("gender"),
                 age=record.get("age"),
                 category=record.get("category"),
                 description=record.get("description"),
+                tags=record.get("tags", []),
             )
             for record in load_voice_catalog()
             if enabled is None or record.get("model") in enabled

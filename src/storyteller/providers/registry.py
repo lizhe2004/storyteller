@@ -5,6 +5,8 @@ from typing import Optional
 from ..core.exceptions import ProviderError
 from ..core.models import VoiceConfig
 from ..core.streaming_tts import StreamingTTSProvider
+from ..core.voice_overrides import VoiceOverrideStore
+from pathlib import Path
 
 
 class ProviderRegistry:
@@ -24,6 +26,10 @@ class ProviderRegistry:
         self._sound_factories = {}
         self._sound_instances = {}
         self._default_sound = None
+        data_dir = config.get("data_dir") or "./.storyteller"
+        self.voice_overrides = VoiceOverrideStore(
+            Path(data_dir) / "config" / "voice-overrides.json"
+        )
 
     # ----- LLM -----
     def register_llm(self, name, factory):
@@ -86,6 +92,8 @@ class ProviderRegistry:
 
     def get_tts_model(self, voice: VoiceConfig) -> str:
         """Resolve the provider/model resource used by ``voice`` for scheduling."""
+        if voice.model:
+            return str(voice.model)
         tts = self.get_tts(voice.provider)
         for attribute in ("model_for_voice", "_model_for", "_resource_id_for"):
             resolver = getattr(tts, attribute, None)
@@ -143,4 +151,4 @@ class ProviderRegistry:
 
         if allowed_voice_ids is not None:
             voices = [v for v in voices if v.voice_id in allowed_voice_ids]
-        return voices
+        return self.voice_overrides.apply(voices)

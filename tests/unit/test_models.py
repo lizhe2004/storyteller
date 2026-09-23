@@ -18,11 +18,13 @@ def test_voice_config_creation():
     vc = VoiceConfig(
         provider="volcengine",
         voice_id="test_voice",
+        model="seed-tts-2.0",
         gender="female",
         language="zh-CN",
     )
     assert vc.provider == "volcengine"
     assert vc.voice_id == "test_voice"
+    assert vc.model == "seed-tts-2.0"
     assert vc.gender == "female"
     assert vc.speed == 1.0
     assert vc.pitch == 1.0

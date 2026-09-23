@@ -84,6 +84,7 @@ def normalize_voice_ages(value) -> list[str]:
 class VoiceConfig:
     provider: str
     voice_id: str
+    model: Optional[str] = None
     language: str = "zh-CN"
     style: Optional[str] = None
     speed: float = 1.0
@@ -96,6 +97,7 @@ class VoiceConfig:
     age: list[str] = field(default_factory=list)
     category: Optional[str] = None
     description: Optional[str] = None
+    tags: list = field(default_factory=list)
 
     def __post_init__(self):
         self.age = normalize_voice_ages(self.age)

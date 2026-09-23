@@ -411,12 +411,14 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             VoiceConfig(
                 provider=self.provider_name,
                 voice_id=record["voice_id"],
+                model=record.get("resource_id"),
                 language=record.get("language", "zh-CN"),
                 name=record.get("name"),
                 gender=record.get("gender"),
                 age=record.get("age"),
                 category=record.get("category"),
                 description=record.get("description"),
+                tags=record.get("tags", []),
             )
             for record in load_voice_catalog()
             if self._enabled_models is None
