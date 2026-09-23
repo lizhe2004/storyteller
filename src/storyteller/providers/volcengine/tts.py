@@ -418,6 +418,7 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
                 age=record.get("age"),
                 category=record.get("category"),
                 description=record.get("description"),
+                tags=record.get("tags", []),
             )
             for record in load_voice_catalog()
             if self._enabled_models is None

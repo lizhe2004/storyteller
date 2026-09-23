@@ -4,7 +4,7 @@ import VoiceManagementView from './VoiceManagementView.vue'
 import router from '../router'
 
 const mounted: { app: App; element: HTMLElement }[] = []
-const response = { page: 1, page_size: 50, total: 1, filters: { providers: ['mock'], models: ['model-a'], genders: ['female'], ages: ['young_adult'] }, voices: [{ key: 'mock|model-a|v1', provider: 'mock', model: 'model-a', voice_id: 'v1', name: '温柔女声', gender: 'female', age: ['young_adult'], category: '有声阅读', description: '温柔', clip_count: 1, has_clips: true }] }
+const response = { page: 1, page_size: 50, total: 1, filters: { providers: ['mock'], models: ['model-a'], genders: ['female'], ages: ['young_adult'] }, voices: [{ key: 'mock|model-a|v1', provider: 'mock', model: 'model-a', voice_id: 'v1', name: '温柔女声', gender: 'female', age: ['young_adult'], category: '有声阅读', description: '温柔', tags: ['治愈'], clip_count: 1, has_clips: true }] }
 
 beforeEach(() => { response.voices[0].age = ['young_adult']; vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => response }))) })
 afterEach(() => { mounted.splice(0).forEach(({ app, element }) => { app.unmount(); element.remove() }); vi.unstubAllGlobals() })
@@ -19,6 +19,9 @@ describe('VoiceManagementView', () => {
     const element = await mountView()
     expect(element.textContent).toContain('温柔女声')
     expect(element.querySelector('[data-testid="voice-row"]')).toBeTruthy()
+    expect(element.textContent).toContain('有声阅读')
+    expect(element.textContent).toContain('治愈')
+    expect(element.textContent).toContain('温柔')
   })
 
   it('builds filter queries when a filter changes', async () => {

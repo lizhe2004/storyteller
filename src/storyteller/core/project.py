@@ -300,6 +300,7 @@ def _voice_to_dict(vc):
         "age": list(vc.age or []),
         "category": vc.category,
         "description": vc.description,
+        "tags": list(vc.tags or []),
     }
 
 
@@ -320,6 +321,7 @@ def _voice_from_dict(data):
         age=data.get("age"),
         category=data.get("category"),
         description=data.get("description"),
+        tags=list(data.get("tags", []) or []),
     )
 
 

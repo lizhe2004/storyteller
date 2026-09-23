@@ -138,6 +138,7 @@ class VoiceClipCatalog:
             "age": list(voice.age or []),
             "category": voice.category,
             "description": voice.description,
+            "tags": list(voice.tags or []),
             "clip_count": len(values),
             "has_clips": bool(values),
         }

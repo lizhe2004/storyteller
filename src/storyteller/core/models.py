@@ -97,6 +97,7 @@ class VoiceConfig:
     age: list[str] = field(default_factory=list)
     category: Optional[str] = None
     description: Optional[str] = None
+    tags: list = field(default_factory=list)
 
     def __post_init__(self):
         self.age = normalize_voice_ages(self.age)

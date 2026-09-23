@@ -14,7 +14,7 @@ class FakeRegistry:
         return list(self.voices)
 
 
-def voice(provider, model, voice_id, name, gender, age, category="有声阅读"):
+def voice(provider, model, voice_id, name, gender, age, category="有声阅读", tags=None):
     return VoiceConfig(
         provider=provider,
         model=model,
@@ -24,6 +24,7 @@ def voice(provider, model, voice_id, name, gender, age, category="有声阅读")
         age=age,
         category=category,
         description=name + " description",
+        tags=tags or [],
     )
 
 
@@ -47,7 +48,7 @@ def test_catalog_lists_all_voices_and_story_clips(tmp_path):
     manager = ProjectManager(tmp_path / "stories")
     older = datetime(2026, 1, 1, 10, 0, 0)
     newer = older + timedelta(days=1)
-    catalog_voice = voice("volcengine", "resource-a", "v1", "温柔女声", "female", ["child", "young_adult"])
+    catalog_voice = voice("volcengine", "resource-a", "v1", "温柔女声", "female", ["child", "young_adult"], tags=["温暖", "治愈"])
     other_voice = voice("aliyun", "cosyvoice-v2", "v2", "沉稳男声", "male", ["middle_aged"])
 
     first = save_story(
@@ -101,6 +102,7 @@ def test_catalog_lists_all_voices_and_story_clips(tmp_path):
     assert by_key[voice_key(catalog_voice)]["clip_count"] == 2
     assert by_key[voice_key(other_voice)]["clip_count"] == 0
     assert by_key[voice_key(other_voice)]["has_clips"] is False
+    assert by_key[voice_key(catalog_voice)]["tags"] == ["温暖", "治愈"]
 
     clips = service.clips_for_voice(voice_key(catalog_voice))
     assert [clip["text"] for clip in clips] == ["新台词", "旧台词"]

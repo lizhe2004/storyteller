@@ -6,7 +6,7 @@ export interface ReadyAudio { encoding: string; sample_rate: number; channels: n
 export interface ModelOption { provider: string; model: string; label: string; is_default?: boolean }
 export interface ManagedVoice {
   key: string; provider: string; model?: string | null; voice_id: string; name?: string | null
-  gender?: string | null; age: string[]; category?: string | null; description?: string | null
+  gender?: string | null; age: string[]; category?: string | null; description?: string | null; tags: string[]
   clip_count: number; has_clips: boolean
 }
 export interface VoiceClip {

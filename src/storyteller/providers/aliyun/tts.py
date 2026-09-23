@@ -459,6 +459,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
                 age=record.get("age"),
                 category=record.get("category"),
                 description=record.get("description"),
+                tags=record.get("tags", []),
             )
             for record in load_voice_catalog()
             if enabled is None or record.get("model") in enabled
