@@ -3,12 +3,14 @@ import json
 import pytest
 
 from storyteller.core.config import Config
-from storyteller.core.models import Character, Script
+from storyteller.core.models import Character, Script, VoiceConfig
 from storyteller.core.voice_matcher import (
     VoiceMatcher,
+    _age_distance,
     _infer_age,
     _infer_gender,
     _sample_voice_candidates,
+    _voice_sort_key,
     is_narration_voice,
 )
 from storyteller.core.exceptions import ProviderError
@@ -404,13 +406,21 @@ def test_candidate_sampling_uses_all_eligible_voices_when_no_preference_matches(
     assert {voice.voice_id for voice in selected} == {"v0", "v1", "v2"}
 
 
-def test_candidate_sampling_matches_every_declared_age_band():
-    from storyteller.core.models import VoiceConfig
-
+def test_candidate_sampling_matches_child_teen_voice_for_both_ages():
     child_teen = VoiceConfig(
         provider="p", voice_id="child-teen", gender="male",
         age=["child", "teen"],
     )
+    senior = VoiceConfig(
+        provider="p", voice_id="senior", gender="male", age=["senior"],
+    )
+    voices = [child_teen, senior]
+
+    assert _sample_voice_candidates(voices, "male", "child", []) == [child_teen]
+    assert _sample_voice_candidates(voices, "male", "teen", []) == [child_teen]
+
+
+def test_candidate_sampling_matches_young_middle_voice_but_not_senior():
     young_middle = VoiceConfig(
         provider="p", voice_id="young-middle", gender="male",
         age=["young_adult", "middle_aged"],
@@ -418,16 +428,39 @@ def test_candidate_sampling_matches_every_declared_age_band():
     senior = VoiceConfig(
         provider="p", voice_id="senior", gender="male", age=["senior"],
     )
-    voices = [child_teen, young_middle, senior]
+    voices = [young_middle, senior]
 
-    assert _sample_voice_candidates(voices, "male", "child", []) == [child_teen]
-    assert _sample_voice_candidates(voices, "male", "teen", []) == [child_teen]
+    assert _sample_voice_candidates(
+        voices, "male", "young_adult", []
+    ) == [young_middle]
+    assert _sample_voice_candidates(
+        voices, "male", "middle_aged", []
+    ) == [young_middle]
     assert _sample_voice_candidates(voices, "male", "senior", []) == [senior]
 
 
-def test_candidate_sampling_uses_unknown_age_only_in_fallback_pool():
-    from storyteller.core.models import VoiceConfig
+def test_age_distance_uses_nearest_declared_age():
+    assert _age_distance(["child", "middle_aged"], "senior") == 1
 
+
+def test_voice_sort_prefers_singleton_exact_age_over_multi_age_exact():
+    multi_age = VoiceConfig(
+        provider="p", voice_id="a-multi", gender="male",
+        age=["child", "teen"],
+    )
+    singleton = VoiceConfig(
+        provider="p", voice_id="z-singleton", gender="male", age=["teen"],
+    )
+
+    ranked = sorted(
+        [multi_age, singleton],
+        key=lambda voice: _voice_sort_key(voice, "teen", narrator=False),
+    )
+
+    assert ranked == [singleton, multi_age]
+
+
+def test_candidate_sampling_uses_unknown_age_only_in_fallback_pool():
     unknown = VoiceConfig(
         provider="p", voice_id="unknown", gender="female", age=[],
     )
@@ -441,8 +474,6 @@ def test_candidate_sampling_uses_unknown_age_only_in_fallback_pool():
 
 
 def test_llm_context_renders_multi_age_candidates_and_explains_ranges():
-    from storyteller.core.models import VoiceConfig
-
     llm = _assignment_llm({"assignments": []})
     matcher = _make_matcher(llm=llm, mode="llm")
     character = Character(

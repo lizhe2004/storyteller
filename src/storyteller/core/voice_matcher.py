@@ -172,6 +172,7 @@ def _voice_sort_key(voice, age, narrator):
     return (
         1 if is_narration_voice(voice) else 0,
         _age_distance(voice.age, age),
+        0 if voice.age == [age] else 1,
         _voice_age_rank(voice.age),
         voice.voice_id,
     )
