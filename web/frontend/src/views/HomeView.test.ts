@@ -154,4 +154,38 @@ describe('HomeView empty state', () => {
     expect(popover.textContent).toContain('温暖亲和的故事女声')
   })
 
+  it('renders child and teen voice ages with the canonical labels', async () => {
+    const { element, player } = await mountHome()
+    player.title = '测试故事'
+    player.characters = [
+      {
+        id: 'child', name: '小孩', description: '儿童角色', gender: 'female', age: 'child',
+        voice: { provider: 'mock', model: 'voice-child', voice_id: 'child', name: '童声', gender: 'female', age: 'child' },
+      },
+      {
+        id: 'teen', name: '少年', description: '少年角色', gender: 'male', age: 'teen',
+        voice: { provider: 'mock', model: 'voice-teen', voice_id: 'teen', name: '少年声', gender: 'male', age: 'teen' },
+      },
+    ]
+    await nextTick()
+
+    const chips = Array.from(element.querySelectorAll('[data-testid="character-chip"]')) as HTMLElement[]
+    expect(chips).toHaveLength(2)
+    expect(chips[0].querySelector('[data-testid="character-summary"] small:last-child')?.textContent).toBe('女 · 儿童')
+    expect(chips[1].querySelector('[data-testid="character-summary"] small:last-child')?.textContent).toBe('男 · 少年')
+    expect(chips[1].querySelector('[data-testid="voice-popover"] dd:nth-of-type(5)')?.textContent).toBe('少年')
+  })
+
+  it('keeps unknown legacy age labels unchanged for compatibility', async () => {
+    const { element, player } = await mountHome()
+    player.title = '测试故事'
+    player.characters = [{
+      id: 'legacy', name: '旧角色', description: '兼容测试', gender: 'female', age: 'child',
+      voice: { provider: 'mock', model: 'voice-legacy', voice_id: 'legacy', name: '旧音色', gender: 'female', age: '青少年' },
+    }]
+    await nextTick()
+
+    expect(element.querySelector('[data-testid="voice-popover"]')?.textContent).toContain('青少年')
+  })
+
 })
