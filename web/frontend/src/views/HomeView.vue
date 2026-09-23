@@ -42,7 +42,7 @@ const storyIdeas = [
 ]
 const voiceGenderLabels: Record<string, string> = { female: '女', male: '男' }
 const voiceAgeLabels: Record<string, string> = {
-  child: '儿童', teen: '青少年', young_adult: '青年', middle_aged: '中年', senior: '老年',
+  child: '儿童', teen: '少年', young_adult: '青年', middle_aged: '中年', senior: '老年',
 }
 
 function voiceGenderLabel(gender?: string | null) {
