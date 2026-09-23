@@ -125,6 +125,37 @@ def test_catalog_filters_provider_model_gender_and_age(tmp_path):
     assert [item["voice_id"] for item in result["voices"]] == ["v1"]
 
 
+def test_catalog_uses_character_voice_config_when_line_voice_is_empty(tmp_path):
+    manager = ProjectManager(tmp_path / "stories")
+    narrator_voice = voice("volcengine", "resource-a", "narrator", "旁白", "female", ["young_adult"])
+    hero_voice = voice("aliyun", "cosyvoice-v2", "hero", "主角", "male", ["child"])
+    state = manager.create_project(topic="角色音频")
+    state.script = Script(
+        script_id="script-roles",
+        title="角色音频",
+        topic="测试",
+        characters=[
+            Character(id="narrator", name="旁白", description="旁白", voice_config=narrator_voice),
+            Character(id="hero", name="主角", description="角色", voice_config=hero_voice),
+        ],
+        lines=[
+            ScriptLine(line_id="1", line_type="narration", text="旁白台词", voice_config=None),
+            ScriptLine(line_id="2", line_type="dialogue", character_id="hero", text="角色台词", voice_config=None),
+        ],
+    )
+    manager.save_project(state)
+    project_dir = manager.resolve_project_dir(state.project_id)
+    (project_dir / "audio").mkdir()
+    (project_dir / "audio" / "1.mp3").write_bytes(b"mp3")
+    (project_dir / "audio" / "2.mp3").write_bytes(b"mp3")
+
+    service = VoiceClipCatalog(FakeRegistry([narrator_voice, hero_voice]), manager)
+
+    assert service.list_voices()[0]["clip_count"] + service.list_voices()[1]["clip_count"] == 2
+    assert len(service.clips_for_voice(voice_key(narrator_voice))) == 1
+    assert len(service.clips_for_voice(voice_key(hero_voice))) == 1
+
+
 def test_catalog_returns_complete_filter_options_independent_of_page(tmp_path):
     manager = ProjectManager(tmp_path / "stories")
     voices = [

@@ -77,11 +77,17 @@ class VoiceClipCatalog:
             except (OSError, ValueError):
                 continue
             characters = {
-                character.id: character.name
+                character.id: character
                 for character in state.script.characters or []
             }
             for line in state.script.lines or []:
+                character = characters.get(line.character_id)
                 line_voice = line.voice_config
+                if line_voice is None and character is not None:
+                    line_voice = character.voice_config
+                if line_voice is None and line.line_type == "narration":
+                    narrator = characters.get("narrator")
+                    line_voice = narrator.voice_config if narrator is not None else None
                 if line_voice is None:
                     continue
                 key = voice_key(line_voice)
@@ -103,7 +109,7 @@ class VoiceClipCatalog:
                     "clip_id": clip_id,
                     "project_id": state.project_id,
                     "story_title": state.script.title,
-                    "character_name": characters.get(line.character_id) or "旁白",
+                    "character_name": character.name if character else "旁白",
                     "text": line.text,
                     "created_at": self._created_at(state),
                     "duration_ms": None,
