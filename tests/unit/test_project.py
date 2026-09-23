@@ -158,6 +158,12 @@ def test_voice_age_serialization_loads_legacy_scalar(temp_dir):
     loaded = manager.load_project(state.project_id)
     assert loaded.script.characters[0].voice_config.age == ["child"]
 
+    manager.save_project(loaded)
+    saved = json.loads(project_file.read_text(encoding="utf-8"))
+    assert saved["script"]["characters"][0]["voice_config"]["age"] == [
+        "child"
+    ]
+
 
 # ---------- human-readable date-title directories ----------
 

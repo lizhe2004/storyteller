@@ -138,14 +138,14 @@ def test_match_voices_does_not_reuse_same_voice():
     assert a.voice_config.voice_id != b.voice_config.voice_id
 
 
-def test_match_voices_dialogue_prefers_character_female_before_narration():
+def test_match_voices_dialogue_prefers_nearest_age_before_category():
     matcher = _make_matcher()
     first = Character(id="g0", name="女0", description="女孩")
     script = _make_script_with_characters(first)
     matcher.match_voices(script)
-    # female_01 is a normal 通用场景 female voice; narrator_01 is the
-    # 有声阅读 female voice and must not be grabbed first for dialogue.
-    assert first.voice_config.voice_id == "female_01"
+    # narrator_01 is a young_adult voice and is closer to a child than the
+    # middle_aged female_01, so age distance outranks the category signal.
+    assert first.voice_config.voice_id == "narrator_01"
 
 
 def test_dialogue_never_gets_opposite_gender():
@@ -181,6 +181,40 @@ def test_match_voices_writes_config_on_script_characters():
     script = _make_script_with_characters(narrator)
     matcher.match_voices(script)
     assert script.characters[0].voice_config is not None
+
+
+def test_dialogue_age_match_beats_empty_or_mismatched_narration_voice():
+    class _CrossCategoryTTS:
+        def __init__(self, config):
+            pass
+
+        def list_voices(self, **kwargs):
+            return [
+                VoiceConfig(
+                    provider="p", voice_id="empty-narration", gender="male",
+                    age=[], category="日常对话",
+                ),
+                VoiceConfig(
+                    provider="p", voice_id="senior-narration", gender="male",
+                    age=["senior"], category="日常对话",
+                ),
+                VoiceConfig(
+                    provider="p", voice_id="child-teen-dialogue", gender="male",
+                    age=["child", "teen"], category="有声阅读",
+                ),
+            ]
+
+    config = Config()
+    registry = ProviderRegistry(config)
+    registry.register_tts("cross-category", _CrossCategoryTTS)
+    matcher = VoiceMatcher(registry, mode="rule")
+    child = Character(
+        id="child", name="小明", description="男孩", gender="male", age="child"
+    )
+
+    matcher.match_voices(_make_script_with_characters(child))
+
+    assert child.voice_config.voice_id == "child-teen-dialogue"
 
 
 def test_match_voices_overwrites_existing_config():
