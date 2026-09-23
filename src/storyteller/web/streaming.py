@@ -75,7 +75,7 @@ def _script_preview_event(preview):
     }
 
 
-def _characters_matched_event(script):
+def _characters_matched_event(script, registry=None):
     return {
         "type": "characters_matched",
         "characters": [
@@ -86,8 +86,16 @@ def _characters_matched_event(script):
                 "voice": (
                     {
                         "provider": character.voice_config.provider,
+                        "model": (
+                            registry.get_tts_model(character.voice_config)
+                            if registry is not None else None
+                        ),
                         "voice_id": character.voice_config.voice_id,
                         "name": character.voice_config.name,
+                        "gender": character.voice_config.gender,
+                        "age": character.voice_config.age,
+                        "category": character.voice_config.category,
+                        "description": character.voice_config.description,
                     }
                     if character.voice_config else None
                 ),
@@ -967,7 +975,7 @@ class StreamOrchestrator:
                 try:
                     voice_matching_result = run_voice_matching(provisional)
                     line_coordinator.set_provisional_voice_context(voice_matching_result)
-                    matched_event = _characters_matched_event(voice_matching_result)
+                    matched_event = _characters_matched_event(voice_matching_result, self.registry)
                     job.characters_matched = matched_event
                     job.emit(matched_event)
                 except Exception as exc:
@@ -1073,7 +1081,7 @@ class StreamOrchestrator:
         names = {c.id: c.name for c in state.script.characters}
         script_ready = {"type": "script_ready", "title": state.script.title,
                         "total": len(state.script.lines),
-                        "characters": _characters_matched_event(state.script)["characters"],
+                        "characters": _characters_matched_event(state.script, self.registry)["characters"],
                         "lines": [{"line_id": l.line_id, "line_type": l.line_type,
                                    "character_id": l.character_id,
                                    "speaker": names.get(l.character_id) or ("旁白" if l.line_type == "narration" else "未知角色"),

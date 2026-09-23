@@ -1,24 +1,38 @@
 import { createApp, nextTick, type App } from 'vue'
 import { createPinia } from 'pinia'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api'
+import { usePlayerStore } from '../stores/player'
 import HomeView from './HomeView.vue'
+import type { ModelOption } from '../types'
 
 const mounted: { app: App; element: HTMLElement }[] = []
+const storage = new Map<string, string>()
 
-async function mountHome(withModels = false) {
+beforeEach(() => {
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => storage.get(key) || null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
+    clear: () => storage.clear(),
+  })
+})
+
+async function mountHome(withModels = false, audioOptions?: ModelOption[], llmOptions?: ModelOption[]) {
   vi.spyOn(api, 'options').mockResolvedValue({
     lengths: ['short'], complexities: ['simple'], tts_providers: [], sound_enabled: false,
-    llm_models: withModels ? [{ provider: 'mock', model: 'story-v1', label: 'mock / story-v1', is_default: true }] : [],
-    audio_models: withModels ? [{ provider: 'mock', model: 'voice-v1', label: 'mock / voice-v1' }] : [],
+    llm_models: llmOptions || (withModels ? [{ provider: 'mock', model: 'story-v1', label: 'mock / story-v1', is_default: true }] : []),
+    audio_models: audioOptions || (withModels ? [{ provider: 'mock', model: 'voice-v1', label: 'mock / voice-v1' }] : []),
   })
   const element = document.createElement('div')
   document.body.appendChild(element)
-  const app = createApp(HomeView).use(createPinia())
+  const pinia = createPinia()
+  const player = usePlayerStore(pinia)
+  const app = createApp(HomeView).use(pinia)
   app.mount(element)
   mounted.push({ app, element })
   await nextTick()
-  return element
+  return { element, player }
 }
 
 afterEach(() => {
@@ -27,11 +41,13 @@ afterEach(() => {
     item.element.remove()
   }
   vi.restoreAllMocks()
+  localStorage.clear()
+  vi.unstubAllGlobals()
 })
 
 describe('HomeView empty state', () => {
   it('offers both playback modes and keeps Web Audio as the default', async () => {
-    const element = await mountHome()
+    const { element } = await mountHome()
     const select = element.querySelector('select[aria-label="播放方式"]') as HTMLSelectElement
 
     expect(select.value).toBe('webaudio')
@@ -39,7 +55,7 @@ describe('HomeView empty state', () => {
   })
 
   it('offers a story idea that fills and focuses the topic field', async () => {
-    const element = await mountHome()
+    const { element } = await mountHome()
     const textarea = element.querySelector('#topic') as HTMLTextAreaElement
 
     expect(element.querySelectorAll('[data-testid="story-idea"]')).toHaveLength(3)
@@ -51,7 +67,7 @@ describe('HomeView empty state', () => {
   })
 
   it('shows per-story LLM and audio model selectors when configured', async () => {
-    const element = await mountHome(true)
+    const { element } = await mountHome(true)
     const selects = Array.from(element.querySelectorAll('.model-row select')) as HTMLSelectElement[]
 
     expect(selects).toHaveLength(1)
@@ -67,6 +83,66 @@ describe('HomeView empty state', () => {
     await nextTick()
     expect(element.querySelector('[data-testid="audio-model-menu"]')).toBeNull()
     expect(selects[0].textContent).toContain('（默认）')
+  })
+
+  it('restores the saved audio model selection from local storage', async () => {
+    localStorage.setItem('storyteller.home.audio-models', JSON.stringify(['mock::voice-v2']))
+    const { element } = await mountHome(true, [
+      { provider: 'mock', model: 'voice-v1', label: 'mock / voice-v1' },
+      { provider: 'mock', model: 'voice-v2', label: 'mock / voice-v2' },
+    ])
+
+    ;(element.querySelector('[data-testid="audio-model-trigger"]') as HTMLButtonElement).click()
+    await nextTick()
+    const checkboxes = Array.from(element.querySelectorAll('[data-testid="audio-model-option"] input')) as HTMLInputElement[]
+    expect(checkboxes.map(input => input.checked)).toEqual([false, true])
+    checkboxes[1].click()
+    await nextTick()
+    expect(JSON.parse(localStorage.getItem('storyteller.home.audio-models') || 'null')).toEqual([])
+  })
+
+  it('restores the saved LLM model selection from local storage', async () => {
+    localStorage.setItem('storyteller.home.llm-model', 'mock::story-v2')
+    const { element } = await mountHome(true, undefined, [
+      { provider: 'mock', model: 'story-v1', label: 'mock / story-v1', is_default: true },
+      { provider: 'mock', model: 'story-v2', label: 'mock / story-v2' },
+    ])
+
+    const llmSelect = element.querySelector('.model-row select') as HTMLSelectElement
+    expect(llmSelect.value).toBe('mock::story-v2')
+  })
+
+  it('shows the matched provider and a voice detail popover on focus', async () => {
+    const { element, player } = await mountHome()
+    player.title = '测试故事'
+    player.characters = [{
+      id: 'fox',
+      name: '小狐狸',
+      voice: {
+        provider: 'aliyun',
+        model: 'qwen-tts-latest',
+        voice_id: 'longanlingxin',
+        name: '龙安灵心',
+        gender: 'female',
+        age: 'young_adult',
+        category: '社交陪伴',
+        description: '温暖亲和的故事女声',
+      },
+    }]
+    await nextTick()
+
+    const chip = element.querySelector('[data-testid="character-chip"]') as HTMLElement
+    expect(chip.textContent).toContain('aliyun')
+    expect(chip.querySelector('[data-testid="voice-popover"]')).not.toBeNull()
+    chip.focus()
+    await nextTick()
+    const popover = chip.querySelector('[data-testid="voice-popover"]') as HTMLElement
+    expect(popover.textContent).toContain('qwen-tts-latest')
+    expect(popover.textContent).toContain('龙安灵心')
+    expect(popover.textContent).toContain('女')
+    expect(popover.textContent).toContain('青年')
+    expect(popover.textContent).toContain('社交陪伴')
+    expect(popover.textContent).toContain('温暖亲和的故事女声')
   })
 
 })

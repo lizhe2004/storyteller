@@ -5,6 +5,9 @@ import { usePlayerStore } from '../stores/player'
 import { useAudioTimeline } from '../composables/useAudioTimeline'
 import type { ModelOption } from '../types'
 
+const AUDIO_MODEL_SELECTION_KEY = 'storyteller.home.audio-models'
+const LLM_MODEL_SELECTION_KEY = 'storyteller.home.llm-model'
+
 const player = usePlayerStore()
 const timeline = useAudioTimeline()
 const playbackMode = ref<'webaudio' | 'native_mp3'>('webaudio')
@@ -37,12 +40,56 @@ const storyIdeas = [
   '深海灯塔里，最后一条鲸鱼的来信',
   '搬到新城市的孩子，发现窗台住着一颗星星',
 ]
+const voiceGenderLabels: Record<string, string> = { female: '女', male: '男' }
+const voiceAgeLabels: Record<string, string> = {
+  child: '儿童', teen: '青少年', young_adult: '青年', middle_aged: '中年', senior: '老年',
+}
+
+function voiceGenderLabel(gender?: string | null) {
+  return gender ? (voiceGenderLabels[gender] || gender) : '未标注'
+}
+
+function voiceAgeLabel(age?: string | null) {
+  return age ? (voiceAgeLabels[age] || age) : '未标注'
+}
+
 const selectedAudioModelSummary = computed(() => selectedAudioModels.value.length
   ? `已选 ${selectedAudioModels.value.length} 个模型`
   : '请选择音频模型')
 
 function closeAudioModelMenu(event: MouseEvent) {
   if (!audioModelPicker.value?.contains(event.target as Node)) audioModelMenuOpen.value = false
+}
+
+function readSavedAudioModels(): string[] | null {
+  try {
+    const raw = localStorage.getItem(AUDIO_MODEL_SELECTION_KEY)
+    if (raw === null) return null
+    const value = JSON.parse(raw)
+    return Array.isArray(value) ? value.filter(item => typeof item === 'string') : null
+  } catch {
+    return null
+  }
+}
+
+function saveAudioModels() {
+  try {
+    localStorage.setItem(AUDIO_MODEL_SELECTION_KEY, JSON.stringify(selectedAudioModels.value))
+  } catch {}
+}
+
+function readSavedModel(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function saveLlmModel() {
+  try {
+    localStorage.setItem(LLM_MODEL_SELECTION_KEY, selectedLlmModel.value)
+  } catch {}
 }
 
 onMounted(async () => {
@@ -52,9 +99,16 @@ onMounted(async () => {
     providers.value = opts.tts_providers
     llmModels.value = opts.llm_models || []
     audioModels.value = opts.audio_models || []
-    selectedLlmModel.value = llmModels.value[0]
-      ? `${llmModels.value[0].provider}::${llmModels.value[0].model}` : ''
-    selectedAudioModels.value = audioModels.value.map(option => `${option.provider}::${option.model}`)
+    const availableLlmModels = llmModels.value.map(option => `${option.provider}::${option.model}`)
+    const savedLlmModel = readSavedModel(LLM_MODEL_SELECTION_KEY)
+    selectedLlmModel.value = savedLlmModel && availableLlmModels.includes(savedLlmModel)
+      ? savedLlmModel
+      : (availableLlmModels[0] || '')
+    const availableAudioModels = audioModels.value.map(option => `${option.provider}::${option.model}`)
+    const savedAudioModels = readSavedAudioModels()
+    selectedAudioModels.value = savedAudioModels === null
+      ? availableAudioModels
+      : savedAudioModels.filter(model => availableAudioModels.includes(model))
     // An empty provider selection means "use the configured candidate set".
     selected.value = []
   } catch {}
@@ -65,6 +119,8 @@ onBeforeUnmount(() => document.removeEventListener('click', closeAudioModelMenu)
 watch(() => player.phase, phase => {
   if (['completed', 'failed', 'canceled'].includes(phase)) busy.value = false
 })
+watch(selectedLlmModel, saveLlmModel)
+watch(selectedAudioModels, saveAudioModels, { deep: true })
 
 const knownDurationMs = computed(() => player.lines.reduce((sum, line) => sum + (player.lineDurations[line.line_id] || 0), 0))
 const progressWidth = computed(() => {
@@ -204,7 +260,7 @@ function togglePlayback() {
         <h2>{{ player.title || '正在写下标题…' }}</h2>
         <div v-if="player.characters.length" class="character-area">
           <p class="section-label">角色</p>
-          <div class="character-list"><span v-for="character in player.characters" :key="character.id" class="character-chip"><b>{{ character.name }}</b><small>{{ character.voice?.name || character.voice?.voice_id || '待匹配音色' }}</small></span></div>
+          <div class="character-list"><span v-for="character in player.characters" :key="character.id" data-testid="character-chip" class="character-chip" tabindex="0"><b>{{ character.name }}</b><small>{{ character.voice?.provider || '待匹配 provider' }}</small><span v-if="character.voice" data-testid="voice-popover" class="voice-popover"><b>{{ character.voice.name || character.voice.voice_id || '未命名音色' }}</b><dl><dt>模型</dt><dd>{{ character.voice.model || '未标注' }}</dd><dt>音色</dt><dd>{{ character.voice.name || character.voice.voice_id }}</dd><dt>性别</dt><dd>{{ voiceGenderLabel(character.voice.gender) }}</dd><dt>年龄</dt><dd>{{ voiceAgeLabel(character.voice.age) }}</dd><dt v-if="character.voice.category">分类</dt><dd v-if="character.voice.category">{{ character.voice.category }}</dd></dl><p v-if="character.voice.description">{{ character.voice.description }}</p></span></span></div>
         </div>
         <div class="player-controls">
           <button v-if="isPlaying || isPaused || isEnded || !['completed', 'failed', 'canceled'].includes(player.phase)" class="round" :class="{ 'is-playing': isPlaying }" :aria-pressed="isPlaying" :aria-label="isPlaying ? '暂停播放' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" :title="isPlaying ? '暂停播放' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" @click="togglePlayback"><span aria-hidden="true">{{ isPlaying ? 'Ⅱ' : isEnded ? '↻' : '▶' }}</span><small>{{ isPlaying ? '暂停' : nativeNeedsTap ? '开始原生播放' : isEnded ? '重播' : '继续' }}</small></button>

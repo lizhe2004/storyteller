@@ -52,6 +52,13 @@ def test_ws_streams_pcm_and_completes(tmp_path):
     matched = events[matched_index]
     assert matched["characters"]
     assert all(character["voice"] for character in matched["characters"])
+    first_voice = matched["characters"][0]["voice"]
+    assert first_voice["provider"] == "mock"
+    assert first_voice["model"] == "audio-model"
+    assert first_voice["gender"]
+    assert first_voice["age"]
+    assert first_voice["category"]
+    assert first_voice["description"]
     assert matched_index < script_ready_index
     assert events[-1]["type"] == "complete" and len(audio) > 0 and len(audio) % 2 == 0
 
