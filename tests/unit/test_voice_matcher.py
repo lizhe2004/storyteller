@@ -529,3 +529,36 @@ def test_llm_context_renders_multi_age_candidates_and_explains_ranges():
     assert "可覆盖多个相邻年龄段" in messages[0]["content"]
     assert "儿童 / 少年" in messages[1]["content"]
     assert "年龄=少年" in messages[1]["content"]
+
+
+def test_llm_voice_matching_logs_the_complete_prompt(caplog):
+    llm = _assignment_llm({"assignments": []})
+    matcher = _make_matcher(llm=llm, mode="llm")
+    character = Character(
+        id="kid", name="小明", description="一个喜欢冒险的少年男孩",
+        gender="male", age="teen",
+    )
+    voices = [
+        VoiceConfig(
+            provider="p", voice_id="child-teen", name="成长童声",
+            gender="male", age=["child", "teen"], category="角色扮演",
+            description="明亮活泼",
+        )
+    ]
+
+    with caplog.at_level("INFO", logger="storyteller.core.voice_matcher"):
+        matcher._request_llm(
+            [character], {character.id: (character.gender, character.age)}, voices
+        )
+
+    prompt_logs = [
+        record.getMessage()
+        for record in caplog.records
+        if "event=voice_matching_prompt" in record.getMessage()
+    ]
+    assert len(prompt_logs) == 1
+    prompt = prompt_logs[0]
+    assert "你是一位经验丰富的广播剧配音导演" in prompt
+    assert "成长童声" in prompt
+    assert "一个喜欢冒险的少年男孩" in prompt
+    assert '请为每个角色选择一个候选序号，按规定只输出 JSON。' in prompt

@@ -430,6 +430,21 @@ class VoiceMatcher:
             {"role": "system", "content": _LLM_SYSTEM_PROMPT},
             {"role": "user", "content": user_content},
         ]
+        complete_prompt = "\n\n".join(
+            "{}:\n{}".format(message["role"], message["content"])
+            for message in messages
+        )
+        context_fields = " ".join(
+            "{}={}".format(key, value)
+            for key, value in self.log_context.items()
+            if value is not None
+        )
+        logger.info(
+            "event=voice_matching_prompt{}\nprompt={}".format(
+                " " + context_fields if context_fields else "",
+                complete_prompt,
+            )
+        )
         with timed_event(
             logger,
             "llm_request",
