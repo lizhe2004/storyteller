@@ -345,6 +345,15 @@ class VoiceMatcher:
         except Exception:
             return {}
 
+        logger.info(
+            "event=voice_matching_llm_response provider={} candidate_count={}\n"
+            "response={}".format(
+                type(self.llm).__name__,
+                len(candidates),
+                response,
+            )
+        )
+
         from .story_generator import _extract_json
 
         data = _extract_json(response)

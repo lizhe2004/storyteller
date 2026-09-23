@@ -564,6 +564,31 @@ def test_llm_voice_matching_logs_the_complete_prompt(caplog):
     assert '请为每个角色选择一个候选序号，按规定只输出 JSON。' in prompt
 
 
+def test_llm_voice_matching_logs_model_response(caplog):
+    response = {
+        "assignments": [
+            {"character_id": "kid", "voice_index": 1},
+        ]
+    }
+    llm = _assignment_llm(response)
+    matcher = _make_matcher(llm=llm, mode="llm")
+    character = Character(
+        id="kid", name="小明", description="少年男孩",
+        gender="male", age="teen",
+    )
+
+    with caplog.at_level("INFO", logger="storyteller.core.voice_matcher"):
+        matcher.match_voices(_make_script_with_characters(character))
+
+    messages = [record.getMessage() for record in caplog.records]
+    response_logs = [
+        message for message in messages
+        if "event=voice_matching_llm_response" in message
+    ]
+    assert len(response_logs) == 1
+    assert '"assignments": [{"character_id": "kid", "voice_index": 1}]' in response_logs[0]
+
+
 def test_narrator_metadata_restricts_llm_voice_candidates():
     llm = _assignment_llm({"assignments": []})
     matcher = _make_matcher(llm=llm, mode="llm")
