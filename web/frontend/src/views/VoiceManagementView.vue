@@ -52,7 +52,10 @@ async function saveAge(voice: ManagedVoice) {
   try {
     const updated = await api.updateVoiceAge(voice.key, editing[voice.key] || [])
     voice.age = [...updated.age]
-  } catch (err) { error.value = err instanceof Error ? err.message : '年龄保存失败' }
+  } catch (err) {
+    editing[voice.key] = [...voice.age]
+    error.value = err instanceof Error ? err.message : '年龄保存失败'
+  }
   finally { saving.value = '' }
 }
 
