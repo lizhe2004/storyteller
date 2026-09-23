@@ -127,7 +127,7 @@ describe('HomeView empty state', () => {
         voice_id: 'longanlingxin',
         name: '龙安灵心',
         gender: 'female',
-        age: 'young_adult',
+        age: ['child', 'teen'],
         category: '社交陪伴',
         description: '温暖亲和的故事女声',
       },
@@ -149,9 +149,28 @@ describe('HomeView empty state', () => {
     expect(popover.textContent).toContain('qwen-tts-latest')
     expect(popover.textContent).toContain('龙安灵心')
     expect(popover.textContent).toContain('女')
-    expect(popover.textContent).toContain('青年')
+    expect(popover.textContent).toContain('儿童')
+    expect(popover.textContent).toContain('少年')
     expect(popover.textContent).toContain('社交陪伴')
     expect(popover.textContent).toContain('温暖亲和的故事女声')
+  })
+
+  it('renders a legacy scalar voice age from an older server', async () => {
+    const { element, player } = await mountHome()
+    player.title = '旧事件'
+    player.characters = [{
+      id: 'legacy',
+      name: '旧角色',
+      voice: {
+        provider: 'mock',
+        voice_id: 'legacy_voice',
+        age: 'young_adult' as unknown as string[],
+      },
+    }]
+    await nextTick()
+
+    const popover = element.querySelector('[data-testid="voice-popover"]') as HTMLElement
+    expect(popover.textContent).toContain('青年')
   })
 
 })

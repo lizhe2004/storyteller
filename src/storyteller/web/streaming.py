@@ -95,7 +95,7 @@ def _characters_matched_event(script, registry=None):
                         "voice_id": character.voice_config.voice_id,
                         "name": character.voice_config.name,
                         "gender": character.voice_config.gender,
-                        "age": character.voice_config.age,
+                        "age": list(character.voice_config.age),
                         "category": character.voice_config.category,
                         "description": character.voice_config.description,
                     }

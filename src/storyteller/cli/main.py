@@ -347,6 +347,11 @@ def _voice_row(v):
     }
 
 
+def _format_voice_ages(ages):
+    labels = [_AGE_CN.get(age, age) for age in ages]
+    return " / ".join(labels) or "-"
+
+
 def _wrap_by_width(text, width):
     """Greedy wrap by terminal display width (CJK chars count as 2)."""
     lines = []
@@ -377,7 +382,7 @@ def _print_voice_table(voices):
                 v.name or "-",
                 v.voice_id,
                 _GENDER_CN.get(v.gender, "中性"),
-                _AGE_CN.get(v.age, "-"),
+                _format_voice_ages(v.age),
                 v.category or "-",
             ],
             v.description or "",

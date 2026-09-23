@@ -49,8 +49,9 @@ function voiceGenderLabel(gender?: string | null) {
   return gender ? (voiceGenderLabels[gender] || gender) : '未标注'
 }
 
-function voiceAgeLabel(age?: string | null) {
-  return age ? (voiceAgeLabels[age] || age) : '未标注'
+function voiceAgeLabel(age?: string[] | string | null) {
+  const ages = Array.isArray(age) ? age : (age ? [age] : [])
+  return ages.length ? ages.map(item => voiceAgeLabels[item] || item).join(' / ') : '未标注'
 }
 
 function characterIdentityLabel(gender?: string | null, age?: string | null) {
