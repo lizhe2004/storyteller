@@ -4,6 +4,17 @@ export interface CharactersMatchedEvent { type: 'characters_matched'; characters
 export interface StoryDetail { id: string; title: string; topic: string; state: string; characters: { id: string; name: string }[]; lines: StoryLine[] }
 export interface ReadyAudio { encoding: string; sample_rate: number; channels: number }
 export interface ModelOption { provider: string; model: string; label: string; is_default?: boolean }
+export interface ManagedVoice {
+  key: string; provider: string; model?: string | null; voice_id: string; name?: string | null
+  gender?: string | null; age: string[]; category?: string | null; description?: string | null
+  clip_count: number; has_clips: boolean
+}
+export interface VoiceClip {
+  clip_id: string; project_id: string; story_title: string; character_name: string
+  text: string; created_at: string; duration_ms?: number | null; audio_url_id: string
+}
+export interface VoiceListResponse { voices: ManagedVoice[]; page: number; page_size: number; total: number }
+export interface VoiceClipResponse { clips: VoiceClip[] }
 
 /** Streamed host opening narration; a waiting-period filler, not part of `lines`. */
 export interface OpeningTextDeltaEvent { type: 'opening_text_delta'; text: string }

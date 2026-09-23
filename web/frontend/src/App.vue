@@ -16,6 +16,7 @@ onMounted(() => window.addEventListener('storyteller:logout', () => { auth.authe
         <router-link to="/" @click="navOpen = false">放映室</router-link>
         <router-link to="/stories" @click="navOpen = false">故事书架</router-link>
         <router-link to="/voice-analysis" @click="navOpen = false">音色分析</router-link>
+        <router-link to="/voices" @click="navOpen = false">音色管理</router-link>
         <router-link to="/audio-diagnostics" @click="navOpen = false">音频实验室</router-link>
         <router-link to="/settings" @click="navOpen = false">系统配置</router-link>
         <button class="text-button" @click="navOpen = false; auth.logout()">退出</button>
