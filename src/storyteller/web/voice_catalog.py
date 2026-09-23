@@ -8,6 +8,9 @@ from pathlib import Path
 from ..core.voice_overrides import voice_key
 
 
+_AGE_ORDER = {"child": 0, "teen": 1, "young_adult": 2, "middle_aged": 3, "senior": 4}
+
+
 class VoiceClipCatalog:
     def __init__(self, registry, project_manager):
         self.registry = registry
@@ -141,6 +144,15 @@ class VoiceClipCatalog:
         self, provider=None, model=None, gender=None, age=None, page=1, page_size=50
     ):
         records = self.list_voices()
+        filters = {
+            "providers": sorted({record["provider"] for record in records if record["provider"]}),
+            "models": sorted({record["model"] for record in records if record["model"]}),
+            "genders": sorted({record["gender"] for record in records if record["gender"]}),
+            "ages": sorted(
+                {item for record in records for item in record["age"]},
+                key=lambda item: (_AGE_ORDER.get(item, 999), item),
+            ),
+        }
         if provider:
             records = [record for record in records if record["provider"] == provider]
         if model:
@@ -157,6 +169,7 @@ class VoiceClipCatalog:
             "total": len(records),
             "page": page,
             "page_size": page_size,
+            "filters": filters,
         }
 
     def clips_for_voice(self, key):

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { api } from '../api'
-import type { ManagedVoice, VoiceClip } from '../types'
+import type { ManagedVoice, VoiceClip, VoiceListFilters } from '../types'
 
 const ages = ['child', 'teen', 'young_adult', 'middle_aged', 'senior']
 const ageLabels: Record<string, string> = { child: '儿童', teen: '少年', young_adult: '青年', middle_aged: '中年', senior: '老年' }
 const genderLabels: Record<string, string> = { female: '女', male: '男' }
 const voices = ref<ManagedVoice[]>([])
-const knownVoices = ref<ManagedVoice[]>([])
+const filterOptions = ref<VoiceListFilters>({ providers: [], models: [], genders: [], ages: [] })
 const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
@@ -18,9 +18,9 @@ const saving = ref('')
 const expanded = ref('')
 const clips = reactive<Record<string, VoiceClip[]>>({})
 
-const providers = computed(() => [...new Set(knownVoices.value.map(voice => voice.provider).filter(Boolean))])
-const models = computed(() => [...new Set(knownVoices.value.map(voice => voice.model).filter((model): model is string => Boolean(model)))])
-const genders = computed(() => [...new Set(knownVoices.value.map(voice => voice.gender).filter((gender): gender is string => Boolean(gender)))])
+const providers = computed(() => filterOptions.value.providers)
+const models = computed(() => filterOptions.value.models)
+const genders = computed(() => filterOptions.value.genders)
 const pages = computed(() => Math.max(1, Math.ceil(total.value / 50)))
 
 function labelAge(age: string) { return ageLabels[age] || age }
@@ -32,8 +32,7 @@ async function load(reset = false) {
   loading.value = true; error.value = ''
   try {
     const result = await api.voices(filtersPayload())
-    voices.value = result.voices; total.value = result.total
-    if (!filters.provider && !filters.model && !filters.gender && !filters.age) knownVoices.value = result.voices
+    voices.value = result.voices; total.value = result.total; filterOptions.value = result.filters
     result.voices.forEach(voice => { editing[voice.key] = [...voice.age] })
   } catch (err) { error.value = err instanceof Error ? err.message : '音色加载失败' }
   finally { loading.value = false }
@@ -76,7 +75,7 @@ onMounted(() => load())
       <label>Provider<select data-testid="filter-provider" v-model="filters.provider" @change="load(true)"><option value="">全部</option><option v-for="item in providers" :key="item" :value="item">{{ item }}</option></select></label>
       <label>模型<select v-model="filters.model" @change="load(true)"><option value="">全部</option><option v-for="item in models" :key="item" :value="item">{{ item }}</option></select></label>
       <label>性别<select v-model="filters.gender" @change="load(true)"><option value="">全部</option><option v-for="item in genders" :key="item" :value="item">{{ labelGender(item) }}</option></select></label>
-      <label>年龄<select v-model="filters.age" @change="load(true)"><option value="">全部</option><option v-for="item in ages" :key="item" :value="item">{{ labelAge(item) }}</option></select></label>
+      <label>年龄<select v-model="filters.age" @change="load(true)"><option value="">全部</option><option v-for="item in filterOptions.ages" :key="item" :value="item">{{ labelAge(item) }}</option></select></label>
     </div>
 
     <p v-if="error" class="voice-error">{{ error }}</p>

@@ -13,7 +13,8 @@ export interface VoiceClip {
   clip_id: string; project_id: string; story_title: string; character_name: string
   text: string; created_at: string; duration_ms?: number | null; audio_url_id: string
 }
-export interface VoiceListResponse { voices: ManagedVoice[]; page: number; page_size: number; total: number }
+export interface VoiceListFilters { providers: string[]; models: string[]; genders: string[]; ages: string[] }
+export interface VoiceListResponse { voices: ManagedVoice[]; page: number; page_size: number; total: number; filters: VoiceListFilters }
 export interface VoiceClipResponse { clips: VoiceClip[] }
 
 /** Streamed host opening narration; a waiting-period filler, not part of `lines`. */

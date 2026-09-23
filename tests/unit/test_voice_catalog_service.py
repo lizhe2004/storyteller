@@ -125,6 +125,25 @@ def test_catalog_filters_provider_model_gender_and_age(tmp_path):
     assert [item["voice_id"] for item in result["voices"]] == ["v1"]
 
 
+def test_catalog_returns_complete_filter_options_independent_of_page(tmp_path):
+    manager = ProjectManager(tmp_path / "stories")
+    voices = [
+        voice("volcengine", "resource-a", "v1", "火山女声", "female", ["child"]),
+        voice("aliyun", "cosyvoice-v2", "v2", "阿里男声", "male", ["senior"]),
+    ]
+    service = VoiceClipCatalog(FakeRegistry(voices), manager)
+
+    result = service.filter_voices(page=1, page_size=1)
+
+    assert result["total"] == 2
+    assert result["filters"] == {
+        "providers": ["aliyun", "volcengine"],
+        "models": ["cosyvoice-v2", "resource-a"],
+        "genders": ["female", "male"],
+        "ages": ["child", "senior"],
+    }
+
+
 def test_catalog_rejects_unknown_or_unsafe_clip_resolution(tmp_path):
     manager = ProjectManager(tmp_path / "stories")
     catalog_voice = voice("volcengine", "resource-a", "v1", "女声", "female", ["child"])
