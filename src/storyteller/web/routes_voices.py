@@ -25,10 +25,16 @@ def list_voices(
     model: Optional[str] = None,
     gender: Optional[str] = None,
     age: Optional[str] = None,
+    status: str = "all",
     page: int = 1,
     page_size: int = 50,
 ):
-    return _catalog(request).filter_voices(provider, model, gender, age, page, page_size)
+    try:
+        return _catalog(request).filter_voices(
+            provider, model, gender, age, status, page, page_size
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @router.patch("/{voice_key}")
@@ -42,13 +48,24 @@ async def update_voice_age(voice_key: str, request: Request):
         payload = await request.json()
     except ValueError:
         raise HTTPException(400, "请求体必须是 JSON")
-    ages = payload.get("age") if isinstance(payload, dict) else None
-    if not isinstance(ages, list) or any(not isinstance(age, str) for age in ages):
-        raise HTTPException(400, "age 必须是年龄枚举数组")
-    normalized = normalize_voice_ages(ages)
-    if len(normalized) != len(ages):
-        raise HTTPException(400, "包含无效年龄")
-    request.app.state.registry.voice_overrides.set_age(voice_key, normalized)
+    if not isinstance(payload, dict):
+        raise HTTPException(400, "请求体必须是 JSON 对象")
+    if "age" in payload:
+        ages = payload["age"]
+        if not isinstance(ages, list) or any(not isinstance(age, str) for age in ages):
+            raise HTTPException(400, "age 必须是年龄枚举数组")
+        normalized = normalize_voice_ages(ages)
+        if len(normalized) != len(ages):
+            raise HTTPException(400, "包含无效年龄")
+        request.app.state.registry.voice_overrides.set_age(voice_key, normalized)
+    if "enabled" in payload:
+        if not isinstance(payload["enabled"], bool):
+            raise HTTPException(400, "enabled 必须是布尔值")
+        request.app.state.registry.voice_overrides.set_enabled(
+            voice_key, payload["enabled"]
+        )
+    if "age" not in payload and "enabled" not in payload:
+        raise HTTPException(400, "必须提供 age 或 enabled")
     updated = next(item for item in catalog.list_voices() if item["key"] == voice_key)
     return updated
 

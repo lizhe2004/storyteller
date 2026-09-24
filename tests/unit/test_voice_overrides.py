@@ -52,3 +52,13 @@ def test_apply_returns_copies_without_mutating_provider_voices(tmp_path):
     assert applied[0].age == ["teen"]
     assert applied[0] is not original
     assert original.age == ["child"]
+
+
+def test_store_defaults_voices_to_enabled_and_persists_disabled_state(tmp_path):
+    store = VoiceOverrideStore(tmp_path / "overrides.json")
+    key = "aliyun|model-a|v1"
+
+    assert store.is_enabled(key) is True
+    assert store.set_enabled(key, False) is False
+    assert store.is_enabled(key) is False
+    assert json.loads((tmp_path / "overrides.json").read_text())[key]["enabled"] is False

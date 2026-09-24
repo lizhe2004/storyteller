@@ -9,8 +9,9 @@ from storyteller.web.voice_catalog import VoiceClipCatalog
 class FakeRegistry:
     def __init__(self, voices):
         self.voices = voices
+        self.voice_overrides = type("Overrides", (), {"is_enabled": lambda _self, _key: True})()
 
-    def list_tts_voices(self):
+    def list_tts_voices(self, include_disabled=False):
         return list(self.voices)
 
 

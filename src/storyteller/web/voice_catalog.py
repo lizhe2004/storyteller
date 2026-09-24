@@ -17,7 +17,7 @@ class VoiceClipCatalog:
         self.project_manager = project_manager
 
     def _voices(self):
-        return list(self.registry.list_tts_voices() or [])
+        return list(self.registry.list_tts_voices(include_disabled=True) or [])
 
     def _voice_map(self):
         voices = self._voices()
@@ -125,8 +125,7 @@ class VoiceClipCatalog:
     def _public_clip(clip):
         return {key: value for key, value in clip.items() if not key.startswith("_")}
 
-    @staticmethod
-    def _public_voice(voice, clips):
+    def _public_voice(self, voice, clips):
         values = clips.get(voice_key(voice), [])
         return {
             "key": voice_key(voice),
@@ -141,6 +140,7 @@ class VoiceClipCatalog:
             "tags": list(voice.tags or []),
             "clip_count": len(values),
             "has_clips": bool(values),
+            "enabled": self.registry.voice_overrides.is_enabled(voice_key(voice)),
         }
 
     def list_voices(self):
@@ -148,9 +148,12 @@ class VoiceClipCatalog:
         return [self._public_voice(voice, clips) for voice in voice_map.values()]
 
     def filter_voices(
-        self, provider=None, model=None, gender=None, age=None, page=1, page_size=50
+        self, provider=None, model=None, gender=None, age=None, status="all",
+        page=1, page_size=50
     ):
         records = self.list_voices()
+        if status not in (None, "", "all", "enabled", "disabled"):
+            raise ValueError("无效的音色状态")
         filters = {
             "providers": sorted({record["provider"] for record in records if record["provider"]}),
             "models": sorted({record["model"] for record in records if record["model"]}),
@@ -168,6 +171,10 @@ class VoiceClipCatalog:
             records = [record for record in records if record["gender"] == gender]
         if age:
             records = [record for record in records if age in record["age"]]
+        if status == "enabled":
+            records = [record for record in records if record["enabled"]]
+        elif status == "disabled":
+            records = [record for record in records if not record["enabled"]]
         page = max(1, int(page))
         page_size = min(200, max(1, int(page_size)))
         start = (page - 1) * page_size

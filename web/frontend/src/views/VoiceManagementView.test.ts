@@ -4,7 +4,7 @@ import VoiceManagementView from './VoiceManagementView.vue'
 import router from '../router'
 
 const mounted: { app: App; element: HTMLElement }[] = []
-const response = { page: 1, page_size: 50, total: 1, filters: { providers: ['mock'], models: ['model-a'], genders: ['female'], ages: ['young_adult'] }, voices: [{ key: 'mock|model-a|v1', provider: 'mock', model: 'model-a', voice_id: 'v1', name: '温柔女声', gender: 'female', age: ['young_adult'], category: '有声阅读', description: '温柔', tags: ['治愈'], clip_count: 1, has_clips: true }] }
+const response = { page: 1, page_size: 50, total: 1, filters: { providers: ['mock'], models: ['model-a'], genders: ['female'], ages: ['young_adult'] }, voices: [{ key: 'mock|model-a|v1', provider: 'mock', model: 'model-a', voice_id: 'v1', name: '温柔女声', gender: 'female', age: ['young_adult'], category: '有声阅读', description: '温柔', tags: ['治愈'], clip_count: 1, has_clips: true, enabled: true }] }
 
 beforeEach(() => { response.voices[0].age = ['young_adult']; vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => response }))) })
 afterEach(() => { mounted.splice(0).forEach(({ app, element }) => { app.unmount(); element.remove() }); vi.unstubAllGlobals() })
@@ -32,6 +32,13 @@ describe('VoiceManagementView', () => {
     expect(String(vi.mocked(fetch).mock.calls.at(-1)?.[0])).toContain('page=1')
   })
 
+  it('builds a server-side status filter query', async () => {
+    const element = await mountView()
+    const status = element.querySelector('[data-testid="filter-status"]') as HTMLSelectElement
+    status.value = 'disabled'; status.dispatchEvent(new Event('change')); await new Promise(resolve => setTimeout(resolve, 0)); await nextTick()
+    expect(String(vi.mocked(fetch).mock.calls.at(-1)?.[0])).toContain('status=disabled')
+  })
+
   it('registers the authenticated voice route and navigation link', () => {
     expect(router.options.routes.some(route => route.path === '/voices')).toBe(true)
   })
@@ -47,7 +54,7 @@ describe('VoiceManagementView', () => {
     await new Promise(resolve => setTimeout(resolve, 0)); await nextTick()
     expect((fetchMock.mock.calls[1][1] as RequestInit).method).toBe('PATCH')
     expect((fetchMock.mock.calls[1][1] as RequestInit).body).toContain('child')
-    ;(element.querySelector('.voice-actions button') as HTMLButtonElement).click()
+    ;(element.querySelectorAll('.voice-actions button')[1] as HTMLButtonElement).click()
     await new Promise(resolve => setTimeout(resolve, 0)); await nextTick()
     expect(element.textContent).toContain('一段台词')
     const audio = element.querySelector('audio') as HTMLAudioElement
@@ -65,7 +72,7 @@ describe('VoiceManagementView', () => {
     await new Promise(resolve => setTimeout(resolve, 0)); await nextTick()
     const childAfterFailure = Array.from(element.querySelectorAll('.age-checks input')).find(input => (input as HTMLInputElement).value === 'child') as HTMLInputElement
     expect(childAfterFailure.checked).toBe(false)
-    ;(element.querySelector('.voice-actions button') as HTMLButtonElement).click()
+    ;(element.querySelectorAll('.voice-actions button')[1] as HTMLButtonElement).click()
     await new Promise(resolve => setTimeout(resolve, 0)); await nextTick()
     expect(element.textContent).toContain('暂无故事生成片段')
   })

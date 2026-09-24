@@ -5,7 +5,7 @@ from typing import Optional
 from ..core.exceptions import ProviderError
 from ..core.models import VoiceConfig
 from ..core.streaming_tts import StreamingTTSProvider
-from ..core.voice_overrides import VoiceOverrideStore
+from ..core.voice_overrides import VoiceOverrideStore, voice_key
 from pathlib import Path
 
 
@@ -136,7 +136,9 @@ class ProviderRegistry:
         return list(self._sound_factories.keys())
 
     # ----- Voice aggregation -----
-    def list_tts_voices(self, provider_names=None, allowed_voice_ids=None):
+    def list_tts_voices(
+        self, provider_names=None, allowed_voice_ids=None, include_disabled=False
+    ):
         """Aggregate voices across the given providers (or all if None).
         Optionally filter to a set of voice_ids."""
         if provider_names is None:
@@ -151,4 +153,10 @@ class ProviderRegistry:
 
         if allowed_voice_ids is not None:
             voices = [v for v in voices if v.voice_id in allowed_voice_ids]
-        return self.voice_overrides.apply(voices)
+        voices = self.voice_overrides.apply(voices)
+        if not include_disabled:
+            voices = [
+                voice for voice in voices
+                if self.voice_overrides.is_enabled(voice_key(voice))
+            ]
+        return voices

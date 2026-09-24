@@ -52,14 +52,32 @@ class VoiceOverrideStore:
             return None
         return _ordered_ages(entry.get("age"))
 
+    def is_enabled(self, key: str):
+        entry = self._overrides.get(key)
+        if not isinstance(entry, dict) or "enabled" not in entry:
+            return True
+        return bool(entry["enabled"])
+
     def set_age(self, key: str, ages):
         normalized = _ordered_ages(ages)
-        self._overrides[key] = {
-            "age": normalized,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
+        entry = self._overrides.get(key)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["age"] = normalized
+        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self._overrides[key] = entry
         self._save()
         return normalized
+
+    def set_enabled(self, key: str, enabled: bool):
+        entry = self._overrides.get(key)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["enabled"] = bool(enabled)
+        entry["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self._overrides[key] = entry
+        self._save()
+        return bool(enabled)
 
     def _save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)

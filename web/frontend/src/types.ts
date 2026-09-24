@@ -7,7 +7,7 @@ export interface ModelOption { provider: string; model: string; label: string; i
 export interface ManagedVoice {
   key: string; provider: string; model?: string | null; voice_id: string; name?: string | null
   gender?: string | null; age: string[]; category?: string | null; description?: string | null; tags: string[]
-  clip_count: number; has_clips: boolean
+  clip_count: number; has_clips: boolean; enabled: boolean
 }
 export interface VoiceClip {
   clip_id: string; project_id: string; story_title: string; character_name: string

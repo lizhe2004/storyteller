@@ -81,6 +81,21 @@ def test_voice_management_updates_age_and_returns_clips(tmp_path):
         assert audio.headers["content-type"].startswith("audio/mpeg")
 
 
+def test_voice_management_filters_enabled_and_disabled_voices(tmp_path):
+    key = quote(voice_key(VoiceConfig(provider="mock", voice_id="narrator_01")), safe="")
+    with TestClient(_app(tmp_path)) as client:
+        _login(client)
+        assert client.get("/api/voices", params={"status": "enabled"}).json()["total"] == 4
+
+        update = client.patch("/api/voices/{}".format(key), json={"enabled": False})
+        assert update.status_code == 200
+        assert update.json()["enabled"] is False
+        assert client.get("/api/voices", params={"status": "enabled"}).json()["total"] == 3
+        disabled = client.get("/api/voices", params={"status": "disabled"}).json()
+        assert disabled["total"] == 1
+        assert disabled["voices"][0]["key"] == "mock|unknown|narrator_01"
+
+
 def test_voice_management_rejects_invalid_age_unknown_voice_and_unsafe_clip(tmp_path):
     with TestClient(_app(tmp_path)) as client:
         _login(client)

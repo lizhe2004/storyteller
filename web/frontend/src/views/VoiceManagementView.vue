@@ -12,7 +12,7 @@ const total = ref(0)
 const page = ref(1)
 const loading = ref(false)
 const error = ref('')
-const filters = reactive({ provider: '', model: '', gender: '', age: '' })
+const filters = reactive({ provider: '', model: '', gender: '', age: '', status: 'all' })
 const editing = reactive<Record<string, string[]>>({})
 const saving = ref('')
 const expanded = ref('')
@@ -58,6 +58,15 @@ async function saveAge(voice: ManagedVoice) {
   finally { saving.value = '' }
 }
 
+async function toggleEnabled(voice: ManagedVoice) {
+  saving.value = voice.key; error.value = ''
+  try {
+    const updated = await api.updateVoiceEnabled(voice.key, !voice.enabled)
+    voice.enabled = updated.enabled
+  } catch (err) { error.value = err instanceof Error ? err.message : '状态保存失败' }
+  finally { saving.value = '' }
+}
+
 function audioUrl(voice: ManagedVoice, clip: VoiceClip) { return `/api/voices/${encodeURIComponent(voice.key)}/clips/${encodeURIComponent(clip.clip_id)}/audio` }
 function formatDate(value: string) { return value ? new Date(value).toLocaleString() : '未知时间' }
 
@@ -76,6 +85,7 @@ onMounted(() => load())
       <label>模型<select v-model="filters.model" @change="load(true)"><option value="">全部</option><option v-for="item in models" :key="item" :value="item">{{ item }}</option></select></label>
       <label>性别<select v-model="filters.gender" @change="load(true)"><option value="">全部</option><option v-for="item in genders" :key="item" :value="item">{{ labelGender(item) }}</option></select></label>
       <label>年龄<select v-model="filters.age" @change="load(true)"><option value="">全部</option><option v-for="item in filterOptions.ages" :key="item" :value="item">{{ labelAge(item) }}</option></select></label>
+      <label>状态<select data-testid="filter-status" v-model="filters.status" @change="load(true)"><option value="all">全部</option><option value="enabled">已启用</option><option value="disabled">已禁用</option></select></label>
     </div>
 
     <p v-if="error" class="voice-error">{{ error }}</p>
@@ -85,7 +95,7 @@ onMounted(() => load())
       <article v-for="voice in voices" :key="voice.key" data-testid="voice-row" class="voice-row">
         <div class="voice-main"><strong>{{ voice.name || voice.voice_id }}</strong><span>{{ voice.provider }} · {{ voice.model || '默认模型' }}</span><small>{{ voice.voice_id }} · {{ labelGender(voice.gender) }}</small><div class="voice-meta"><b>{{ voice.category || '未分类' }}</b><em v-for="tag in voice.tags" :key="tag">{{ tag }}</em></div><p class="voice-description">{{ voice.description || '暂无描述' }}</p></div>
         <div class="voice-age"><span>适用年龄</span><div class="age-checks"><label v-for="age in ages" :key="age"><input v-model="editing[voice.key]" type="checkbox" :value="age">{{ labelAge(age) }}</label></div><button class="small-action" :disabled="saving === voice.key" @click="saveAge(voice)">{{ saving === voice.key ? '保存中' : '保存' }}</button></div>
-        <div class="voice-actions"><button class="small-action" @click="toggleClips(voice)">{{ expanded === voice.key ? '收起片段' : `试听片段（${voice.clip_count}）` }}</button></div>
+        <div class="voice-actions"><button class="small-action" :disabled="saving === voice.key" @click="toggleEnabled(voice)">{{ voice.enabled ? '禁用音色' : '启用音色' }}</button><button class="small-action" @click="toggleClips(voice)">{{ expanded === voice.key ? '收起片段' : `试听片段（${voice.clip_count}）` }}</button></div>
         <div v-if="expanded === voice.key" class="voice-clips"><p v-if="!clips[voice.key]?.length" class="clip-empty">暂无故事生成片段。</p><div v-for="clip in clips[voice.key] || []" :key="clip.clip_id" class="clip-row"><div><strong>{{ clip.story_title }} · {{ clip.character_name }}</strong><p>{{ clip.text }}</p><small>{{ formatDate(clip.created_at) }}</small></div><audio controls preload="none" :src="audioUrl(voice, clip)"></audio></div></div>
       </article>
     </div>
