@@ -11,11 +11,14 @@
 - [配置参考](configuration.md)：环境变量、Provider、目录、调度器和 Web runtime settings
 - [CLI 参考](cli.md)：生成、续作、音色、音效、Web 和交互式向导
 - [Web 使用指南](web.md)：登录、生成、播放、历史故事、音色管理和设置页面
+- [音色管理](voice-management.md)：筛选、年龄数组、启用状态、试听片段与本地持久化
 - [API 总览](api/overview.md)：认证、资源分组、错误格式和 WebSocket 入口
 - [Settings API](api/settings.md)：运行时设置、历史、重置、连接测试和模型列表
+- [Voices API](api/voices.md)：音色列表、PATCH override 和试听音频
 
 ## 理解内部机制
 
+- [角色与音色匹配](voice-matching.md)：角色元数据、候选池、LLM/rule 回退和日志
 - Web 的详细操作和 API 入口见 [Web 使用指南](web.md) 与 [API 总览](api/overview.md)
 
 ## 部署与排障
