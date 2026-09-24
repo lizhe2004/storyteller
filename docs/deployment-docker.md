@@ -108,6 +108,32 @@ STORYTELLER_TTS_SCHEDULER_LIMITS_ALIYUN_MAX_CONCURRENT_SESSIONS=2
 STORYTELLER_TTS_SCHEDULER_LIMITS_ALIYUN_QUEUE_SIZE=8
 ```
 
+## 构建并推送多架构镜像
+
+在已登录 Docker Hub 的情况下，使用仓库脚本构建并推送适用于 Ubuntu、Intel Mac
+和 Apple Silicon Mac 的镜像：
+
+```bash
+docker login
+./scripts/build_and_push_docker.sh
+```
+
+脚本默认构建 `linux/amd64,linux/arm64`，并推送以下两个标签：
+
+- `lizhe2004/audio-story-generator:latest`
+- `lizhe2004/audio-story-generator:<git-branch>-<git-commit>`
+
+可以通过环境变量覆盖默认值：
+
+```bash
+DOCKER_IMAGE=yourname/audio-story-generator \
+DOCKER_PLATFORMS=linux/amd64,linux/arm64 \
+./scripts/build_and_push_docker.sh
+```
+
+脚本使用 Docker Buildx 和 `docker-container` builder。Docker Desktop（macOS）和
+Docker Engine（Ubuntu）均可执行；运行前需要确保 Docker 已启动并完成 Docker Hub 登录。
+
 ## 直接使用 Docker 命令
 
 不使用 Compose 时：
