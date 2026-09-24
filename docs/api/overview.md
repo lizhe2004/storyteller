@@ -207,7 +207,9 @@
 
 `/ws` 的文本帧是下列 JSON 事件；音频帧是 `ready.audio` 所描述的 PCM 二进制数据。
 
-| `type` | 其余字段 |
+除重连时服务端直接补发的 `status` 快照事件外，`/ws` 的每个 JSON 事件都含有公共字段 `server_time`（ISO 8601 服务端时间戳）；`ready` 事件也明确返回该字段。重连快照中的 `status` 事件由路由直接构造，目前不含 `server_time`，因此客户端不应把它当作全量事件的统一字段。
+
+| `type` | 其余字段（均含 `server_time`，重连快照 `status` 除外） |
 | --- | --- |
 | `ready` | `job_id`, `playback_mode`, `server_time`, `model_selection: {llm, audio}`, `audio: {encoding, sample_rate, channels}` |
 | `status` | `phase`；可能含 `message`、`queue_position`，重连快照还含 `index`、`total` |
