@@ -57,14 +57,15 @@ JSON 格式必须严格如下：
     {
       "line_id": "1",
       "line_type": "narration",
+      "direction": "旁白的语音表现指令",
       "text": "旁白内容"
     },
     {
       "line_id": "2",
       "line_type": "dialogue",
       "character_id": "角色id",
-      "text": "角色台词",
-      "direction": "具体的语气、情绪和说话状态"
+      "direction": "具体的语气、情绪和说话状态",
+      "text": "角色台词"
     }
   ]
 }
@@ -139,27 +140,33 @@ opening 不要提前揭示完整结局，也不要改写已经输出的内容。
 6. voice_preferences 最多5项，weight 必须是大于0的数字，所有 weight 之和必须等于1。
 7. type 必须从以下音色类别中选择：体育解说、儿童陪伴、初期催收提醒客服、动漫配音、医院社区引导型客服、古风有声书、商务汇报、娱乐搞笑、引导新手型客服、情感陪伴、新品推荐型客服、新闻播报、日常对话、智能助手、智能客服、有声书配音、有声阅读、标准通用型客服、核保理赔型客服、深夜电台、理财咨询型客服、理财顾问型客服、电商直播、监察回访型客服、知识分享、社交互动、社交陪伴、角色扮演、讲解引导型客服、账单提醒型客服。
 8. line_type 只能是 narration 或 dialogue。
-9. narration 行不能填写 character_id，也不要填写 direction。
+9. narration 行不能填写 character_id；有文本的 narration 行必须填写 direction。
 10. dialogue 行必须填写 character_id、text 和 direction。
 
 【七、direction 要求】
 
-每个 dialogue 必须填写 direction。
+每个 narration 和 dialogue 都必须填写 direction。
 
-direction 是给配音模型的演法提示，不是台词内容，必须：
+direction 是给配音模型的自然语言语音表现指令，不是台词内容。旁白和对白的
+direction 都会被不同 TTS provider 映射为各自的 instruction/context_texts 参数，
+因此必须：
 
-- 少于20个汉字；
-- 描述具体语气、情绪、状态或说话方式；
-- 避免只写“开心”“难过”“生气”等空泛词；
+- 使用自然语言，建议以“请”开头；
+- 长度控制在20～60个汉字，最长不超过100个字符；
+- 从语速、音调、情感、音量感和说话状态中选择2～4个维度；
+- 必须自包含，不依赖前文，不使用“再……一点”“继续保持刚才”等表达；
 - 不要重复台词原文；
+- 不要重复角色的性别、年龄和固定音色特征；
+- 不要描述视觉动作，不要输出 #、instruction、context_texts 或其他供应商专用格式；
 - 不要加引号。
 
 示例：
 
-- “压低声音，警惕地试探”
-- “又急又慌，带着哭腔”
-- “强装镇定，语速很快”
-- “松了一口气，语气温柔”
+- “请压低声音，警惕地试探”
+- “请用较快语速，带着哭腔和慌乱”
+- “请强装镇定，语速偏快地说”
+- “请放慢语速，温柔地安慰对方”
+- “请低沉缓慢地叙述，带有神秘感”
 
 【八、输出前自检】
 
@@ -170,7 +177,7 @@ direction 是给配音模型的演法提示，不是台词内容，必须：
 - 没有用一句话跳过核心冲突；
 - 连续 dialogue 不超过2行；
 - 每个 dialogue 的 character_id 都已声明；
-- 每个 dialogue 都有 direction；
+- 每个 narration 和 dialogue 都有 direction；
 - 每个角色都有完整人物信息；
 - opening 不超过35个汉字；
 - JSON 合法且没有任何额外文字。

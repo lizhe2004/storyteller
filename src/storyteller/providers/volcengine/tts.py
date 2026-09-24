@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from collections import deque
 import json
+import logging
 import math
 import struct
 import threading
@@ -40,6 +41,7 @@ _EVENT_SESSION_FINISHED = 152
 _EVENT_SESSION_FAILED = 153
 _EVENT_TASK_REQUEST = 200
 _EVENT_TTS_AUDIO = 352
+logger = logging.getLogger(__name__)
 
 
 class _WebSocketTransport:
@@ -78,11 +80,13 @@ class VolcengineStreamingTTSSession(StreamingTTSSession):
     # Bound the wait for the terminal SESSION_FINISHED after FINISH is sent.
     _FINISH_TIMEOUT_SECONDS = 30.0
 
-    def __init__(self, transport, voice, *, directives=None, context=None):
+    def __init__(self, transport, voice, *, directives=None, context=None,
+                 resource_id=None):
         self._transport = transport
         self._voice = voice
         self._directives = directives
         self._context = context
+        self._resource_id = resource_id
         self._session_id = uuid.uuid4().hex.encode("ascii")
         self._audio = deque()
         self._changed = threading.Condition(threading.Lock())
@@ -212,7 +216,26 @@ class VolcengineStreamingTTSSession(StreamingTTSSession):
             )
             if semitones:
                 req_params["post_process"] = {"pitch": semitones}
-        return {"req_params": req_params}
+        request = {"req_params": req_params}
+        session_params = {
+            "resource_id": self._resource_id,
+            "voice_id": self._voice.voice_id,
+            "audio_params": audio_params,
+        }
+        if context_texts:
+            session_params["context_texts"] = context_texts
+        if "post_process" in req_params:
+            session_params["post_process"] = req_params["post_process"]
+        logger.info(
+            "event=tts_provider_session_started provider=volcengine "
+            "protocol=websocket session_params_json=%s",
+            json.dumps(
+                session_params,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        )
+        return request
 
     def _send(self, event, payload, session_id=None):
         try:
@@ -426,9 +449,10 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         ]
 
     def open_stream(self, voice, *, directives=None, context=None):
+        resource_id = self._resource_id_for(voice.voice_id)
         headers = {
             "X-Api-Key": self.api_key,
-            "X-Api-Resource-Id": self._resource_id_for(voice.voice_id),
+            "X-Api-Resource-Id": resource_id,
             "X-Api-Connect-Id": uuid.uuid4().hex,
         }
         try:
@@ -437,6 +461,7 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             )
             return VolcengineStreamingTTSSession(
                 transport, voice, directives=directives, context=context,
+                resource_id=resource_id,
             )
         except TTSError:
             raise
@@ -657,20 +682,17 @@ def _clamp(value, low, high):
 def _build_context_texts(directives, context):
     """Assemble additions.context_texts.
 
-    Directives are acting instructions and get a leading "#"; quoted
-    context (recent narration / previous line) is passed verbatim and is
-    not synthesized. Order: directives first, then context.
+    ``context_texts`` is Volcengine's natural-language voice-instruction
+    field, not a place for the story's previous lines.  Keep the provider
+    payload to the current line's direction and preserve it verbatim; the
+    provider-specific field mapping happens here, not in the script prompt.
     """
-    texts = []
+    parts = []
     for d in directives or []:
         d = (d or "").strip()
         if d:
-            texts.append(d if d.startswith("#") else "#" + d)
-    for c in context or []:
-        c = (c or "").strip()
-        if c:
-            texts.append(c)
-    return texts
+            parts.append(d)
+    return ["，".join(parts)] if parts else []
 
 
 def _safe_log2(value):

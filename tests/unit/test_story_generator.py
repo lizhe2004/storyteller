@@ -185,8 +185,31 @@ def test_generate_script_prompt_describes_ordered_opening_constraints():
     assert "15～35个汉字" in system_content
 
 
+def test_generate_script_prompt_requires_provider_neutral_directions_for_all_lines():
+    generator, llm = _make_generator()
+    generator.generate_script(topic="测试")
+    system_content = llm.calls[-1]["messages"][0]["content"]
+
+    assert "旁白和对白" in system_content
+    assert "自然语言" in system_content
+    assert "不依赖前文" in system_content
+    assert "context_texts" in system_content
+
+
 def test_generate_script_prompt_schema_includes_opening_between_title_and_characters():
     assert '  "title": "故事标题",\n  "opening": "开场白",\n  "characters": [' in DEFAULT_SYSTEM_PROMPT
+
+
+def test_generate_script_prompt_places_direction_before_text_in_each_line():
+    direction_pos = DEFAULT_SYSTEM_PROMPT.index('"direction": "旁白的语音表现指令"')
+    narration_text_pos = DEFAULT_SYSTEM_PROMPT.index('"text": "旁白内容"')
+    dialogue_direction_pos = DEFAULT_SYSTEM_PROMPT.index(
+        '"direction": "具体的语气、情绪和说话状态"'
+    )
+    dialogue_text_pos = DEFAULT_SYSTEM_PROMPT.index('"text": "角色台词"')
+
+    assert direction_pos < narration_text_pos
+    assert dialogue_direction_pos < dialogue_text_pos
 
 
 def test_generate_script_stream_reports_characters_ready_when_lines_key_starts():
@@ -303,7 +326,12 @@ def test_generate_script_parses_direction_into_metadata():
             {"id": "c1", "name": "小兔", "description": "女孩"}
         ],
         "lines": [
-            {"line_id": "1", "line_type": "narration", "text": "天黑了。"},
+            {
+                "line_id": "1",
+                "line_type": "narration",
+                "text": "天黑了。",
+                "direction": "请低沉缓慢地叙述，带有神秘感",
+            },
             {
                 "line_id": "2",
                 "line_type": "dialogue",
@@ -315,7 +343,9 @@ def test_generate_script_parses_direction_into_metadata():
     }
     generator, _ = _make_generator(json.dumps(payload, ensure_ascii=False))
     script = generator.generate_script(topic="测试")
-    assert script.lines[0].metadata == {}
+    assert script.lines[0].metadata["direction"] == (
+        "请低沉缓慢地叙述，带有神秘感"
+    )
     assert script.lines[1].metadata["direction"] == "声音发抖，带着哭腔"
 
 

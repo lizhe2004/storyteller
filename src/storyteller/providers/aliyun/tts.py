@@ -540,15 +540,31 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         volume = _clamp(
             int(round((voice.volume - 1.0) * 50)) + 50, 0, 100
         )
+        model = self._model_for(voice.voice_id)
+        instruction = _build_instruction(directives) or None
+        session_params = {
+            "model": model,
+            "voice": voice.voice_id,
+            "format": "PCM_22050HZ_MONO_16BIT",
+            "volume": volume,
+            "speech_rate": _clamp(voice.speed, 0.5, 2.0),
+            "pitch_rate": _clamp(voice.pitch, 0.5, 2.0),
+            "instruction": instruction,
+        }
+        logger.info(
+            "event=tts_provider_session_started provider=aliyun "
+            "protocol=websocket session_params_json=%s",
+            json.dumps(session_params, ensure_ascii=False, separators=(",", ":")),
+        )
         try:
             synthesizer = self._realtime_synthesizer_factory(
-                model=self._model_for(voice.voice_id),
+                model=model,
                 voice=voice.voice_id,
                 format="PCM_22050HZ_MONO_16BIT",
                 volume=volume,
                 speech_rate=_clamp(voice.speed, 0.5, 2.0),
                 pitch_rate=_clamp(voice.pitch, 0.5, 2.0),
-                instruction=_build_instruction(directives) or None,
+                instruction=instruction,
                 callback=callback,
                 api_key=self.api_key,
                 websocket_api_url=self.websocket_api_url,

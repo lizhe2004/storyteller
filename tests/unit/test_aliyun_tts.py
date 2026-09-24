@@ -418,7 +418,7 @@ def test_constructor_raises_on_missing_key():
         AliyunTTS(_config(api_key=None))
 
 
-def test_websocket_session_builds_workspace_url_forwards_text_and_resamples_callback_pcm():
+def test_websocket_session_logs_provider_parameters_and_forwards_text_and_resamples_callback_pcm(caplog):
     """Bypassing the callback bridge or 22.05kHz conversion breaks the stream contract."""
     tts = AliyunTTS(_config(workspace_id="workspace-123"))
     created = {}
@@ -431,7 +431,11 @@ def test_websocket_session_builds_workspace_url_forwards_text_and_resamples_call
         return synthesizer
 
     tts._realtime_synthesizer_factory = factory
-    session = tts.open_stream(_voice())
+    with caplog.at_level("INFO", logger="storyteller.providers.aliyun.tts"):
+        session = tts.open_stream(
+            _voice(), directives=["请温柔平和地说"],
+            context=["不应作为 instruction 传递"],
+        )
     session.send_text("第一段")
     session.send_text("第二段")
     session.finish()
@@ -450,6 +454,12 @@ def test_websocket_session_builds_workspace_url_forwards_text_and_resamples_call
     output_pcm = b"".join(chunk.data for chunk in session.iter_audio())
     assert len(output_pcm) == 320
     assert output_pcm != input_pcm
+    message = "\n".join(record.getMessage() for record in caplog.records)
+    assert "event=tts_provider_session_started" in message
+    assert '"model":"qwen-audio-3.0-tts-flash"' in message
+    assert '"voice":"longanhuan_v3.6"' in message
+    assert '"instruction":"请温柔平和地说"' in message
+    assert "test-key" not in message
 
 
 def test_websocket_session_translates_callback_errors_and_can_cancel():

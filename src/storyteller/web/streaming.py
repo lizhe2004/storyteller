@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from pathlib import Path
 import logging
+import json
 import os
 import tempfile
 import threading
@@ -258,11 +259,15 @@ class _IncrementalLineCoordinator:
     def _run(self, index, state):
         pump = lease = None
         try:
+            direction = str(state["raw_line"].get("direction") or "").strip()
+            directives = [direction] if direction else None
             lease = self.publisher.lease(("line", index + 1))
             pump = _AudioPump(
                 self.orchestrator._open_session(
                     self.scheduler, state["voice"], phase="line",
                     line_id=str(state["raw_line"].get("line_id") or index + 1),
+                    directives=directives,
+                    context=None,
                 ), lease
             )
             pump.start()
@@ -548,9 +553,31 @@ class StreamOrchestrator:
 
     def _open_session(self, scheduler, voice, *, directives=None, context=None,
                       phase=None, line_id=None):
+        model = self.registry.get_tts_model(voice)
+        session_params = {
+            "provider": voice.provider,
+            "model": model,
+            "voice_id": voice.voice_id,
+            "language": getattr(voice, "language", None),
+            "speed": getattr(voice, "speed", None),
+            "pitch": getattr(voice, "pitch", None),
+            "volume": getattr(voice, "volume", None),
+            "directives": directives,
+            "context": context,
+            "phase": phase,
+            "line_id": line_id,
+        }
+        log_event(
+            logger,
+            logging.INFO,
+            "tts_session_started",
+            session_params=json.dumps(
+                session_params, ensure_ascii=False, separators=(",", ":")
+            ),
+        )
         return scheduler.open(
             voice.provider,
-            self.registry.get_tts_model(voice),
+            model,
             voice,
             directives=directives,
             context=context,

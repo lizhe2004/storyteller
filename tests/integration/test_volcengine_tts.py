@@ -302,7 +302,7 @@ def test_volcengine_tts_ogg_uses_48k(tmp_path):
     assert audio_params["sample_rate"] == 48000
 
 
-def test_volcengine_tts_passes_directives_and_context(tmp_path):
+def test_volcengine_tts_sends_one_natural_language_direction(tmp_path):
     tts = VolcengineTTS(_config())
     tts._session = _FakeSession(_FakeResponse(200, _stream_lines(b"x")))
     voice = VoiceConfig(
@@ -314,16 +314,33 @@ def test_volcengine_tts_passes_directives_and_context(tmp_path):
         "能一起撑伞不？",
         voice,
         tmp_path / "out.mp3",
-        directives=["用害羞犹豫的语气说"],
+        directives=["用害羞犹豫的语气说", "声音放轻"],
         context=["外面突然下起了大雨，两人在屋檐下躲雨"],
     )
     additions = json.loads(
         tts._session.calls[0]["json"]["req_params"]["additions"]
     )
-    assert additions["context_texts"] == [
-        "#用害羞犹豫的语气说",
-        "外面突然下起了大雨，两人在屋檐下躲雨",
-    ]
+    assert additions["context_texts"] == ["用害羞犹豫的语气说，声音放轻"]
+
+
+def test_volcengine_tts_does_not_send_story_context_as_voice_instruction(tmp_path):
+    tts = VolcengineTTS(_config())
+    tts._session = _FakeSession(_FakeResponse(200, _stream_lines(b"x")))
+    voice = VoiceConfig(
+        provider="volcengine",
+        voice_id="zh_female_vv_uranus_bigtts",
+        gender="female",
+    )
+    tts.synthesize(
+        "能一起撑伞不？",
+        voice,
+        tmp_path / "out.mp3",
+        context=["外面突然下起了大雨，两人在屋檐下躲雨"],
+    )
+    additions = json.loads(
+        tts._session.calls[0]["json"]["req_params"]["additions"]
+    )
+    assert "context_texts" not in additions
 
 
 def test_volcengine_tts_omits_context_texts_when_empty(tmp_path):
@@ -482,7 +499,7 @@ def test_realtime_session_surfaces_server_errors_and_cancel_closes_socket():
     assert transport.closed is True
 
 
-def test_realtime_session_uses_injected_bidirectional_transport_and_closes():
+def test_realtime_session_logs_provider_session_parameters_and_closes(caplog):
     """A completed one-shot session must not retain an authenticated socket."""
     transport = _FakeRealtimeTransport(
         [
@@ -500,7 +517,12 @@ def test_realtime_session_uses_injected_bidirectional_transport_and_closes():
         return transport
 
     tts._realtime_transport_factory = factory
-    session = tts.open_stream(tts.list_voices()[0])
+    with caplog.at_level("INFO", logger="storyteller.providers.volcengine.tts"):
+        session = tts.open_stream(
+            tts.list_voices()[0],
+            directives=["请低沉缓慢地叙述"],
+            context=["不应作为语音指令传递"],
+        )
     session.finish()
 
     assert received["endpoint"] == "wss://openspeech.bytedance.com/api/v3/tts/bidirection"
@@ -509,6 +531,12 @@ def test_realtime_session_uses_injected_bidirectional_transport_and_closes():
     assert received["headers"]["X-Api-Connect-Id"]
     assert [_volc_event(frame) for frame in transport.sent] == [1, 100, 102]
     assert transport.closed is True
+    message = "\n".join(record.getMessage() for record in caplog.records)
+    assert "event=tts_provider_session_started" in message
+    assert '"resource_id":"seed-tts-2.0"' in message
+    assert '"voice_id":"' in message
+    assert '"context_texts":["请低沉缓慢地叙述"]' in message
+    assert "test-key" not in message
 
 
 def test_realtime_session_rejects_failure_status_in_session_finished():
