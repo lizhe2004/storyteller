@@ -23,4 +23,3 @@ rg 'job_id=job_xxx|project_id=proj_xxx' .storyteller/logs/storyteller.log
 rg 'voice_matching_prompt|voice_matching_llm_response' .storyteller/logs/storyteller.log
 rg 'tts_session_started|tts_session_finished|tts_provider_session_started' .storyteller/logs/storyteller.log
 ```
-

@@ -21,4 +21,3 @@ storyteller list-sounds 雨夜 --kind ambient
 ```
 
 `--with-sfx` 需要独立的音效 Provider 配置；音效 key 不等于 TTS key。`make-sound` 直接写入全局音效库，`list-sounds` 按名称、描述、prompt 和标签检索。
-

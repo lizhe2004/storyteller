@@ -20,4 +20,3 @@
 实现对应的 LLM/TTS/streaming-TTS/sound 接口，提供配置读取、错误转换、音色列表和能力声明，然后在 bootstrap/registry 注册。匹配器只消费标准音色元数据；不要在候选池规则中针对 provider 或模型名称写特殊分支。
 
 项目 Provider 文档说明“项目已实现的适配”；厂商 API 的完整字段和限制见 [`docs/reference/tts/`](../reference/tts/)。
-

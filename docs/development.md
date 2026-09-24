@@ -20,4 +20,3 @@ cd web/frontend && npm test -- --run && npm run build
 ## 代码入口
 
 CLI 在 `src/storyteller/cli/`，领域流程在 `src/storyteller/core/`，Provider 在 `src/storyteller/providers/`，Web API/流式任务在 `src/storyteller/web/`。先阅读对应 spec/plan 了解历史决策，但当前行为以源码和测试为准。
-

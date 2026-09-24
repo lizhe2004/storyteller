@@ -29,4 +29,3 @@ Web 的 streaming job 和项目持久化是两层状态：WebSocket 连接断开
 ## 音色和 direction
 
 角色信息由剧本生成阶段确定，后续匹配不能忽略剧本提供的性别和年龄。每条 line 的 `direction` 是独立的语音表现指令；TTS 调用同时可以携带最近旁白/对白作为 context。line 级 voice override 优先于角色音色，未命中时 dialogue 使用角色音色，其他情况回退到旁白音色。
-

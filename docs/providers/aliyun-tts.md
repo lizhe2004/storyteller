@@ -19,4 +19,3 @@
 - direction 没有改变语气：确认台词先生成 direction，且当前模型/音色支持 instruction 能力。
 
 厂商原始资料：[`qwen-audio-tts-http-api.md`](../reference/tts/qwen-audio-tts-http-api.md)、[`qwen-audio-realtime-tts-user-guide.md`](../reference/tts/qwen-audio-realtime-tts-user-guide.md)、[`qwen-audio-tts-realtime-python-sdk.md`](../reference/tts/qwen-audio-tts-realtime-python-sdk.md)。
-

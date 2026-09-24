@@ -5,4 +5,3 @@
 - 将 `/data` 放在持久磁盘，限制写权限并定期备份；音频项目和音效库会持续增长。
 - 根据 Provider 额度设置 TTS scheduler 并发、队列和速率限制，观察 `tts_queue_wait_finished` 和失败事件。
 - 发布多架构镜像后在目标平台执行一次登录、options、音色列表和短故事 smoke test。
-

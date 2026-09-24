@@ -35,4 +35,3 @@ CLI 和 Web 共用模型、Provider registry、项目持久化和音频处理代
 ## Provider 依赖方向
 
 核心层只使用统一的 LLM/TTS/streaming-TTS/sound 接口和 `VoiceConfig`。Provider 负责将统一参数转换为厂商请求；例如项目的 `direction` 会作为 directives 进入 TTS 调用，Provider 再决定使用 instruction、context 或厂商专用字段。新增 Provider 时应扩展 registry、配置和音色元数据，不应在角色匹配规则中增加 provider 分支。
-

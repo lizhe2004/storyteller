@@ -24,4 +24,3 @@
 - 无法拼接：检查 ffmpeg 是否安装以及逐句片段是否存在。
 - 音效为空或不入库：生成音频可能不可读/近乎静音，检查项目 `sounds/` 原始文件和音效 provider 日志。
 - 容器重启后数据消失：确认 `./docker-data:/data` 挂载和 `STORYTELLER_DATA_DIR=/data`。
-

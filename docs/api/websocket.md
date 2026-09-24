@@ -28,4 +28,3 @@ JSON 事件带 `type`；正常新任务事件通常还带 `server_time`，但重
 ## 生命周期
 
 服务端先校验认证和限流，再接受连接。流式编排负责生成 opening、剧本预览、角色匹配、line 文本和音频；底层 TTS session 结束后发布 `line_end`。任务完成时发布 `complete`，取消/异常时发布 `canceled`/`error`。客户端不应把 WebSocket 连接关闭误认为项目数据已删除，应查询故事书架确认持久化结果。
-

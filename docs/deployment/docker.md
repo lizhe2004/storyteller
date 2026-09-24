@@ -16,4 +16,3 @@ docker login
 ## 升级
 
 发布新镜像后执行 `docker compose pull && docker compose up -d`。只要数据卷不变，项目、设置、音色覆盖和音效库不会随镜像更新删除。升级前建议停止服务并备份 data root。
-

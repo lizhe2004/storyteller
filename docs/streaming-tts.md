@@ -34,4 +34,3 @@ direction 必须是自包含的自然语言语气/情绪指令，不应包含供
 ## 观测和排查
 
 底层日志会记录 `tts_session_queued`、`tts_queue_wait_finished`、`tts_session_started`、`tts_text_chunk_sent`、`tts_provider_text_sent`、`tts_first_audio_received` 和 `tts_session_finished`。这些事件包含 provider、model、voice_id、phase 和可能的 line_id；查一次流式故障时应结合 job_id、project_id 和 session 日志。
-
