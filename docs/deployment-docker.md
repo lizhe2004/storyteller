@@ -1,5 +1,7 @@
 # Docker 部署
 
+文档导航和多架构发布脚本见[新的 Docker 部署页](deployment/docker.md)；本页保留 Compose、调度器和本地开发的详细命令。
+
 ## 前置条件
 
 - Docker Engine 20.10+；或 Docker Desktop。

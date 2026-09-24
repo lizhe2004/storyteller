@@ -23,12 +23,18 @@
 
 ## 部署与排障
 
-- [Docker 部署](deployment-docker.md)：Compose、数据持久化、升级和备份
+- [Docker 部署](deployment/docker.md)：多架构镜像、Compose、数据持久化和升级
+- [生产部署](deployment/production.md)：HTTPS、凭据、持久化和资源限制
+- [日志](operations/logging.md)：日志位置、事件字段和检索方式
+- [故障排查](operations/troubleshooting.md)：配置、Provider、流式 TTS、音频和 Docker
+- [数据与备份](operations/data-and-backup.md)：项目、配置、音效库和恢复边界
+- [旧版 Docker 详细说明](deployment-docker.md)：Compose、实时 TTS 和本地开发命令
 - [TTS 厂商参考资料](reference/tts/)：阿里云、火山引擎和 Qwen 的原始接口资料
 - [配置参考](configuration.md)：Provider 配置与排障的当前事实来源
 
 ## 开发贡献
 
-- README 的开发与测试入口，以及现有测试目录
+- [开发与测试](development.md)：环境、后端/前端验证和代码入口
+- [发布流程](release.md)：Git、镜像构建、多平台 manifest 和 smoke test
 
 主题文档会随着后续实现核对逐步补齐；在此之前，README 和已有的 Docker/TTS 文档仍是可直接使用的入口。
