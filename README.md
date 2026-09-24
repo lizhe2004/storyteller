@@ -63,7 +63,7 @@ CLI 会持久化 `topic_collected`、`script_generated`、`voice_configured`、
 ## 音色匹配与演法指令
 
 默认 `llm` 模式先判断角色性别/年龄段，再从已配置音色中精选；失败时回退到确定性规则，可用 `--voice-matcher rule` 或
-`STORYTELLER_VOICE_MATCHER=rule` 强制规则匹配。每句对话可带演法指令，火山 TTS 通过 `additions.context_texts` 传递；阿里云 provider 将演法指令并入 `instruction`，不支持对应的上文引用机制。
+`STORYTELLER_VOICE_MATCHER=rule` 强制规则匹配。每条台词可带自然语言演法指令和上文 context；项目会在各 Provider 适配层转换为厂商请求字段，具体差异见[流式 TTS](docs/streaming-tts.md)和[Provider 文档](docs/providers/overview.md)。
 
 ## Provider 与音效
 
@@ -98,7 +98,7 @@ pytest
 pytest tests/unit/test_voice_matcher.py
 ```
 
-本地启动默认绑定 `127.0.0.1`，Docker 运行方式见 [Docker 部署文档](docs/deployment-docker.md)。
+本地启动默认绑定 `127.0.0.1`，Docker 运行方式见 [Docker 部署文档](docs/deployment/docker.md)。
 
 ### Web 登录与实时 TTS
 
@@ -115,7 +115,7 @@ docker compose pull
 docker compose up -d
 ```
 
-然后打开 <http://localhost:8000>。Docker 的数据卷、密码初始化、升级和备份说明见 [Docker 部署文档](docs/deployment-docker.md)。
+然后打开 <http://localhost:8000>。Docker 的数据卷、密码初始化、升级和备份说明见 [Docker 部署文档](docs/deployment/docker.md)。
 
 ## 支持的 Provider
 
@@ -129,10 +129,10 @@ Provider 的凭据、模型、音色和能力差异应以对应主题文档及 `
 
 - [文档首页](docs/index.md)：按使用路径查找文档
 - [首次使用指南](docs/getting-started.md)：本地安装、配置、生成和 Web
-- [Docker 部署](docs/deployment-docker.md)：Compose、数据持久化和容器运行
+- [Docker 部署](docs/deployment/docker.md)：多架构镜像、Compose、数据持久化和容器运行
 - [TTS 厂商参考资料](docs/reference/tts/)：阿里云、火山引擎和 Qwen 原始资料
 
-配置、CLI、Web/API、架构、Provider 和运维主题会在后续主题文档中分别维护；入口链接集中在[文档首页](docs/index.md)。
+配置、CLI、Web/API、架构、Provider 和运维主题均从[文档首页](docs/index.md)进入；厂商原始资料与项目适配文档分开维护。
 
 ## 开发与测试
 

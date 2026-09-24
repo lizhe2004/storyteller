@@ -19,7 +19,11 @@
 ## 理解内部机制
 
 - [角色与音色匹配](voice-matching.md)：角色元数据、候选池、LLM/rule 回退和日志
-- Web 的详细操作和 API 入口见 [Web 使用指南](web.md) 与 [API 总览](api/overview.md)
+- [系统架构](architecture.md)：核心模块、Provider registry 和持久化边界
+- [故事生成](story-generation.md)：CLI/Web 流程、状态、缓存和断点续作
+- [流式 TTS](streaming-tts.md)：direction、context、调度器和 Provider 会话
+- [音效与背景音乐](sound-effects.md)：声音 cue、全局缓存和混音
+- [WebSocket API](api/websocket.md)：故事生成和音色分析协议
 
 ## 部署与排障
 
@@ -30,11 +34,14 @@
 - [数据与备份](operations/data-and-backup.md)：项目、配置、音效库和恢复边界
 - [旧版 Docker 详细说明](deployment-docker.md)：Compose、实时 TTS 和本地开发命令
 - [TTS 厂商参考资料](reference/tts/)：阿里云、火山引擎和 Qwen 的原始接口资料
-- [配置参考](configuration.md)：Provider 配置与排障的当前事实来源
+- [Provider 适配](providers/overview.md)：项目统一抽象和新增 Provider 边界
+- [阿里云 TTS](providers/aliyun-tts.md)：项目适配、workspace 和 realtime
+- [火山引擎 TTS](providers/volcengine-tts.md)：resource id、WebSocket 和 context
+- [LLM Provider](providers/llm.md)：模型选择和角色匹配请求
 
 ## 开发贡献
 
 - [开发与测试](development.md)：环境、后端/前端验证和代码入口
 - [发布流程](release.md)：Git、镜像构建、多平台 manifest 和 smoke test
 
-主题文档会随着后续实现核对逐步补齐；在此之前，README 和已有的 Docker/TTS 文档仍是可直接使用的入口。
+README 是快速入口；主题文档描述当前实现，厂商原始资料与项目适配说明分开维护。
