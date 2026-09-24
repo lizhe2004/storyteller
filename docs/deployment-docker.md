@@ -131,6 +131,20 @@ DOCKER_PLATFORMS=linux/amd64,linux/arm64 \
 ./scripts/build_and_push_docker.sh
 ```
 
+## 使用 GitHub Actions 自动发布
+
+仓库包含 `.github/workflows/docker-publish.yml`。向 `main` 分支推送提交后，GitHub
+Actions 会自动构建并推送 `linux/amd64` 和 `linux/arm64` 镜像；也可以在 GitHub
+Actions 页面手动运行该 workflow。每次发布会更新 `latest`，并额外推送一个 `sha-<短提交哈希>` 标签。
+
+在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中添加：
+
+- `DOCKERHUB_USERNAME`：Docker Hub 用户名。
+- `DOCKERHUB_TOKEN`：Docker Hub Access Token，不要使用账户密码。
+
+当前 workflow 发布到 `lizhe2004/audio-story-generator`。如果要发布到其他仓库，修改
+workflow 中的 `IMAGE_NAME`。
+
 脚本使用 Docker Buildx 和 `docker-container` builder。Docker Desktop（macOS）和
 Docker Engine（Ubuntu）均可执行；运行前需要确保 Docker 已启动并完成 Docker Hub 登录。
 
