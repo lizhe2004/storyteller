@@ -40,11 +40,12 @@ STORYTELLER_TTS_VOLCENGINE_API_KEY=replace-me \
 storyteller generate "海边探险" --tts-providers aliyun,volcengine
 ```
 
-`--tts-providers` 中的每个名称必须同时满足两个条件：对应的 provider
-实现已经注册到本次进程的 registry，并且该 provider 已从当前配置/凭据中发现且
-在 `STORYTELLER_TTS_PROVIDERS` allowlist 内（未设置 allowlist 时才可由凭据自动发现）。
-CLI 选项只是本次调用的限制，不能注册、配置或启用 provider；只写一个凭据但未被
-allowlist 启用时，名称仍不可用。
+`--tts-providers` 中的每个名称必须已经注册到本次进程的 registry，并且只能从当前
+`tts.providers` 列表中选择。非空的 `STORYTELLER_TTS_PROVIDERS` 会直接选定该列表；
+内置 provider 可以因此注册，即使没有从凭据中发现对应配置。allowlist 为空时，
+`tts.providers` 才由 provider 配置/凭据发现构建。CLI 选项只能进一步缩小本次调用的
+provider 范围，不能注册 provider、配置凭据或扩大 `tts.providers`；实例化真实 provider
+进行合成时仍然需要该 provider 所需的凭据。
 
 成功时打印 `Done! Output: ...`；`--dry-run` 打印剧本保存路径。最终文件位于项目目录下的 `story.<format>`。
 
@@ -54,7 +55,7 @@ allowlist 启用时，名称仍不可用。
 storyteller continue PROJECT_ID [OPTIONS]
 ```
 
-从项目断点继续生成。`PROJECT_ID` 可以是稳定项目 id 或项目目录名。`--output-format`（默认配置值/`mp3`）、`--tts-providers`、`--voice-ids`、`--data-dir`、`--strict-mode`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--default-llm-provider` 和 `--sound-provider` 的取值与 `generate` 相同；它们都只影响本次续作。`--tts-providers` 只能从当前配置已注册且可用的 provider 中进一步限制本次续作，不能扩展配置 allowlist。示例：
+从项目断点继续生成。`PROJECT_ID` 可以是稳定项目 id 或项目目录名。`--output-format`（默认配置值/`mp3`）、`--tts-providers`、`--voice-ids`、`--data-dir`、`--strict-mode`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--default-llm-provider` 和 `--sound-provider` 的取值与 `generate` 相同；它们都只影响本次续作。`--tts-providers` 只能从当前 `tts.providers` 列表中进一步限制本次续作，不能注册 provider 或扩展配置 allowlist。示例：
 
 ```bash
 storyteller continue 2026-09-24-小猫的冒险 --output-format wav --sound-provider mock
@@ -78,7 +79,7 @@ storyteller list-projects --data-dir ./demo-data
 storyteller list-voices [--tts-providers NAMES] [--format table|json]
 ```
 
-列出已注册 TTS provider 的音色。`--tts-providers` 默认使用当前配置已注册的全部 provider，值为逗号分隔名称，只能缩小本次查询范围；每个名称还必须已从当前配置/凭据中发现并处于 `STORYTELLER_TTS_PROVIDERS` allowlist 内。它不能添加未注册 provider、注册 provider、启用 provider 或扩大 allowlist。`--format` 默认 `table`，可选 `json`。JSON 行包含 `provider`、`voice_id`、`name`、`gender`、`age`、`category`、`description` 和 `language`。
+列出已注册 TTS provider 的音色。`--tts-providers` 默认使用当前 `tts.providers` 列表中的全部 provider，值为逗号分隔名称，只能缩小本次查询范围；非空的 `STORYTELLER_TTS_PROVIDERS` 直接选定 `tts.providers`，allowlist 为空时该列表由配置/凭据发现构建。它不能添加未注册 provider、注册 provider、启用 provider 或扩大 allowlist。列出真实 provider 的音色时，实例化该 provider 仍需要其凭据；内置 mock 不需要真实凭据。`--format` 默认 `table`，可选 `json`。JSON 行包含 `provider`、`voice_id`、`name`、`gender`、`age`、`category`、`description` 和 `language`。
 
 下面的命令使用内置 mock provider，不需要真实凭据；真实 provider 必须先完成上面的配置步骤：
 

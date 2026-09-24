@@ -22,7 +22,7 @@ Web 启动时先用同样的内置默认值、`.env` 和进程环境创建基础
 
 Web 设置路由当前支持 `web`（不含 `host`、`port`）、`llm`、`tts` 和 `sound` 中声明的字段，以及 provider 配置字段。调度器设置不在 Web settings API 的可编辑字段中；`web.host`/`web.port` 也不是可通过该 API 修改的字段，必须在进程启动前通过环境变量或 `storyteller web --host/--port` 配置。
 
-LLM 和音效使用 `STORYTELLER_<GROUP>_PROVIDER` 选择默认 provider；没有选择器时，唯一自动发现的 provider 才会成为默认值。TTS 使用 `STORYTELLER_TTS_PROVIDERS` 作为可用名单；留空时才自动发现配置过的内置 provider。一个 provider 被配置，不等于它一定在 TTS 可用名单中。
+LLM 和音效使用 `STORYTELLER_<GROUP>_PROVIDER` 选择默认 provider；没有选择器时，唯一自动发现的 provider 才会成为默认值。TTS 使用 `STORYTELLER_TTS_PROVIDERS` 选择可用名单：非空时，该值直接成为 `tts.providers`，名单中的内置实现可以注册，即使没有从凭据中发现对应配置；留空时，`tts.providers` 才由配置/凭据发现构建。provider 被列入名单只决定它可被注册，实例化真实 provider 进行合成时仍需该 provider 的凭据。
 
 ## `.env` 示例
 
@@ -55,7 +55,7 @@ STORYTELLER_TTS_VOLCENGINE_RESOURCE_ID=seed-tts-2.0
 
 | 环境变量 | 默认值 | 作用 |
 | --- | --- | --- |
-| `STORYTELLER_TTS_PROVIDERS` | 自动发现 | 逗号分隔的配置 allowlist；未列入的 provider 不会注册为本次配置的一部分 |
+| `STORYTELLER_TTS_PROVIDERS` | 空时自动发现 | 非空时直接选择逗号分隔的 `tts.providers` 列表；未列入的 provider 不会注册为本次配置的一部分。名单本身不提供真实 provider 的凭据 |
 | `STORYTELLER_TTS_<NAME>_API_KEY` | 无 | provider 凭据；敏感 |
 | `STORYTELLER_TTS_<NAME>_MODEL` | provider 默认 | 模型标识 |
 | `STORYTELLER_TTS_<NAME>_RESOURCE_ID` | provider 默认 | 厂商资源/服务标识，不是项目内部的 `voice_id` |
@@ -64,7 +64,7 @@ STORYTELLER_TTS_VOLCENGINE_RESOURCE_ID=seed-tts-2.0
 
 OpenAI-compatible TTS 通过成组变量声明：`STORYTELLER_TTS_OPENAI_COMPATIBLE_<SLOT>_NAME`、`..._API_KEY`、`..._BASE_URL`、`..._MODEL`。如果设置了非空的 `STORYTELLER_TTS_PROVIDERS`，该 provider 的名称也必须在名单中。
 
-这里要区分四个阶段：provider 实现先由 bootstrap 注册到当前进程的 registry；环境中的凭据或 provider 配置项会使 provider 被配置/发现；非空的 `STORYTELLER_TTS_PROVIDERS` 再作为 allowlist 决定哪些已发现 provider 会进入本次配置并被注册；最后，CLI 的 `--tts-providers` 只对当前一次生成或查询做更窄的选择。CLI 名称只有在 provider 实现已注册、且 provider 已在当前配置/allowlist 中可用时才可使用；它不能注册、配置或启用 provider，也不能扩大 allowlist。仅有 `provider_config` 或凭据、但被 allowlist 排除的 provider，不能通过该 CLI 选项重新启用。
+这里要区分四个阶段：provider 实现先由 bootstrap 注册到当前进程的 registry；当 `STORYTELLER_TTS_PROVIDERS` 非空时，它直接选择本次配置的 `tts.providers`，名单中的内置实现可以从该名单注册，即使没有发现凭据或 provider 配置；当 allowlist 为空时，`tts.providers` 才由环境中的凭据或 provider 配置项发现构建。最后，CLI 的 `--tts-providers` 只对当前一次生成或查询做更窄的选择，只能从已注册的 `tts.providers` 列表中选择。它不能注册、配置或启用 provider，也不能扩大 allowlist。名单中的真实 provider 在实例化进行合成时仍需凭据。
 
 项目语义如下：
 
@@ -155,7 +155,7 @@ Web 管理员设置被校验为 JSON 对象，只允许 `web`、`llm`、`tts`、
 
 ## 配置故障排查
 
-1. 先运行 `storyteller list-voices --format json` 检查 TTS provider 是否被发现；没有 provider 时检查 key 名拼写、`STORYTELLER_TTS_PROVIDERS` allowlist 和当前工作目录的 `.env`。若使用 `--tts-providers`，只能填写已注册的 provider 名称。
+1. 先运行 `storyteller list-voices --format json` 检查 TTS provider 是否已注册并能实例化；没有 provider 时，若 `STORYTELLER_TTS_PROVIDERS` 非空则检查名单中的名称，若为空则检查 key 名拼写、provider 配置和当前工作目录的 `.env`。若使用 `--tts-providers`，只能填写已注册的 provider 名称；真实 provider 的音色查询或合成仍需要凭据。
 2. LLM 配置了多个 provider 却没有默认值时，设置 `STORYTELLER_LLM_PROVIDER` 或使用 `generate --default-llm-provider`。
 3. 音效报 `No sound provider configured` 或多个 provider 冲突时，设置 `STORYTELLER_SOUND_PROVIDER` 或传 `--sound-provider`，并确认音效 key 独立配置。
 4. 目录不符合预期时打印或检查 `STORYTELLER_DATA_DIR`、`STORYTELLER_PROJECT_DIR`、`STORYTELLER_OUTPUT_DIR` 和 `STORYTELLER_SOUND_DIR`；相对路径以启动命令的当前目录为基准。
