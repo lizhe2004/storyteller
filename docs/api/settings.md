@@ -106,7 +106,7 @@ Content-Type: application/json
 {"paths": ["web.concurrency", "llm.provider_config.writer.model", "tts.provider_config.aliyun.workspace_id"]}
 ```
 
-允许重置的直接路径包括 `web.passwords`、`web.secret`、`web.token_ttl_days`、`web.concurrency`、`web.rate_limit_per_min`、`web.filler_voice`，LLM/TTS 的 `providers` 和 `default_provider`，音效的 `enabled`、`dir`、`providers`，以及 provider 配置的 `type`、`api_key`、`model`、`models`、`endpoint`、`base_url`、`resource_id`、`workspace_id`。不在白名单中的路径返回 422。成功响应与 PATCH 相同，`operation` 为 `reset`。
+允许重置的直接路径包括 `web.passwords`、`web.secret`、`web.token_ttl_days`、`web.concurrency`、`web.rate_limit_per_min`、`web.filler_voice`，LLM/TTS 的 `providers` 和 `default_provider`，音效的 `enabled`、`dir`、`providers`，以及 provider 配置的 `type`、`api_key`、`model`、`models`、`endpoint`、`base_url`、`resource_id`、`workspace_id`。不在白名单中的路径返回 422。成功响应与 PATCH 相同，只包含 `version`、`updated_at`、`effective_for`、`message` 和 `settings`；`operation: "reset"` 只出现在之后由 `GET /api/settings/history` 返回的历史条目中。
 
 ## Provider 连接测试
 
