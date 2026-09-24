@@ -39,6 +39,7 @@ storyteller generate "一只小猫的冒险"
 
 其他常用命令：
 
+- 不带子命令运行 `storyteller`：进入交互式向导，依次填写主题、长度、复杂度和输出格式。
 - `storyteller continue <project_id>`：复用已保存的状态和分段音频继续运行。
 - `storyteller list-projects`：列出项目及状态。
 - `storyteller list-voices`：列出已配置 provider 的音色，可用 `--format json`。
@@ -54,7 +55,10 @@ storyteller generate "一只小猫的冒险"
 `audio/<line_id>.<format>` 分段音频，以及启用音效时的项目级 `sounds/`。全局
 `make-sound` 音效库位于 `.storyteller/sounds/`；`project_id` 保存在
 `project.json` 中且不会因目录重命名改变。项目状态按
-`topic_collected → script_generated → voice_configured → generating_audio → audio_generated → completed` 推进，中断后可用 `continue` 续作。
+CLI 会持久化 `topic_collected`、`script_generated`、`voice_configured`、
+`audio_generated` 和 `completed` 等状态；当前 CLI Pipeline 不把
+`generating_audio` 作为开始合成时写入的持久化状态。Web 任务取消时会保存
+`generating_audio`，以便之后通过 `continue` 续作；中断后已保存的分段音频会复用。
 
 ## 音色匹配与演法指令
 
@@ -64,6 +68,25 @@ storyteller generate "一只小猫的冒险"
 ## Provider 与音效
 
 LLM 支持火山引擎和 OpenAI 兼容服务；TTS 支持火山引擎、阿里云百炼和 OpenAI 兼容服务；音效支持火山引擎 seed-audio。阿里云 HTTP TTS 需要单独的 API Key，Web 实时 TTS 还需要按 `.env.example` 配置业务空间和相应依赖。音效默认关闭，启用时必须配置独立的 `STORYTELLER_SOUND_<NAME>_API_KEY`，不能复用 TTS Key。
+
+## 接入 OpenAI 兼容服务
+
+LLM 与 TTS 都可以追加 OpenAI 兼容 provider。至少需要设置 provider 类型、API Key、基础 URL 和模型；LLM 还要通过
+`STORYTELLER_LLM_PROVIDER` 选择它，TTS 则加入 `STORYTELLER_TTS_PROVIDERS`：
+
+```bash
+STORYTELLER_LLM_PROVIDER=my_llm
+STORYTELLER_LLM_MY_LLM_TYPE=openai_compatible
+STORYTELLER_LLM_MY_LLM_API_KEY=your-key
+STORYTELLER_LLM_MY_LLM_BASE_URL=https://example.com/v1
+STORYTELLER_LLM_MY_LLM_MODEL=chat-model
+
+STORYTELLER_TTS_PROVIDERS=volcengine,my-tts
+STORYTELLER_TTS_OPENAI_COMPATIBLE_MY_TTS_NAME=my-tts
+STORYTELLER_TTS_OPENAI_COMPATIBLE_MY_TTS_API_KEY=your-key
+STORYTELLER_TTS_OPENAI_COMPATIBLE_MY_TTS_BASE_URL=https://example.com/v1
+STORYTELLER_TTS_OPENAI_COMPATIBLE_MY_TTS_MODEL=tts-model
+```
 
 ## 架构与开发
 
@@ -75,7 +98,13 @@ pytest
 pytest tests/unit/test_voice_matcher.py
 ```
 
-Web 后端的登录、实时 TTS 和调度器细节目前保留在本 README；本地启动默认绑定 `127.0.0.1`，Docker 运行方式见 [Docker 部署文档](docs/deployment-docker.md)。
+本地启动默认绑定 `127.0.0.1`，Docker 运行方式见 [Docker 部署文档](docs/deployment-docker.md)。
+
+### Web 登录与实时 TTS
+
+设置 `STORYTELLER_WEB_PASSWORDS` 后即可登录；未设置时，首次启动会在日志中输出一次性初始化码，用它设置至少 8 位密码。WebSocket `/ws` 使用 cookie 或 token 鉴权，前端构建产物由 FastAPI 托管。
+
+Web 的开场提示、opening 和正文可以使用实时 TTS；provider 不支持实时、实时会话失败或入队超时时，会自动降级为整行 HTTP TTS，CLI 不经过这条链路。火山实时 TTS 使用内置 `websocket-client`；阿里云实时 TTS 需要额外的 DashScope 依赖，未安装时回退到 HTTP TTS。调度器按 `(provider, model)` 维护独立队列，可用 `.env.example` 中的 `STORYTELLER_TTS_SCHEDULER_*` 变量调整并发、限速、队列和超时。
 
 ## Docker 快速入口
 

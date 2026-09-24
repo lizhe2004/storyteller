@@ -88,7 +88,7 @@ storyteller web --host 127.0.0.1 --port 8000
 
 ## 产物位置
 
-默认数据根目录是 `./.storyteller`。每个项目保存在 `stories/<project_id>/` 下，常见文件包括：
+默认数据根目录是 `./.storyteller`。项目首次创建时暂存于 `stories/<project_id>/`，剧本生成后由 `ProjectManager` 改名为日期和标题目录；通常应按下面的最终布局查找项目：
 
 ```text
 .storyteller/
