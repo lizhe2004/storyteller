@@ -8,7 +8,8 @@
 
 ## 日常使用
 
-- README 中的命令参考和 Provider 说明：当前尚未拆分为独立主题文档
+- [配置参考](configuration.md)：环境变量、Provider、目录、调度器和 Web runtime settings
+- [CLI 参考](cli.md)：生成、续作、音色、音效、Web 和交互式向导
 
 ## 理解内部机制
 
@@ -18,7 +19,7 @@
 
 - [Docker 部署](deployment-docker.md)：Compose、数据持久化、升级和备份
 - [TTS 厂商参考资料](reference/tts/)：阿里云、火山引擎和 Qwen 的原始接口资料
-- README 和现有源码：Provider 配置与排障的当前事实来源
+- [配置参考](configuration.md)：Provider 配置与排障的当前事实来源
 
 ## 开发贡献
 
