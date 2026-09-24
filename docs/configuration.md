@@ -62,7 +62,9 @@ STORYTELLER_TTS_VOLCENGINE_RESOURCE_ID=seed-tts-2.0
 | `STORYTELLER_TTS_<NAME>_WORKSPACE_ID` | 无 | 需要业务空间的 provider 的空间标识 |
 | `STORYTELLER_TTS_<NAME>_MODELS` | catalog 中全部模型 | 逗号分隔的模型白名单；当前主要用于阿里云 |
 
-OpenAI-compatible TTS 通过成组变量声明：`STORYTELLER_TTS_OPENAI_COMPATIBLE_<SLOT>_NAME`、`..._API_KEY`、`..._BASE_URL`、`..._MODEL`。如果设置了非空的 `STORYTELLER_TTS_PROVIDERS`，该 provider 的名称也必须在名单中。CLI 的 `--tts-providers` 只能在已经注册/配置的 provider 中进一步限制本次生成或查询；它不能添加 provider，也不能扩大 `STORYTELLER_TTS_PROVIDERS` 的 allowlist。
+OpenAI-compatible TTS 通过成组变量声明：`STORYTELLER_TTS_OPENAI_COMPATIBLE_<SLOT>_NAME`、`..._API_KEY`、`..._BASE_URL`、`..._MODEL`。如果设置了非空的 `STORYTELLER_TTS_PROVIDERS`，该 provider 的名称也必须在名单中。
+
+这里要区分四个阶段：provider 实现先由 bootstrap 注册到当前进程的 registry；环境中的凭据或 provider 配置项会使 provider 被配置/发现；非空的 `STORYTELLER_TTS_PROVIDERS` 再作为 allowlist 决定哪些已发现 provider 会进入本次配置并被注册；最后，CLI 的 `--tts-providers` 只对当前一次生成或查询做更窄的选择。CLI 名称只有在 provider 实现已注册、且 provider 已在当前配置/allowlist 中可用时才可使用；它不能注册、配置或启用 provider，也不能扩大 allowlist。仅有 `provider_config` 或凭据、但被 allowlist 排除的 provider，不能通过该 CLI 选项重新启用。
 
 项目语义如下：
 

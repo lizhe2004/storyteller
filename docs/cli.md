@@ -15,7 +15,7 @@ storyteller generate TOPIC [OPTIONS]
 | `--length, -l` | `medium`; `short`、`medium`、`long` | 无对应环境变量 |
 | `--complexity, -c` | `simple`; `simple`、`medium`、`rich` | 无 |
 | `--output-format, -f` | 配置值，未配置为 `mp3` | 无专用环境变量；CLI 选项仅覆盖本次命令 |
-| `--tts-providers` | 未指定时使用配置/注册表中的 provider；逗号分隔 | 只在已注册/配置的 provider 中限制本次生成；不添加或扩大 `STORYTELLER_TTS_PROVIDERS` allowlist |
+| `--tts-providers` | 未指定时使用当前配置已注册的 provider；逗号分隔 | 只在本次调用中进一步限制 provider；不能注册 provider，也不能启用或扩大 `STORYTELLER_TTS_PROVIDERS` allowlist |
 | `--voice-ids` | 未限制 | 无；逗号分隔的项目 voice id 集合 |
 | `--default-llm-provider` | 配置默认值 | 覆盖 `STORYTELLER_LLM_PROVIDER` |
 | `--dry-run` | 关闭 | 无；只生成并保存剧本，不生成音频 |
@@ -33,8 +33,18 @@ storyteller generate TOPIC [OPTIONS]
 ```bash
 storyteller generate "月球上的小猫" --length short --output-format mp3
 storyteller generate "森林里的雨夜" --dry-run --voice-matcher rule
-storyteller generate "海边探险" --tts-providers aliyun,volcengine --with-sfx --sound-provider volcengine
+# 先配置并启用 aliyun、volcengine，再将 replace-me 换成真实凭据：
+STORYTELLER_TTS_PROVIDERS=aliyun,volcengine \
+STORYTELLER_TTS_ALIYUN_API_KEY=replace-me \
+STORYTELLER_TTS_VOLCENGINE_API_KEY=replace-me \
+storyteller generate "海边探险" --tts-providers aliyun,volcengine
 ```
+
+`--tts-providers` 中的每个名称必须同时满足两个条件：对应的 provider
+实现已经注册到本次进程的 registry，并且该 provider 已从当前配置/凭据中发现且
+在 `STORYTELLER_TTS_PROVIDERS` allowlist 内（未设置 allowlist 时才可由凭据自动发现）。
+CLI 选项只是本次调用的限制，不能注册、配置或启用 provider；只写一个凭据但未被
+allowlist 启用时，名称仍不可用。
 
 成功时打印 `Done! Output: ...`；`--dry-run` 打印剧本保存路径。最终文件位于项目目录下的 `story.<format>`。
 
@@ -44,7 +54,7 @@ storyteller generate "海边探险" --tts-providers aliyun,volcengine --with-sfx
 storyteller continue PROJECT_ID [OPTIONS]
 ```
 
-从项目断点继续生成。`PROJECT_ID` 可以是稳定项目 id 或项目目录名。`--output-format`（默认配置值/`mp3`）、`--tts-providers`、`--voice-ids`、`--data-dir`、`--strict-mode`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--default-llm-provider` 和 `--sound-provider` 的取值与 `generate` 相同；它们都只影响本次续作。`--tts-providers` 只能从已注册/配置的 provider 中进一步限制本次续作，不能扩展配置 allowlist。示例：
+从项目断点继续生成。`PROJECT_ID` 可以是稳定项目 id 或项目目录名。`--output-format`（默认配置值/`mp3`）、`--tts-providers`、`--voice-ids`、`--data-dir`、`--strict-mode`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--default-llm-provider` 和 `--sound-provider` 的取值与 `generate` 相同；它们都只影响本次续作。`--tts-providers` 只能从当前配置已注册且可用的 provider 中进一步限制本次续作，不能扩展配置 allowlist。示例：
 
 ```bash
 storyteller continue 2026-09-24-小猫的冒险 --output-format wav --sound-provider mock
@@ -68,9 +78,13 @@ storyteller list-projects --data-dir ./demo-data
 storyteller list-voices [--tts-providers NAMES] [--format table|json]
 ```
 
-列出已注册 TTS provider 的音色。`--tts-providers` 默认使用配置的全部 provider，值为逗号分隔名称，只能缩小本次查询范围；它不能添加未注册 provider，也不能扩大 `STORYTELLER_TTS_PROVIDERS` 的 allowlist。`--format` 默认 `table`，可选 `json`。JSON 行包含 `provider`、`voice_id`、`name`、`gender`、`age`、`category`、`description` 和 `language`。
+列出已注册 TTS provider 的音色。`--tts-providers` 默认使用当前配置已注册的全部 provider，值为逗号分隔名称，只能缩小本次查询范围；每个名称还必须已从当前配置/凭据中发现并处于 `STORYTELLER_TTS_PROVIDERS` allowlist 内。它不能添加未注册 provider、注册 provider、启用 provider 或扩大 allowlist。`--format` 默认 `table`，可选 `json`。JSON 行包含 `provider`、`voice_id`、`name`、`gender`、`age`、`category`、`description` 和 `language`。
+
+下面的命令使用内置 mock provider，不需要真实凭据；真实 provider 必须先完成上面的配置步骤：
 
 ```bash
+STORYTELLER_TTS_PROVIDERS=mock \
+STORYTELLER_TTS_MOCK_TYPE=mock \
 storyteller list-voices --tts-providers mock --format json
 ```
 
