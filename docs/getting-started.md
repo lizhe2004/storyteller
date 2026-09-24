@@ -55,9 +55,13 @@ storyteller generate "数字积木的故事" \
   --length medium \
   --complexity rich \
   --output-format mp3 \
-  --voice-matcher llm \
-  --with-sfx
+  --voice-matcher llm
 ```
+
+上面的最小路径不启用音效。`--with-sfx` 只有在已配置音效 provider（例如
+`STORYTELLER_SOUND_VOLCENGINE_API_KEY`，以及需要时的
+`STORYTELLER_SOUND_PROVIDER=volcengine`）后才可使用；音效配置也要求对应的
+seed-audio 能力。若未配置音效 provider，请不要添加该选项。
 
 生成过程会依次请求剧本、音色和 TTS 服务；短篇通常需要几十秒到几分钟。需要更详细的终端进度时，可加 `--progress simple` 或 `--progress detailed`。
 
@@ -76,10 +80,11 @@ storyteller generate "月亮婆婆" --dry-run
 安装 `.[web]` 后执行：
 
 ```bash
-storyteller web --host 0.0.0.0 --port 8000
+storyteller web --host 127.0.0.1 --port 8000
 ```
 
-本地访问 <http://localhost:8000>。如果没有设置 `STORYTELLER_WEB_PASSWORDS`，首次启动会在日志中输出一次性初始化码，用它设置至少 8 位的 Web 密码。Web 相关的实时 TTS 需要额外能力时，再按 `.env.example` 配置对应 provider。
+也可以省略 `--host`，当前默认值就是 `127.0.0.1`。本地访问
+<http://localhost:8000>。如果没有设置 `STORYTELLER_WEB_PASSWORDS`，首次启动会在日志中输出一次性初始化码，用它设置至少 8 位的 Web 密码。Web 相关的实时 TTS 需要额外能力时，再按 `.env.example` 配置对应 provider。
 
 ## 产物位置
 
@@ -87,17 +92,25 @@ storyteller web --host 0.0.0.0 --port 8000
 
 ```text
 .storyteller/
-├── stories/<project_id>/
-│   ├── project.json
-│   ├── story.script.json
-│   ├── story.mp3
-│   ├── audio/<line_id>.mp3 # 逐句音频，用于断点续作
-│   └── sounds/             # 本项目音效（启用音效时）
-├── sounds/                 # 跨项目复用的音效库
+├── stories/
+│   └── <YYYY-MM-DD>-<story-title>[-2]/
+│       ├── project.json
+│       ├── story.script.json
+│       ├── story.mp3
+│       ├── audio/<line_id>.mp3 # 逐句音频，用于断点续作
+│       └── sounds/             # 本项目音效（启用音效时）
+├── sounds/                 # make-sound/list-sounds 使用的全局音效库
 └── logs/storyteller.log
 ```
 
-可用 `--data-dir` 或 `STORYTELLER_DATA_DIR` 更换数据根目录；`STORYTELLER_OUTPUT_DIR` 和 `STORYTELLER_PROJECT_DIR` 可以分别覆盖故事输出与项目状态目录。
+首次生成剧本后，`ProjectManager` 会把项目目录从临时的项目 ID 目录改名为
+`<创建日期>-<剧本标题>`；同名目录会追加 `-2` 等后缀。`project.json` 内的
+`project_id` 保持稳定，`continue` 接受项目 ID、目录名或唯一前缀。可用
+`--data-dir` 或 `STORYTELLER_DATA_DIR` 更换数据根目录；
+当前 Pipeline/ProjectManager 实际使用 `STORYTELLER_PROJECT_DIR` 覆盖项目根目录；
+默认值为 `<data-dir>/stories`，项目状态、剧本、分段音频和最终音频都位于同一项目
+目录中。`STORYTELLER_OUTPUT_DIR` 虽可被配置对象读取，但不是当前 Pipeline 的
+项目目录选择项。
 
 中断后可使用已保存的项目 ID 继续：
 

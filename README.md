@@ -28,6 +28,55 @@ storyteller generate "一只小猫的冒险"
 
 完整的本地安装、配置、首次生成、Web 启动和产物说明见[首次使用指南](docs/getting-started.md)。
 
+## 命令参考
+
+`storyteller generate <topic>` 支持 `--length short|medium|long`、
+`--complexity simple|medium|rich`、`--output-format mp3|wav|ogg`、
+`--tts-providers`、`--voice-ids`、`--voice-matcher llm|rule`、
+`--dry-run`、`--data-dir`、`--progress quiet|simple|detailed` 和
+`--strict-mode`。`--with-sfx` 仅适用于已配置音效 provider 的运行；完整的
+首次运行配置见[首次使用指南](docs/getting-started.md)。
+
+其他常用命令：
+
+- `storyteller continue <project_id>`：复用已保存的状态和分段音频继续运行。
+- `storyteller list-projects`：列出项目及状态。
+- `storyteller list-voices`：列出已配置 provider 的音色，可用 `--format json`。
+- `storyteller make-sound "<prompt>"` 与 `storyteller list-sounds [query]`：管理全局音效库。
+
+`--dry-run` 只生成剧本 JSON，不合成音频。生成是网络密集型操作，短篇通常需要几十秒到几分钟；`--progress detailed` 可查看逐句和音效进度。
+
+## 产物与项目状态
+
+默认数据根目录是 `./.storyteller`。项目完成剧本生成后，目录会被重命名为
+`.storyteller/stories/<YYYY-MM-DD>-<story-title>[-2]/`，其中包含
+`project.json`、`story.script.json`、最终的 `story.mp3`（或所选格式）、
+`audio/<line_id>.<format>` 分段音频，以及启用音效时的项目级 `sounds/`。全局
+`make-sound` 音效库位于 `.storyteller/sounds/`；`project_id` 保存在
+`project.json` 中且不会因目录重命名改变。项目状态按
+`topic_collected → script_generated → voice_configured → generating_audio → audio_generated → completed` 推进，中断后可用 `continue` 续作。
+
+## 音色匹配与演法指令
+
+默认 `llm` 模式先判断角色性别/年龄段，再从已配置音色中精选；失败时回退到确定性规则，可用 `--voice-matcher rule` 或
+`STORYTELLER_VOICE_MATCHER=rule` 强制规则匹配。每句对话可带演法指令，火山 TTS 通过 `additions.context_texts` 传递；阿里云 provider 将演法指令并入 `instruction`，不支持对应的上文引用机制。
+
+## Provider 与音效
+
+LLM 支持火山引擎和 OpenAI 兼容服务；TTS 支持火山引擎、阿里云百炼和 OpenAI 兼容服务；音效支持火山引擎 seed-audio。阿里云 HTTP TTS 需要单独的 API Key，Web 实时 TTS 还需要按 `.env.example` 配置业务空间和相应依赖。音效默认关闭，启用时必须配置独立的 `STORYTELLER_SOUND_<NAME>_API_KEY`，不能复用 TTS Key。
+
+## 架构与开发
+
+核心流程由 `core/pipeline.py` 编排剧本、音色、TTS、音频拼接和可选混音；`core/project.py` 负责项目状态和目录；`providers/` 提供 LLM、TTS、音效实现；`web/` 提供 Web 后端和实时 TTS。开发测试入口如下：
+
+```bash
+pip install -e ".[dev]"
+pytest
+pytest tests/unit/test_voice_matcher.py
+```
+
+Web 后端的登录、实时 TTS 和调度器细节目前保留在本 README；本地启动默认绑定 `127.0.0.1`，Docker 运行方式见 [Docker 部署文档](docs/deployment-docker.md)。
+
 ## Docker 快速入口
 
 ```bash
