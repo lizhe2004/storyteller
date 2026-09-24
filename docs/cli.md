@@ -1,6 +1,6 @@
 # CLI 参考
 
-入口命令是 `storyteller`；在源码工作区也可使用 `python -m storyteller.cli.main`。不带子命令时进入交互式向导。环境配置来自当前目录的 `.env` 和 `STORYTELLER_*` 变量；命令行选项只覆盖本次运行。完整配置语义见 [`configuration.md`](configuration.md)。
+入口命令是 `storyteller`；在源码工作区也可使用 `python -m storyteller.cli.main`。不带子命令时进入交互式向导。CLI 每次启动都从当前目录的 `.env` 和 `STORYTELLER_*` 变量创建进程配置；命令行选项只覆盖本次运行。CLI 不读取 Web 的 `settings.json`。完整配置语义见 [`configuration.md`](configuration.md)。
 
 ## `generate`
 
@@ -15,7 +15,7 @@ storyteller generate TOPIC [OPTIONS]
 | `--length, -l` | `medium`; `short`、`medium`、`long` | 无对应环境变量 |
 | `--complexity, -c` | `simple`; `simple`、`medium`、`rich` | 无 |
 | `--output-format, -f` | 配置值，未配置为 `mp3` | 无专用环境变量；CLI 选项仅覆盖本次命令 |
-| `--tts-providers` | 未指定时使用配置/注册表 provider；逗号分隔 | 覆盖 `STORYTELLER_TTS_PROVIDERS` 对本次生成的限制 |
+| `--tts-providers` | 未指定时使用配置/注册表中的 provider；逗号分隔 | 只在已注册/配置的 provider 中限制本次生成；不添加或扩大 `STORYTELLER_TTS_PROVIDERS` allowlist |
 | `--voice-ids` | 未限制 | 无；逗号分隔的项目 voice id 集合 |
 | `--default-llm-provider` | 配置默认值 | 覆盖 `STORYTELLER_LLM_PROVIDER` |
 | `--dry-run` | 关闭 | 无；只生成并保存剧本，不生成音频 |
@@ -44,7 +44,7 @@ storyteller generate "海边探险" --tts-providers aliyun,volcengine --with-sfx
 storyteller continue PROJECT_ID [OPTIONS]
 ```
 
-从项目断点继续生成。`PROJECT_ID` 可以是稳定项目 id 或项目目录名。`--output-format`（默认配置值/`mp3`）、`--tts-providers`、`--voice-ids`、`--data-dir`、`--strict-mode`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--default-llm-provider` 和 `--sound-provider` 的取值与 `generate` 相同；它们都只影响本次续作。示例：
+从项目断点继续生成。`PROJECT_ID` 可以是稳定项目 id 或项目目录名。`--output-format`（默认配置值/`mp3`）、`--tts-providers`、`--voice-ids`、`--data-dir`、`--strict-mode`、`--voice-matcher`、`--with-sfx`、`--sound-dir`、`--default-llm-provider` 和 `--sound-provider` 的取值与 `generate` 相同；它们都只影响本次续作。`--tts-providers` 只能从已注册/配置的 provider 中进一步限制本次续作，不能扩展配置 allowlist。示例：
 
 ```bash
 storyteller continue 2026-09-24-小猫的冒险 --output-format wav --sound-provider mock
@@ -68,7 +68,7 @@ storyteller list-projects --data-dir ./demo-data
 storyteller list-voices [--tts-providers NAMES] [--format table|json]
 ```
 
-列出已注册 TTS provider 的音色。`--tts-providers` 默认使用配置的全部 provider，值为逗号分隔名称，覆盖 `STORYTELLER_TTS_PROVIDERS` 的本次查询范围；`--format` 默认 `table`，可选 `json`。JSON 行包含 `provider`、`voice_id`、`name`、`gender`、`age`、`category`、`description` 和 `language`。
+列出已注册 TTS provider 的音色。`--tts-providers` 默认使用配置的全部 provider，值为逗号分隔名称，只能缩小本次查询范围；它不能添加未注册 provider，也不能扩大 `STORYTELLER_TTS_PROVIDERS` 的 allowlist。`--format` 默认 `table`，可选 `json`。JSON 行包含 `provider`、`voice_id`、`name`、`gender`、`age`、`category`、`description` 和 `language`。
 
 ```bash
 storyteller list-voices --tts-providers mock --format json

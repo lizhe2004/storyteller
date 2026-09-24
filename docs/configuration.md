@@ -4,12 +4,23 @@
 
 ## 配置来源和优先级
 
-配置按以下顺序合并，后者覆盖前者：
+CLI 进程配置和 Web runtime settings 是两条配置路径，不能混为一个全局优先级链。
+
+### CLI 进程配置
+
+每次 CLI 命令启动时，`Config.from_env()` 按以下顺序读取，后者覆盖前者：
 
 1. 内置默认值（`Config.DEFAULTS`）。
 2. 当前工作目录向上查找的 `.env`，以及进程环境变量。显式传给 `Config.from_env(env_file)` 的文件优先用于加载；环境变量仍可覆盖文件中的同名值。
-3. Web 管理员在运行时保存的覆盖项，写入 `<data_dir>/config/settings.json`。它们覆盖环境配置；空的敏感字段不会清除已有值，必须使用 Web 的 reset 操作。
-4. 当前 CLI 命令的选项，例如 `--data-dir`、`--progress` 或 `--sound-provider`。这些选项只影响本次命令；它们不会写入 `.env` 或 Web 设置文件。
+3. 当前 CLI 命令的选项，例如 `--data-dir`、`--progress` 或 `--sound-provider`。这些选项只影响本次命令；它们不会写入 `.env` 或 Web 设置文件。
+
+CLI 不读取 Web 的 `<data_dir>/config/settings.json`，所以 Web 管理员保存的 runtime override 不会改变 CLI 命令。反过来，CLI 选项也不会改变 Web 进程的 runtime settings。
+
+### Web runtime settings
+
+Web 启动时先用同样的内置默认值、`.env` 和进程环境创建基础 `Config`，再由 `RuntimeSettingsStore` 读取 `<data_dir>/config/settings.json` 并为 Web 应用创建快照。Web API 保存的覆盖项只对 Web 后续读取和新任务快照生效；空的敏感字段不会清除已有值。
+
+Web 设置路由当前支持 `web`（不含 `host`、`port`）、`llm`、`tts` 和 `sound` 中声明的字段，以及 provider 配置字段。调度器设置不在 Web settings API 的可编辑字段中；`web.host`/`web.port` 也不是可通过该 API 修改的字段，必须在进程启动前通过环境变量或 `storyteller web --host/--port` 配置。
 
 LLM 和音效使用 `STORYTELLER_<GROUP>_PROVIDER` 选择默认 provider；没有选择器时，唯一自动发现的 provider 才会成为默认值。TTS 使用 `STORYTELLER_TTS_PROVIDERS` 作为可用名单；留空时才自动发现配置过的内置 provider。一个 provider 被配置，不等于它一定在 TTS 可用名单中。
 
@@ -44,14 +55,14 @@ STORYTELLER_TTS_VOLCENGINE_RESOURCE_ID=seed-tts-2.0
 
 | 环境变量 | 默认值 | 作用 |
 | --- | --- | --- |
-| `STORYTELLER_TTS_PROVIDERS` | 自动发现 | 逗号分隔的启用名单；CLI 的 `--tts-providers` 可对单次生成再做限制 |
+| `STORYTELLER_TTS_PROVIDERS` | 自动发现 | 逗号分隔的配置 allowlist；未列入的 provider 不会注册为本次配置的一部分 |
 | `STORYTELLER_TTS_<NAME>_API_KEY` | 无 | provider 凭据；敏感 |
 | `STORYTELLER_TTS_<NAME>_MODEL` | provider 默认 | 模型标识 |
 | `STORYTELLER_TTS_<NAME>_RESOURCE_ID` | provider 默认 | 厂商资源/服务标识，不是项目内部的 `voice_id` |
 | `STORYTELLER_TTS_<NAME>_WORKSPACE_ID` | 无 | 需要业务空间的 provider 的空间标识 |
 | `STORYTELLER_TTS_<NAME>_MODELS` | catalog 中全部模型 | 逗号分隔的模型白名单；当前主要用于阿里云 |
 
-OpenAI-compatible TTS 通过成组变量声明：`STORYTELLER_TTS_OPENAI_COMPATIBLE_<SLOT>_NAME`、`..._API_KEY`、`..._BASE_URL`、`..._MODEL`。如果设置了非空的 `STORYTELLER_TTS_PROVIDERS`，该 provider 的名称也必须在名单中。
+OpenAI-compatible TTS 通过成组变量声明：`STORYTELLER_TTS_OPENAI_COMPATIBLE_<SLOT>_NAME`、`..._API_KEY`、`..._BASE_URL`、`..._MODEL`。如果设置了非空的 `STORYTELLER_TTS_PROVIDERS`，该 provider 的名称也必须在名单中。CLI 的 `--tts-providers` 只能在已经注册/配置的 provider 中进一步限制本次生成或查询；它不能添加 provider，也不能扩大 `STORYTELLER_TTS_PROVIDERS` 的 allowlist。
 
 项目语义如下：
 
@@ -121,18 +132,18 @@ API key、密码列表、Web secret 和 access password 都属于敏感值。示
 | `STORYTELLER_TTS_SCHEDULER_QUEUE_TIMEOUT_SECONDS` | 不超时 | 排队超时；空或 `0` 表示一直排队 |
 | `STORYTELLER_TTS_SCHEDULER_LIMITS_<PROVIDER>_<FIELD>` | 使用默认值 | 对 provider 覆盖并发、限速、队列大小或超时；provider 名可含下划线 |
 
-模型级别的设置也存在于内部 config 结构（`tts.scheduler.limits.<provider>.<model>`），可由 Web runtime settings 覆盖；环境变量形式只提供上述默认及 provider 级别入口。
+模型级别的设置也存在于内部 config 结构（`tts.scheduler.limits.<provider>.<model>`）。当前环境变量只提供上述默认及 provider 级别入口；Web settings API 不提供 scheduler 字段的更新或 reset 路由，因此调度器配置需要在启动 Web 进程前通过环境变量设置。
 
 ## 运行时设置
 
-Web 管理员设置被校验为 JSON 对象，只允许 `web`、`llm`、`tts`、`sound` 四个顶层组。每次 update 原子写入 `<data_dir>/config/settings.json`；写入失败会保留旧文件和旧快照。`reset` 接受非空 dotted path，例如 `web.port` 或 `llm.provider_config.my-llm.api_key`，并恢复到环境值或默认值。
+Web 管理员设置被校验为 JSON 对象，只允许 `web`、`llm`、`tts`、`sound` 四个顶层组。每次 update 原子写入 `<data_dir>/config/settings.json`；写入失败会保留旧文件和旧快照。`reset` 只接受路由允许的 dotted path：`web` 的直接字段（不含 `host`、`port`）、`llm`/`tts`/`sound` 的直接字段，或 provider 配置中的已知字段，例如 `llm.provider_config.my-llm.api_key`。`web.port` 和 scheduler 路径不能通过该 API reset。
 
 如果 settings 文件损坏，应用会回退到环境配置并在公开快照的 `config_error` 中报告错误；修复或移走损坏文件后重启 Web。运行时配置的公开值包含 `sources`，可区分 `default`、`environment` 和 `admin`。
 
 ## 配置生效时机
 
-- `.env` 和进程环境：每个 CLI 命令启动时读取；已启动的 Web 进程不会自动重读环境。
-- CLI 选项：仅当前命令，优先于同名环境配置。
+- `.env` 和进程环境：每个 CLI 命令启动时读取；Web 进程在启动时读取一次，已启动的 Web 进程不会自动重读环境。
+- CLI 选项：仅当前 CLI 命令，优先于同名环境配置；不会读取或写入 Web runtime settings。
 - Web runtime settings：保存后用于后续读取和新任务快照；端口、host、依赖安装等进程级设置需要重启，且不能通过 `settings.json` 代替 `storyteller web --host/--port`。
 - Provider SDK、模型、resource id 或 API key 的更换：建议重启 Web，确保注册表和任务使用新配置。
 
@@ -142,9 +153,9 @@ Web 管理员设置被校验为 JSON 对象，只允许 `web`、`llm`、`tts`、
 
 ## 配置故障排查
 
-1. 先运行 `storyteller list-voices --format json` 检查 TTS provider 是否被发现；没有 provider 时检查 key 名拼写、`STORYTELLER_TTS_PROVIDERS` allowlist 和当前工作目录的 `.env`。
+1. 先运行 `storyteller list-voices --format json` 检查 TTS provider 是否被发现；没有 provider 时检查 key 名拼写、`STORYTELLER_TTS_PROVIDERS` allowlist 和当前工作目录的 `.env`。若使用 `--tts-providers`，只能填写已注册的 provider 名称。
 2. LLM 配置了多个 provider 却没有默认值时，设置 `STORYTELLER_LLM_PROVIDER` 或使用 `generate --default-llm-provider`。
 3. 音效报 `No sound provider configured` 或多个 provider 冲突时，设置 `STORYTELLER_SOUND_PROVIDER` 或传 `--sound-provider`，并确认音效 key 独立配置。
 4. 目录不符合预期时打印或检查 `STORYTELLER_DATA_DIR`、`STORYTELLER_PROJECT_DIR`、`STORYTELLER_OUTPUT_DIR` 和 `STORYTELLER_SOUND_DIR`；相对路径以启动命令的当前目录为基准。
-5. Web 设置没有覆盖环境值时检查 `settings.json` 所在的 data root、顶层组名和 `config_error`；敏感字段的空字符串不会删除已有 admin 值，使用 reset。
+5. Web 设置没有覆盖环境值时检查 `settings.json` 所在的 data root、顶层组名和 `config_error`；敏感字段的空字符串不会删除已有 admin 值，使用支持的 reset 路径。CLI 不读取这个文件。
 6. 实时 Web TTS 排队或降级时检查 scheduler 的队列、并发和超时配置；这些设置只影响 Web 流式路径，不是 CLI 生成失败的首要原因。
