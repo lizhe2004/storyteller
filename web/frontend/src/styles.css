@@ -192,3 +192,8 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--teal);outline-offse
 .character-chip:hover .voice-popover,.character-chip:focus .voice-popover{display:block}
 .voice-popover dl{display:grid;grid-template-columns:auto 1fr;gap:5px 12px;margin:10px 0 0;font-size:11px;line-height:1.4}
 .voice-popover dt{color:#91a2b6}.voice-popover dd{margin:0;color:#d0dbe7;overflow-wrap:anywhere}
+.story-item{display:flex;align-items:center;gap:12px;border-bottom:1px solid #25374f}
+.story-item .story-row{border-bottom:0;flex:1;min-width:0}
+.story-delete{flex:0 0 auto;padding:6px 10px;border:1px solid #53343a;border-radius:4px;background:transparent;color:#d98a7c;font-size:11px;cursor:pointer;transition:border-color .18s,color .18s}
+.story-delete:hover:not(:disabled){border-color:#b56354;color:#f2a48f}
+.story-delete:disabled{opacity:.55;cursor:wait}

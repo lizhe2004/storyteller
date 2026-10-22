@@ -829,6 +829,9 @@ class Pipeline:
                     )
                 except Exception:
                     duration_ms = 0
+            if duration_ms:
+                # Persist the measured duration for the web detail API.
+                line.metadata["duration_ms"] = duration_ms
             timing[line.line_id] = (
                 elapsed_ms / 1000.0,
                 duration_ms / 1000.0,

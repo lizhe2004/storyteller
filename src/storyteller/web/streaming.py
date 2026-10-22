@@ -1250,6 +1250,9 @@ class StreamOrchestrator:
                 line.audio_path = str(out); line_paths.append(str(out))
                 from pydub import AudioSegment
                 duration_ms = len(AudioSegment.from_file(str(out)))
+                # Cache the post-mix duration so the detail API can return it
+                # without decoding every segment again.
+                line.metadata["duration_ms"] = duration_ms
                 job.emit({"type": "line_end", "line_id": line.line_id, "duration_ms": duration_ms})
             except Exception as exc:
                 if tts_timing.get("started_at") and not tts_timing.get("ended_at"):

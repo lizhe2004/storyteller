@@ -205,6 +205,99 @@ def test_static_javascript_assets_share_the_assets_directory(tmp_path):
         assert "text/html" in spa_route.headers["content-type"]
 
 
+def test_delete_story_removes_project_directory(tmp_path):
+    from storyteller.core.project import ProjectManager
+
+    app = _app(tmp_path)
+    manager = ProjectManager(app.state.config.get("project_dir"))
+    state = manager.create_project(topic="待删除的故事")
+    project_dir = manager.get_project_dir(state.project_id)
+
+    with TestClient(app) as client:
+        assert client.delete(f"/api/stories/{state.project_id}").status_code == 401
+
+        client.cookies.set("storyteller_session", app.state.issuer.issue())
+        listed = client.get("/api/stories").json()["stories"]
+        assert [item["id"] for item in listed] == [state.project_id]
+
+        response = client.delete(f"/api/stories/{state.project_id}")
+
+        assert response.status_code == 204
+        assert not project_dir.exists()
+        assert client.get("/api/stories").json()["stories"] == []
+        assert client.delete(f"/api/stories/{state.project_id}").status_code == 404
+
+
+def _project_with_lines(app, metadata):
+    from storyteller.core.models import ProjectState, Script, ScriptLine
+    from storyteller.core.project import ProjectManager
+
+    manager = ProjectManager(app.state.config.get("project_dir"))
+    state = ProjectState(
+        project_id="proj_detail_test",
+        state="audio_generated",
+        script=Script(
+            script_id="script-1",
+            title="测试故事",
+            topic="测试主题",
+            lines=[ScriptLine(line_id="L1", line_type="narration",
+                              text="第一句", metadata=dict(metadata))],
+        ),
+    )
+    manager.save_project(state)
+    manager.rename_for_title(state, "测试故事")
+    return manager, state
+
+
+def test_story_detail_uses_cached_duration(tmp_path, monkeypatch):
+    import storyteller.web.routes_stories as routes_stories
+
+    def fail_decode(directory, line_id):
+        raise AssertionError("cached duration must not decode audio")
+
+    monkeypatch.setattr(routes_stories, "_line_duration", fail_decode)
+    app = _app(tmp_path)
+    _project_with_lines(app, {"duration_ms": 1234})
+
+    with TestClient(app) as client:
+        client.cookies.set("storyteller_session", app.state.issuer.issue())
+        response = client.get("/api/stories/proj_detail_test")
+
+    assert response.status_code == 200
+    assert response.json()["lines"][0]["duration_ms"] == 1234
+
+
+def test_story_detail_backfills_and_persists_legacy_duration(tmp_path, monkeypatch):
+    import json
+    import storyteller.web.routes_stories as routes_stories
+
+    calls = []
+
+    def decode(directory, line_id):
+        calls.append(line_id)
+        return 4321
+
+    monkeypatch.setattr(routes_stories, "_line_duration", decode)
+    app = _app(tmp_path)
+    manager, state = _project_with_lines(app, {})
+    project_file = manager.get_project_dir(state.project_id) / "project.json"
+
+    with TestClient(app) as client:
+        client.cookies.set("storyteller_session", app.state.issuer.issue())
+        first = client.get("/api/stories/proj_detail_test")
+        second = client.get("/api/stories/proj_detail_test")
+
+    assert first.status_code == 200
+    assert first.json()["lines"][0]["duration_ms"] == 4321
+    assert calls == ["L1"]
+
+    assert second.json()["lines"][0]["duration_ms"] == 4321
+    assert calls == ["L1"], "backfilled duration should be reused from project.json"
+
+    payload = json.loads(project_file.read_text(encoding="utf-8"))
+    assert payload["script"]["lines"][0]["metadata"]["duration_ms"] == 4321
+
+
 def test_native_audio_job_streams_mp3_from_pcm_queue(tmp_path):
     if not shutil.which("ffmpeg"):
         import pytest

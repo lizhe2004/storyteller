@@ -16,6 +16,7 @@ export const api = {
   options: () => request<{ lengths: string[]; complexities: string[]; tts_providers: {name: string}[]; sound_enabled: boolean; llm_models: ModelOption[]; audio_models: ModelOption[] }>('/api/config/options'),
   stories: () => request<{ stories: { id: string; dir_name: string; title: string; state: string; created_at: string }[] }>('/api/stories'),
   story: (ref: string) => request<StoryDetail>('/api/stories/' + encodeURIComponent(ref)),
+  deleteStory: (ref: string) => request<void>('/api/stories/' + encodeURIComponent(ref), { method: 'DELETE' }),
   voiceAnalysisJobs: () => request<{jobs: VoiceAnalysisJob[]}>('/api/voice-analysis/jobs'),
   voiceAnalysisJob: (id: string) => request<VoiceAnalysisJob>('/api/voice-analysis/jobs/' + encodeURIComponent(id)),
   createVoiceAnalysisJob: (options: object = {}) => request<VoiceAnalysisJob>('/api/voice-analysis/jobs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(options)}),

@@ -63,18 +63,39 @@ def _line_duration(directory, line_id):
 def story_detail(ref: str, request: Request):
     _auth(request)
     directory = _resolve(request, ref)
-    state = _pm(request).load_project(directory.name)
+    pm = _pm(request)
+    state = pm.load_project(directory.name)
     if not state.script:
         raise HTTPException(404, "剧本尚未生成")
     names = {c.id: c.name for c in state.script.characters}
+    lines = []
+    backfilled = False
+    for line in state.script.lines:
+        duration_ms = line.metadata.get("duration_ms")
+        if duration_ms is None:
+            duration_ms = _line_duration(directory, line.line_id)
+            if duration_ms is not None:
+                line.metadata["duration_ms"] = duration_ms
+                backfilled = True
+        lines.append({"line_id": line.line_id, "line_type": line.line_type,
+                      "speaker": names.get(line.character_id) or line.line_type,
+                      "text": line.text,
+                      "duration_ms": duration_ms})
+    if backfilled:
+        # Older projects have no cached duration; persist it once so later
+        # detail requests no longer decode every segment.
+        pm.save_project(state)
     return {"id": state.project_id, "title": state.script.title,
             "topic": state.script.topic, "state": state.state,
             "characters": [{"id": c.id, "name": c.name} for c in state.script.characters],
-            "lines": [{"line_id": l.line_id, "line_type": l.line_type,
-                       "speaker": names.get(l.character_id) or l.line_type,
-                       "text": l.text,
-                       "duration_ms": _line_duration(directory, l.line_id)}
-                      for l in state.script.lines]}
+            "lines": lines}
+
+
+@router.delete("/api/stories/{ref}", status_code=204)
+def delete_story(ref: str, request: Request):
+    _auth(request)
+    directory = _resolve(request, ref)
+    _pm(request).delete_project(directory.name)
 
 
 @router.get("/api/stories/{ref}/audio")
