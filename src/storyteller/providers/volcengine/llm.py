@@ -8,6 +8,7 @@ import time
 from ...core.exceptions import LLMError
 from ...core.llm import LLMProvider
 from ..base import BaseProvider
+from ._errors import http_error_detail
 from ...core.observability import timed_event
 from ...core.observability import log_event
 
@@ -67,7 +68,7 @@ class VolcengineLLM(BaseProvider, LLMProvider):
             data = response.json()
         except requests.RequestException as exc:
             raise LLMError(
-                "Volcengine LLM request failed: {}".format(exc)
+                "Volcengine LLM request failed: {}".format(http_error_detail(exc))
             ) from exc
         except ValueError as exc:
             raise LLMError("Invalid JSON from Volcengine LLM") from exc
@@ -97,7 +98,8 @@ class VolcengineLLM(BaseProvider, LLMProvider):
             data = response.json()
         except requests.RequestException as exc:
             raise LLMError(
-                "Volcengine model list request failed: {}".format(exc)
+                "Volcengine model list request failed: {}".format(
+                    http_error_detail(exc))
             ) from exc
         except ValueError as exc:
             raise LLMError("Invalid JSON from Volcengine model list") from exc
@@ -191,7 +193,8 @@ class VolcengineLLM(BaseProvider, LLMProvider):
                         yield chunk
         except requests.RequestException as exc:
             raise LLMError(
-                "Volcengine streaming LLM request failed: {}".format(exc)
+                "Volcengine streaming LLM request failed: {}".format(
+                    http_error_detail(exc))
             ) from exc
 
 

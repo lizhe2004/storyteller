@@ -221,3 +221,25 @@ def test_volcengine_stream_logs_each_chunk_at_debug(caplog):
     assert "chunk_content=一" in chunk_logs[0]
     assert "chunk_content=二" in chunk_logs[1]
     assert "wait_since_previous_chunk_ms=" in chunk_logs[0]
+
+
+def test_volcengine_llm_http_error_includes_ark_error_body():
+    import requests
+
+    llm = VolcengineLLM(_config())
+    response = _FakeResponse(403, {
+        "error": {
+            "code": "AccountOverdueError",
+            "message": "your account has an overdue balance",
+        }
+    })
+    response._raise_exc = requests.HTTPError(
+        "403 Client Error: Forbidden", response=response)
+    llm._session = _FakeSession(response)
+
+    with pytest.raises(LLMError) as excinfo:
+        llm.chat([{"role": "user", "content": "hi"}])
+
+    message = str(excinfo.value)
+    assert "403 Client Error" in message
+    assert "AccountOverdueError: your account has an overdue balance" in message
