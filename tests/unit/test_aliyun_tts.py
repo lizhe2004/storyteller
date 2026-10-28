@@ -15,6 +15,7 @@ from storyteller.providers.aliyun.tts import (
     load_voice_catalog,
     load_voice_index,
 )
+from storyteller.providers.registry import ProviderRegistry
 
 _ENDPOINT = "https://dashscope.aliyuncs.com"
 _PATH = "/api/v1/services/audio/tts/SpeechSynthesizer"
@@ -156,6 +157,133 @@ def test_aliyun_tts_lists_catalog_voices():
     assert by_id["longpaopao_v3.6"].age == ["child", "teen"]
     assert by_id["longanhuan_v3.6"].age == ["young_adult"]
     assert by_id["longpaopao_v3.6"].category == "儿童陪伴"
+
+
+def test_sambert_voices_are_selectable_with_model_allowlist():
+    tts = AliyunTTS(_config(models="sambert", workspace_id=""))
+    voices = tts.list_voices()
+    assert len(voices) == 43
+    assert all(v.model == "sambert" for v in voices)
+    assert {v.voice_id for v in voices} >= {
+        "sambert-zhide-v1", "sambert-zhiye-v1",
+        "sambert-zhiyue-v1",
+    }
+    assert "sambert" in [m["id"] for m in tts.list_models()]
+    assert not any(m["id"].startswith("sambert-") for m in tts.list_models())
+
+    legacy_config = AliyunTTS(_config(models="sambert-zhide-v1", workspace_id=""))
+    assert len(legacy_config.list_voices()) == 43
+
+
+def test_sambert_voice_id_is_sent_as_sdk_model(tmp_path):
+    tts = AliyunTTS(_config(models="sambert", workspace_id=""))
+    voice = next(v for v in tts.list_voices() if v.voice_id == "sambert-zhiye-v1")
+    calls = []
+
+    class Result:
+        def get_audio_data(self):
+            return b"sambert-audio"
+
+    tts._sambert_call = lambda key, url, **kwargs: (calls.append(kwargs) or Result())
+    out = tmp_path / "zhiye.wav"
+    tts.synthesize("hello", voice, out)
+    assert calls[0]["model"] == "sambert-zhiye-v1"
+
+
+def test_legacy_sambert_voice_model_normalizes_for_scheduling():
+    config = _config(models="sambert")
+    registry = ProviderRegistry(config)
+    registry.register_tts("aliyun", lambda c: AliyunTTS(c))
+    legacy_voice = _voice(
+        "sambert-beth-v1", model="sambert-beth-v1",
+    )
+    assert registry.get_tts_model(legacy_voice) == "sambert"
+
+
+def test_sambert_synthesis_uses_sdk_audio_and_model(tmp_path):
+    tts = AliyunTTS(_config(workspace_id="workspace-123"))
+    calls = []
+
+    class Result:
+        def get_audio_data(self):
+            return b"ID3sambert"
+
+    def fake_call(api_key, url, **kwargs):
+        calls.append((api_key, url, kwargs))
+        return Result()
+
+    tts._sambert_call = fake_call
+    out = tmp_path / "sambert.mp3"
+    assert tts.synthesize("你好", _voice("sambert-zhide-v1", speed=1.3), out) == out
+    assert out.read_bytes() == b"ID3sambert"
+    assert tts._session is not None
+    assert calls[0][0] == "test-key"
+    assert calls[0][1] == "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
+    assert calls[0][2]["workspace"] == "workspace-123"
+    assert calls[0][2]["model"] == "sambert-zhide-v1"
+    assert calls[0][2]["format"] == "mp3"
+    assert calls[0][2]["rate"] == 1.3
+    assert "voice" not in calls[0][2]
+    assert "instruction" not in calls[0][2]
+
+
+def test_sambert_synthesis_rejects_partial_audio_on_sdk_error(tmp_path):
+    tts = AliyunTTS(_config(workspace_id=""))
+
+    class Result:
+        def get_response(self):
+            return type(
+                "Response", (), {"status_code": 400, "code": "Quota.Exceeded"}
+            )()
+
+        def get_audio_data(self):
+            return b"partial audio"
+
+    tts._sambert_call = lambda *args, **kwargs: Result()
+    out = tmp_path / "failed.mp3"
+    with pytest.raises(TTSError, match="Sambert TTS synthesis failed.*Quota.Exceeded"):
+        tts.synthesize("你好", _voice("sambert-zhide-v1"), out)
+    assert not out.exists()
+
+
+def test_sambert_stream_synthesizes_each_text_segment():
+    tts = AliyunTTS(_config(workspace_id=""))
+    calls = []
+
+    class Frame:
+        def __init__(self, data):
+            self.data = data
+
+        def get_audio_frame(self):
+            return self.data
+
+    def fake_call(api_key, url, **kwargs):
+        calls.append(kwargs["text"])
+        kwargs["callback"].on_event(Frame(kwargs["text"].encode()))
+        kwargs["callback"].on_complete()
+
+    tts._sambert_call = fake_call
+    session = tts.open_stream(_voice("sambert-zhide-v1"))
+    session.send_text("你好")
+    session.send_text("世界")
+    session.finish()
+    assert calls == ["你好", "世界"]
+    assert [chunk.data for chunk in session.iter_audio()] == ["你好".encode(), "世界".encode()]
+
+
+def test_sambert_stream_surfaces_sdk_failure():
+    tts = AliyunTTS(_config(workspace_id=""))
+
+    def fake_call(api_key, url, **kwargs):
+        kwargs["callback"].on_error("failed")
+
+    tts._sambert_call = fake_call
+    session = tts.open_stream(_voice("sambert-zhide-v1"))
+    session.send_text("你好")
+    with pytest.raises(TTSError, match="Sambert TTS synthesis failed"):
+        session.finish()
+    with pytest.raises(TTSError, match="Sambert TTS synthesis failed"):
+        list(session.iter_audio())
 
 
 def test_enabled_models_allowlist_filters_list_voices():

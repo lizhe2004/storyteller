@@ -20,6 +20,19 @@ pip install -e .
 cp .env.example .env
 ```
 
+阿里云 Sambert 还需要 Python 3.9+ 和 DashScope SDK。启动 Web 并使用 Sambert 时，在同一个 Python 环境中安装 `web` 和 `aliyun` 扩展：`python -m pip install -e '.[web,aliyun]'`。
+
+## 启动 Web 服务
+
+在项目根目录安装 Web 依赖，并确认 `.env` 已填写所用 LLM/TTS 服务的 API Key。若使用 Sambert，安装命令需要包含 `aliyun` 扩展：
+
+```bash
+python -m pip install -e '.[web,aliyun]'
+storyteller web --host 127.0.0.1 --port 8000
+```
+
+然后打开 <http://localhost:8000>。也可以直接运行 `storyteller web`，默认监听 `127.0.0.1:8000`。首次启动若未设置 `STORYTELLER_WEB_PASSWORDS`，服务日志会显示一次性初始化码，按登录页提示设置 Web 密码。
+
 在 `.env` 中填写独立的 LLM 与 TTS API Key 后生成故事：
 
 ```bash

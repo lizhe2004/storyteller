@@ -19,18 +19,21 @@ def _clear_cache():
 
 
 def test_catalog_loads_and_is_nonempty():
-    assert len(load_voice_catalog()) == 1242
+    assert len(load_voice_catalog()) == 1285
 
 
 def test_catalog_records_have_required_fields():
     for v in load_voice_catalog():
         assert v["voice_id"]
         assert v["name"]
-        assert v["model"] in VALID_MODELS
-        assert v["gender"] in VALID_GENDERS
+        assert v["model"] in VALID_MODELS or v["model"] == "sambert"
+        assert v["gender"] in VALID_GENDERS or (
+            v["model"] == "sambert" and v["gender"] is None
+        )
         ages = v["age"] if isinstance(v["age"], list) else [v["age"]]
-        assert ages and all(age in VALID_AGES for age in ages)
-        assert v["language"] == "zh-CN"
+        assert all(age in VALID_AGES for age in ages)
+        assert ages or v["model"] == "sambert"
+        assert v["language"]
         assert isinstance(v["bilingual"], bool)
         assert v["category"]
         assert v["description"]
@@ -52,7 +55,7 @@ def test_catalog_excludes_english_only_voices():
     assert "loongjohn" not in ids
 
 
-def test_catalog_has_child_voices_and_both_models():
+def test_catalog_has_child_voices_and_all_product_models():
     voices = load_voice_catalog()
     children = [
         v for v in voices
@@ -67,7 +70,14 @@ def test_catalog_has_child_voices_and_both_models():
         "qwen-audio-3.0-tts-plus-longlanxuejun",
     }
     models = {v["model"] for v in voices}
-    assert models == VALID_MODELS
+    assert VALID_MODELS <= models
+    assert "sambert" in models
+    assert not any(model.startswith("sambert-") for model in models)
+    sambert_voices = [v for v in voices if v["model"] == "sambert"]
+    assert len(sambert_voices) == 43
+    assert {v["voice_id"] for v in sambert_voices} >= {
+        "sambert-beth-v1", "sambert-betty-v1", "sambert-zhiyue-v1",
+    }
 
 
 def test_catalog_preserves_scalar_and_array_age_values():
@@ -83,6 +93,14 @@ def test_known_voices_bound_to_correct_model():
     assert index["longanlufeng"] == "qwen-audio-3.0-tts-plus"
     assert index["longanhuan_v3.6"] == "qwen-audio-3.0-tts-flash"
     assert index["longchuanshu_v3.6"] == "qwen-audio-3.0-tts-flash"
+    assert index["sambert-zhide-v1"] == "sambert"
+    assert index["sambert-zhiyue-v1"] == "sambert"
+
+
+def test_sambert_catalog_keeps_vendor_model_id_separate_from_product_model():
+    index = {v["voice_id"]: v for v in load_voice_catalog()}
+    assert index["sambert-zhiye-v1"]["model"] == "sambert"
+    assert index["sambert-zhiye-v1"]["provider_model"] == "sambert-zhiye-v1"
 
 
 def test_markdown_catalog_voices_are_available_with_normalized_metadata():

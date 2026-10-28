@@ -241,6 +241,28 @@ def _sample_voice_candidates(voices, gender, age, preferences,
     return selected[:limit]
 
 
+def _filter_sambert_voices_by_script_language(script, voices, explicit_voice_ids=None):
+    """Keep English-only Sambert voices out of automatic Chinese matching.
+
+    Explicit voice ID selections are honored as given. Other scripts keep the
+    full Sambert catalog because this heuristic only distinguishes CJK from
+    Latin text and cannot reliably identify non-English Latin languages.
+    """
+    if explicit_voice_ids:
+        return voices
+    text = " ".join(
+        getattr(line, "text", "") or "" for line in getattr(script, "lines", [])
+    )
+    cjk_chars = sum("\u4e00" <= char <= "\u9fff" for char in text)
+    latin_chars = sum(char.isascii() and char.isalpha() for char in text)
+    if cjk_chars <= latin_chars:
+        return voices
+    return [
+        voice for voice in voices
+        if voice.model != "sambert" or "zh" in (voice.language or "").lower()
+    ]
+
+
 class VoiceMatcher:
     """Assigns a VoiceConfig to every character in a script.
 
@@ -278,6 +300,9 @@ class VoiceMatcher:
 
         voices = self.registry.list_tts_voices(
             allowed_providers, allowed_voice_ids=allowed_voice_ids
+        )
+        voices = _filter_sambert_voices_by_script_language(
+            script, voices, explicit_voice_ids=allowed_voice_ids
         )
         if not voices:
             raise ProviderError(

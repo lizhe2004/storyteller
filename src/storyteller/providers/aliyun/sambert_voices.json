@@ -1,0 +1,649 @@
+{
+  "voices": [
+    {
+      "voice_id": "sambert-zhinan-v1",
+      "name": "知楠",
+      "model": "sambert",
+      "gender": "male",
+      "category": "通用场景",
+      "description": "广告男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhinan-v1"
+    },
+    {
+      "voice_id": "sambert-zhiqi-v1",
+      "name": "知琪",
+      "model": "sambert",
+      "gender": "female",
+      "category": "通用场景",
+      "description": "温柔女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiqi-v1"
+    },
+    {
+      "voice_id": "sambert-zhichu-v1",
+      "name": "知厨",
+      "model": "sambert",
+      "gender": "male",
+      "category": "新闻播报",
+      "description": "舌尖男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhichu-v1"
+    },
+    {
+      "voice_id": "sambert-zhide-v1",
+      "name": "知德",
+      "model": "sambert",
+      "gender": "male",
+      "category": "新闻播报",
+      "description": "新闻男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhide-v1"
+    },
+    {
+      "voice_id": "sambert-zhijia-v1",
+      "name": "知佳",
+      "model": "sambert",
+      "gender": "female",
+      "category": "新闻播报",
+      "description": "标准女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhijia-v1"
+    },
+    {
+      "voice_id": "sambert-zhiru-v1",
+      "name": "知茹",
+      "model": "sambert",
+      "gender": "female",
+      "category": "新闻播报",
+      "description": "新闻女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiru-v1"
+    },
+    {
+      "voice_id": "sambert-zhiqian-v1",
+      "name": "知倩",
+      "model": "sambert",
+      "gender": "female",
+      "category": "配音解说、新闻播报",
+      "description": "资讯女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiqian-v1"
+    },
+    {
+      "voice_id": "sambert-zhixiang-v1",
+      "name": "知祥",
+      "model": "sambert",
+      "gender": "male",
+      "category": "配音解说",
+      "description": "磁性男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhixiang-v1"
+    },
+    {
+      "voice_id": "sambert-zhiwei-v1",
+      "name": "知薇",
+      "model": "sambert",
+      "gender": "female",
+      "category": "阅读产品简介",
+      "description": "萝莉女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiwei-v1"
+    },
+    {
+      "voice_id": "sambert-zhihao-v1",
+      "name": "知浩",
+      "model": "sambert",
+      "gender": "male",
+      "category": "通用场景",
+      "description": "咨询男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhihao-v1"
+    },
+    {
+      "voice_id": "sambert-zhijing-v1",
+      "name": "知婧",
+      "model": "sambert",
+      "gender": "female",
+      "category": "通用场景",
+      "description": "严厉女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhijing-v1"
+    },
+    {
+      "voice_id": "sambert-zhiming-v1",
+      "name": "知茗",
+      "model": "sambert",
+      "gender": "male",
+      "category": "通用场景",
+      "description": "诙谐男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiming-v1"
+    },
+    {
+      "voice_id": "sambert-zhimo-v1",
+      "name": "知墨",
+      "model": "sambert",
+      "gender": "male",
+      "category": "通用场景",
+      "description": "情感男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhimo-v1"
+    },
+    {
+      "voice_id": "sambert-zhina-v1",
+      "name": "知娜",
+      "model": "sambert",
+      "gender": "female",
+      "category": "通用场景",
+      "description": "浙普女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhina-v1"
+    },
+    {
+      "voice_id": "sambert-zhishu-v1",
+      "name": "知树",
+      "model": "sambert",
+      "gender": "male",
+      "category": "通用场景",
+      "description": "资讯男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhishu-v1"
+    },
+    {
+      "voice_id": "sambert-zhistella-v1",
+      "name": "知莎",
+      "model": "sambert",
+      "gender": "female",
+      "category": "通用场景",
+      "description": "知性女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhistella-v1"
+    },
+    {
+      "voice_id": "sambert-zhiting-v1",
+      "name": "知婷",
+      "model": "sambert",
+      "gender": "female",
+      "category": "通用场景",
+      "description": "电台女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiting-v1"
+    },
+    {
+      "voice_id": "sambert-zhixiao-v1",
+      "name": "知笑",
+      "model": "sambert",
+      "gender": "female",
+      "category": "通用场景",
+      "description": "资讯女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhixiao-v1"
+    },
+    {
+      "voice_id": "sambert-zhiya-v1",
+      "name": "知雅",
+      "model": "sambert",
+      "gender": "female",
+      "category": "通用场景",
+      "description": "严厉女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiya-v1"
+    },
+    {
+      "voice_id": "sambert-zhiye-v1",
+      "name": "知晔",
+      "model": "sambert",
+      "gender": "male",
+      "category": "通用场景",
+      "description": "青年男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiye-v1"
+    },
+    {
+      "voice_id": "sambert-zhiying-v1",
+      "name": "知颖",
+      "model": "sambert",
+      "gender": "female",
+      "category": "通用场景",
+      "description": "软萌童声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "child",
+      "provider_model": "sambert-zhiying-v1"
+    },
+    {
+      "voice_id": "sambert-zhiyuan-v1",
+      "name": "知媛",
+      "model": "sambert",
+      "gender": "female",
+      "category": "通用场景",
+      "description": "知心姐姐",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiyuan-v1"
+    },
+    {
+      "voice_id": "sambert-zhiyue-v1",
+      "name": "知悦",
+      "model": "sambert",
+      "gender": "female",
+      "category": "客服",
+      "description": "温柔女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhiyue-v1"
+    },
+    {
+      "voice_id": "sambert-zhigui-v1",
+      "name": "知柜",
+      "model": "sambert",
+      "gender": "female",
+      "category": "阅读产品简介",
+      "description": "直播女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhigui-v1"
+    },
+    {
+      "voice_id": "sambert-zhishuo-v1",
+      "name": "知硕",
+      "model": "sambert",
+      "gender": "male",
+      "category": "数字人",
+      "description": "自然男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhishuo-v1"
+    },
+    {
+      "voice_id": "sambert-zhimiao-emo-v1",
+      "name": "知妙（多情感）",
+      "model": "sambert",
+      "gender": "female",
+      "category": "阅读产品简介、数字人、直播",
+      "description": "多种情感女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhimiao-emo-v1"
+    },
+    {
+      "voice_id": "sambert-zhimao-v1",
+      "name": "知猫",
+      "model": "sambert",
+      "gender": "female",
+      "category": "阅读产品简介、配音解说、数字人、直播",
+      "description": "直播女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhimao-v1"
+    },
+    {
+      "voice_id": "sambert-zhilun-v1",
+      "name": "知伦",
+      "model": "sambert",
+      "gender": null,
+      "category": "配音解说",
+      "description": "悬疑解说",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhilun-v1"
+    },
+    {
+      "voice_id": "sambert-zhifei-v1",
+      "name": "知飞",
+      "model": "sambert",
+      "gender": null,
+      "category": "配音解说",
+      "description": "激昂解说",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhifei-v1"
+    },
+    {
+      "voice_id": "sambert-zhida-v1",
+      "name": "知达",
+      "model": "sambert",
+      "gender": "male",
+      "category": "新闻播报",
+      "description": "标准男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "zh-CN,en-US",
+      "bilingual": true,
+      "age": "young_adult",
+      "provider_model": "sambert-zhida-v1"
+    },
+    {
+      "voice_id": "sambert-camila-v1",
+      "name": "Camila",
+      "model": "sambert",
+      "provider_model": "sambert-camila-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "西班牙语女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "es-ES",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-perla-v1",
+      "name": "Perla",
+      "model": "sambert",
+      "provider_model": "sambert-perla-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "意大利语女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "it-IT",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-indah-v1",
+      "name": "Indah",
+      "model": "sambert",
+      "provider_model": "sambert-indah-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "印尼语女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "id-ID",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-clara-v1",
+      "name": "Clara",
+      "model": "sambert",
+      "provider_model": "sambert-clara-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "法语女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "fr-FR",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-hanna-v1",
+      "name": "Hanna",
+      "model": "sambert",
+      "provider_model": "sambert-hanna-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "德语女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "de-DE",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-beth-v1",
+      "name": "Beth",
+      "model": "sambert",
+      "provider_model": "sambert-beth-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "咨询女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "en-US",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-betty-v1",
+      "name": "Betty",
+      "model": "sambert",
+      "provider_model": "sambert-betty-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "客服女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "en-US",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-cally-v1",
+      "name": "Cally",
+      "model": "sambert",
+      "provider_model": "sambert-cally-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "自然女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "en-US",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-cindy-v1",
+      "name": "Cindy",
+      "model": "sambert",
+      "provider_model": "sambert-cindy-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "对话女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "en-US",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-eva-v1",
+      "name": "Eva",
+      "model": "sambert",
+      "provider_model": "sambert-eva-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "陪伴女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "en-US",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-donna-v1",
+      "name": "Donna",
+      "model": "sambert",
+      "provider_model": "sambert-donna-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "教育女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "en-US",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-brian-v1",
+      "name": "Brian",
+      "model": "sambert",
+      "provider_model": "sambert-brian-v1",
+      "gender": "male",
+      "age": [],
+      "category": "通用场景",
+      "description": "客服男声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "en-US",
+      "bilingual": false
+    },
+    {
+      "voice_id": "sambert-waan-v1",
+      "name": "Waan",
+      "model": "sambert",
+      "provider_model": "sambert-waan-v1",
+      "gender": "female",
+      "age": [],
+      "category": "通用场景",
+      "description": "泰语女声",
+      "tags": [
+        "Sambert"
+      ],
+      "language": "th-TH",
+      "bilingual": false
+    }
+  ]
+}

@@ -63,11 +63,13 @@ def test_options_audio_models_include_aliyun_catalog(tmp_path):
             for item in response.json()["audio_models"]
             if item["provider"] == "aliyun"
         }
-        assert aliyun_models == {
+        assert aliyun_models >= {
             "qwen-audio-3.0-tts-plus",
             "qwen-audio-3.0-tts-flash",
             "qwen-audio-3.1-tts-flash",
+            "sambert",
         }
+        assert not any(model.startswith("sambert-") for model in aliyun_models)
 
 
 def test_options_audio_models_accept_string_catalog_records(tmp_path, monkeypatch):
@@ -119,7 +121,7 @@ def test_options_audio_models_respect_aliyun_whitelist(tmp_path):
     cfg.set("tts.providers", ["aliyun"])
     cfg.set(
         "tts.provider_config.aliyun",
-        {"models": "qwen-audio-3.0-tts-plus, qwen-audio-3.1-tts-flash"},
+        {"models": "qwen-audio-3.0-tts-plus, qwen-audio-3.1-tts-flash, sambert-zhide-v1"},
     )
     cfg.set("llm.providers", ["openai"])
     cfg.set("llm.default_provider", "openai")
@@ -136,6 +138,7 @@ def test_options_audio_models_respect_aliyun_whitelist(tmp_path):
         assert aliyun_models == {
             "qwen-audio-3.0-tts-plus",
             "qwen-audio-3.1-tts-flash",
+            "sambert",
         }
 
 

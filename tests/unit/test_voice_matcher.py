@@ -3,7 +3,7 @@ import json
 import pytest
 
 from storyteller.core.config import Config
-from storyteller.core.models import Character, Script, VoiceConfig
+from storyteller.core.models import Character, Script, ScriptLine, VoiceConfig
 from storyteller.core.voice_matcher import (
     VoiceMatcher,
     _age_distance,
@@ -44,6 +44,54 @@ def test_match_voices_assigns_narrator_voice():
     assert narrator.voice_config is not None
     assert is_narration_voice(narrator.voice_config)
     assert narrator.voice_config.provider == "mock"
+
+
+def test_chinese_script_auto_match_skips_foreign_language_sambert_voices():
+    voices = [
+        VoiceConfig(
+            provider="aliyun", voice_id="sambert-beth-v1", model="sambert",
+            language="en-US", gender="female",
+        ),
+        VoiceConfig(
+            provider="aliyun", voice_id="sambert-zhiqi-v1", model="sambert",
+            language="zh-CN,en-US", gender="female",
+        ),
+    ]
+
+    class Registry:
+        def list_tts_names(self):
+            return ["aliyun"]
+
+        def list_tts_voices(self, providers, allowed_voice_ids=None):
+            if allowed_voice_ids:
+                return [v for v in voices if v.voice_id in allowed_voice_ids]
+            return list(voices)
+
+    character = Character(
+        id="hero", name="女孩", description="年轻女性角色",
+        gender="female", age="young_adult",
+    )
+    script = Script(
+        script_id="s1", title="测试", topic="测试", characters=[character],
+        lines=[ScriptLine(line_id="L1", line_type="dialogue", text="你好，世界")],
+    )
+    VoiceMatcher(Registry(), mode="rule").match_voices(script)
+    assert character.voice_config.voice_id == "sambert-zhiqi-v1"
+
+    explicitly_selected = Character(
+        id="hero2", name="女孩", description="年轻女性角色",
+        gender="female", age="young_adult",
+    )
+    explicit_script = Script(
+        script_id="s2", title="测试", topic="测试",
+        characters=[explicitly_selected],
+        lines=[ScriptLine(line_id="L1", line_type="dialogue", text="你好，世界")],
+    )
+    VoiceMatcher(Registry(), mode="rule").match_voices(
+        explicit_script, allowed_providers=["aliyun"],
+        allowed_voice_ids={"sambert-beth-v1"},
+    )
+    assert explicitly_selected.voice_config.voice_id == "sambert-beth-v1"
 
 
 def test_match_voices_logs_request_context(caplog):

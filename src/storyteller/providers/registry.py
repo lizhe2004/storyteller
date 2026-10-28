@@ -93,6 +93,13 @@ class ProviderRegistry:
     def get_tts_model(self, voice: VoiceConfig) -> str:
         """Resolve the provider/model resource used by ``voice`` for scheduling."""
         if voice.model:
+            if (
+                voice.provider.lower() == "aliyun"
+                and str(voice.model).startswith("sambert-")
+            ):
+                # Older project snapshots stored each Sambert API model ID as
+                # the product model. They now share one scheduler/model key.
+                return "sambert"
             return str(voice.model)
         tts = self.get_tts(voice.provider)
         for attribute in ("model_for_voice", "_model_for", "_resource_id_for"):

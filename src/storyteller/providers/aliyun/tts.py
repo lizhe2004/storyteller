@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
 import re
 import struct
 import tempfile
@@ -26,8 +27,158 @@ _WORKSPACE_HTTP_ENDPOINT_TEMPLATE = (
 _REALTIME_WS_URL_TEMPLATE = (
     "wss://{workspace_id}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference"
 )
+_SAMBERT_WS_URL = "wss://dashscope.aliyuncs.com/api-ws/v1/inference"
 logger = logging.getLogger(__name__)
 _DASHSCOPE_CONFIGURATION_LOCK = threading.Lock()
+_SAMBERT_PREFIX = "sambert-"
+_SAMBERT_MODEL = "sambert"
+
+
+def _canonical_model(model):
+    model = str(model or "").strip()
+    return _SAMBERT_MODEL if model.startswith(_SAMBERT_PREFIX) else model
+
+
+def _call_sambert(api_key, websocket_api_url, **kwargs):
+    """Call the Sambert SDK with credentials scoped to this request."""
+    try:
+        import dashscope
+        from dashscope.audio.tts import SpeechSynthesizer
+    except ImportError as exc:
+        raise TTSError(
+            "DashScope SDK import failed ({}). Install dependencies in the "
+            "Python environment running this service with: python -m pip "
+            "install -e '.[web,aliyun]'".format(str(exc)[:400])
+        ) from None
+    with _DASHSCOPE_CONFIGURATION_LOCK:
+        previous_key = getattr(dashscope, "api_key", None)
+        previous_url = getattr(dashscope, "base_websocket_api_url", None)
+        dashscope.api_key = api_key
+        if websocket_api_url:
+            dashscope.base_websocket_api_url = websocket_api_url
+        try:
+            return SpeechSynthesizer.call(**kwargs)
+        finally:
+            dashscope.api_key = previous_key
+            if websocket_api_url:
+                dashscope.base_websocket_api_url = previous_url
+
+
+def _sambert_error(response=None):
+    status = getattr(response, "status_code", None)
+    code = getattr(response, "code", None)
+    details = []
+    if status is not None:
+        details.append("status={}".format(status))
+    if code:
+        details.append("code={}".format(str(code)[:120]))
+    suffix = " ({})".format(", ".join(details)) if details else ""
+    return TTSError("Sambert TTS synthesis failed{}".format(suffix))
+
+
+class _SambertCallback:
+    def __init__(self, session):
+        self.session = session
+
+    def on_open(self):
+        pass
+
+    def on_event(self, result):
+        frame = result.get_audio_frame()
+        if frame:
+            self.session._audio.put(StreamChunk(CHUNK_AUDIO, bytes(frame)))
+
+    def on_complete(self):
+        pass
+
+    def on_close(self):
+        pass
+
+    def on_error(self, response):
+        self.session._failure = _sambert_error(response)
+
+
+class SambertStreamingTTSSession(StreamingTTSSession):
+    """Submit each text segment as one Sambert task; stream its PCM frames."""
+
+    _STOP = object()
+
+    def __init__(self, call, voice, sdk_model, api_key, websocket_api_url, workspace):
+        self._call = call
+        self._voice = voice
+        self._sdk_model = sdk_model
+        self._api_key = api_key
+        self._websocket_api_url = websocket_api_url
+        self._workspace = workspace
+        self._texts = queue.Queue()
+        self._audio = queue.Queue()
+        self._failure = None
+        self._closed = False
+        self._cancelled = False
+        self._lock = threading.Lock()
+        self._worker = threading.Thread(target=self._run, daemon=True)
+        self._worker.start()
+
+    def send_text(self, text):
+        if not isinstance(text, str) or not text or len(text) > 10000:
+            raise TTSError("Sambert TTS text must contain 1–10000 characters")
+        with self._lock:
+            if self._closed or self._failure:
+                raise self._failure or TTSError("Sambert TTS session is closed")
+            self._texts.put(text)
+
+    def iter_audio(self):
+        while True:
+            chunk = self._audio.get()
+            if chunk is self._STOP:
+                if self._failure:
+                    raise self._failure
+                return
+            if not self._cancelled:
+                yield chunk
+
+    def finish(self):
+        with self._lock:
+            if not self._closed:
+                self._closed = True
+                self._texts.put(self._STOP)
+        self._worker.join()
+        if self._failure:
+            raise self._failure
+
+    def cancel(self):
+        with self._lock:
+            self._cancelled = True
+            self._closed = True
+            self._texts.put(self._STOP)
+        self._audio.put(self._STOP)
+
+    def _run(self):
+        try:
+            while True:
+                text = self._texts.get()
+                if text is self._STOP or self._cancelled:
+                    break
+                result = self._call(
+                    self._api_key, self._websocket_api_url,
+                    model=self._sdk_model, text=text, format="pcm",
+                    workspace=self._workspace or None,
+                    sample_rate=24000,
+                    rate=_clamp(self._voice.speed, 0.5, 2.0),
+                    pitch=_clamp(self._voice.pitch, 0.5, 2.0),
+                    volume=_clamp(int(round((self._voice.volume - 1.0) * 50)) + 50, 0, 100),
+                    callback=_SambertCallback(self),
+                )
+                if self._failure:
+                    break
+                if result is not None and hasattr(result, "get_response"):
+                    response = result.get_response()
+                    if getattr(response, "status_code", 200) != 200:
+                        raise _sambert_error(response)
+        except Exception as exc:
+            self._failure = exc if isinstance(exc, TTSError) else TTSError("Sambert TTS synthesis failed")
+        finally:
+            self._audio.put(self._STOP)
 
 
 class _PCM22050To24000Resampler:
@@ -383,9 +534,7 @@ def _realtime_error(message, api_key):
 class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
     """Aliyun Bailian (Model Studio) text-to-speech provider.
 
-    Speaks the Qwen-Audio-TTS model family through the non-streaming
-    SpeechSynthesizer HTTP API: the response carries a 24-hour audio URL
-    which is downloaded immediately so artifacts never depend on it.
+    Speaks Qwen-Audio-TTS via HTTP and Sambert via the DashScope SDK.
     """
 
     def __init__(self, config, provider_name="aliyun"):
@@ -415,7 +564,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         # assigned in saved projects still synthesize so resume works.
         # Empty/unset = all catalog models exposed (backwards compatible).
         self._enabled_models = frozenset(
-            s.strip()
+            _canonical_model(s.strip())
             for s in (provider_config.get("models") or "").split(",")
             if s.strip()
         ) or None
@@ -433,6 +582,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
 
         self._session = requests.Session()
         self._realtime_synthesizer_factory = _create_dashscope_synthesizer
+        self._sambert_call = _call_sambert
 
     @property
     def name(self):
@@ -444,7 +594,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
 
     @property
     def display_description(self):
-        return "Qwen-Audio-TTS 语音合成（阿里云百炼）"
+        return "Qwen-Audio-TTS / Sambert 语音合成（阿里云百炼）"
 
     def list_voices(self, **kwargs):
         enabled = self._enabled_models
@@ -518,6 +668,7 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             for record in records:
                 model = record.get("model")
                 if model:
+                    model = _canonical_model(model)
                     offline = (record.get("inference_offline_info") or {}).get(
                         "offline_time"
                     )
@@ -531,6 +682,13 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             page += 1
 
     def open_stream(self, voice, *, directives=None, context=None):
+        model = self._model_for(voice.voice_id)
+        if model == _SAMBERT_MODEL:
+            return SambertStreamingTTSSession(
+                self._sambert_call, voice,
+                self._provider_model_for(voice.voice_id), self.api_key,
+                _SAMBERT_WS_URL, self.workspace_id,
+            )
         if not self.websocket_api_url:
             raise TTSError(
                 "Aliyun realtime TTS workspace_id is not configured "
@@ -540,7 +698,6 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         volume = _clamp(
             int(round((voice.volume - 1.0) * 50)) + 50, 0, 100
         )
-        model = self._model_for(voice.voice_id)
         instruction = _build_instruction(directives) or None
         session_params = {
             "model": model,
@@ -590,6 +747,8 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         model = self._model_for(voice_config.voice_id)
+        if model == _SAMBERT_MODEL:
+            return self._synthesize_sambert(text, voice_config, output_path, model)
         audio_format = _encoding_for_path(output_path)
         req_input = {
             "text": text,
@@ -700,14 +859,51 @@ class AliyunTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
         output_path.write_bytes(bytes(audio_bytes))
         return output_path
 
+    def _synthesize_sambert(self, text, voice, output_path, model):
+        audio_format = _encoding_for_path(output_path)
+        if audio_format not in ("pcm", "wav", "mp3"):
+            raise TTSError("Sambert TTS supports only pcm, wav and mp3 output")
+        if not isinstance(text, str) or not text or len(text) > 10000:
+            raise TTSError("Sambert TTS text must contain 1–10000 characters")
+        try:
+            result = self._sambert_call(
+                self.api_key, _SAMBERT_WS_URL,
+                model=self._provider_model_for(voice.voice_id),
+                text=text, format=audio_format, sample_rate=24000,
+                workspace=self.workspace_id or None,
+                rate=_clamp(voice.speed, 0.5, 2.0),
+                pitch=_clamp(voice.pitch, 0.5, 2.0),
+                volume=_clamp(int(round((voice.volume - 1.0) * 50)) + 50, 0, 100),
+            )
+            response = result.get_response() if result is not None and hasattr(result, "get_response") else None
+            if response is not None and getattr(response, "status_code", 200) != 200:
+                raise _sambert_error(response)
+            audio = result.get_audio_data() if result is not None else None
+        except TTSError:
+            raise
+        except Exception:
+            raise TTSError("Sambert TTS synthesis failed") from None
+        if not isinstance(audio, (bytes, bytearray)) or not audio:
+            raise TTSError("Sambert TTS returned no audio")
+        output_path.write_bytes(bytes(audio))
+        return output_path
+
     def _model_for(self, voice_id):
+        return self._voice_record_for(voice_id)["model"]
+
+    def _provider_model_for(self, voice_id):
+        record = self._voice_record_for(voice_id)
+        return record.get("provider_model") or record["model"]
+
+    @staticmethod
+    def _voice_record_for(voice_id):
         record = load_voice_index().get(voice_id)
         if not record:
             raise TTSError(
                 "Unknown Aliyun voice {!r}; voice must exist in the "
                 "packaged catalog".format(voice_id)
             )
-        return record["model"]
+        return record
 
 
 def _encoding_for_path(output_path):
@@ -788,7 +984,8 @@ def load_voice_catalog():
     description, tags, language, bilingual. Cached.
     """
     data = json.loads(_VOICE_CATALOG.read_text(encoding="utf-8"))
-    return data["voices"]
+    sambert = json.loads(_SAMBERT_VOICE_CATALOG.read_text(encoding="utf-8"))
+    return data["voices"] + sambert["voices"]
 
 
 @lru_cache(maxsize=1)
@@ -798,3 +995,4 @@ def load_voice_index():
 
 
 _VOICE_CATALOG = Path(__file__).with_name("voices.json")
+_SAMBERT_VOICE_CATALOG = Path(__file__).with_name("sambert_voices.json")

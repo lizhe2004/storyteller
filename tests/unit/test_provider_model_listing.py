@@ -177,8 +177,9 @@ def test_aliyun_tts_merges_remote_models_with_catalog():
         )
     )
     provider._session = _FakeSession(
-        {"output": {"total": 2, "page_no": 1, "models": [
+        {"output": {"total": 3, "page_no": 1, "models": [
             {"model": "qwen-tts-new"},
+            {"model": "sambert-zhiyue-v1"},
             {
                 "model": "qwen-tts-old",
                 "inference_offline_info": {"offline_time": "2026-12-31 00:00:00"},
@@ -188,6 +189,8 @@ def test_aliyun_tts_merges_remote_models_with_catalog():
 
     models = provider.list_models()
     assert {"id": "qwen-tts-new", "retiring": False} in models
+    assert {"id": "sambert", "retiring": False} in models
+    assert not any(item["id"].startswith("sambert-") for item in models)
     assert {"id": "qwen-tts-old", "retiring": True} in models
     assert {"id": "qwen-audio-3.0-tts-plus", "retiring": False} in models
     call = provider._session.requests[0]

@@ -8,6 +8,8 @@
 - [ffmpeg](https://ffmpeg.org/)，用于 `pydub` 的音频拼接
 - 可用的 LLM API Key 和 TTS API Key；两者是独立配置
 
+使用阿里云 Sambert 时，Python 需为 3.9+，并在运行服务的同一 Python 环境安装 DashScope SDK。Web 服务使用 Sambert 时执行 `python -m pip install -e '.[web,aliyun]'`。
+
 ## 本地安装
 
 在项目根目录执行：

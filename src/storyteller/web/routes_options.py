@@ -17,9 +17,10 @@ def configured_models(config, group, provider, include_fallback=True):
     result = []
     current = values.get("model") or values.get("resource_id")
     if current:
-        result.append(str(current))
+        result.append(_canonical_configured_model(group, provider, current))
     for item in str(values.get("models") or "").split(","):
         item = item.strip()
+        item = _canonical_configured_model(group, provider, item)
         if item and item not in result:
             result.append(item)
     fallback = (
@@ -30,6 +31,13 @@ def configured_models(config, group, provider, include_fallback=True):
     if fallback and fallback not in result:
         result.append(fallback)
     return result
+
+
+def _canonical_configured_model(group, provider, model):
+    model = str(model).strip()
+    if group == "tts" and str(provider).lower() == "aliyun" and model.startswith("sambert-"):
+        return "sambert"
+    return model
 
 
 def _catalog_model_name(record):
