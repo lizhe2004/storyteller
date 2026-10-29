@@ -230,7 +230,9 @@ function modelEditorKind(group: string, name: string): 'llm' | 'multi' | 'single
   if (!type || type === 'mock') return null
   if (group === 'llm') return 'llm'
   if (group !== 'tts') return null
-  return providerFormFields(group, name).includes('models') ? 'multi' : 'single'
+  const fields = providerFormFields(group, name)
+  if (!fields.some(field => ['model', 'models', 'resource_id'].includes(field))) return null
+  return fields.includes('models') ? 'multi' : 'single'
 }
 
 function modelTargetField(group: string, name: string) {
@@ -340,10 +342,10 @@ function providerHasKey(group: string, name: string): boolean {
 
 function ttsProviderOptions(): { name: string; label: string }[] {
   const schema = settings.value?.provider_schemas.tts
-  const names = ['aliyun', 'volcengine', 'openai', 'mock']
+  const names = ['aliyun', 'volcengine', 'mimo', 'openai', 'mock']
   for (const name of providerNames('tts')) if (!names.includes(name)) names.push(name)
   return names.map(name => {
-    const type = name === 'openai' ? 'openai_compatible' : schema?.providers[name]
+    const type = name === 'openai' ? 'openai_compatible' : (schema?.providers[name] || (schema?.fixed_names.includes(name) ? name : undefined))
     return { name, label: (type && schema?.types[type]?.label) || name }
   })
 }

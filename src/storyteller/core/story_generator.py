@@ -35,6 +35,7 @@ JSON 格式必须严格如下：
       "id": "narrator",
       "name": "旁白",
       "description": "故事旁白，负责交代时间、地点、场景、动作和说话人",
+      "language": "zh-CN",
       "gender": "male|female",
       "age": "young_adult|middle_aged|senior",
       "voice_preferences": [
@@ -45,6 +46,7 @@ JSON 格式必须严格如下：
       "id": "角色id",
       "name": "角色名",
       "description": "包含年龄、性别、身份、性格和与故事的关系",
+      "language": "zh-CN",
       "gender": "male|female",
       "age": "child|teen|young_adult|middle_aged|senior",
       "voice_preferences": [
@@ -136,7 +138,7 @@ opening 不要提前揭示完整结局，也不要改写已经输出的内容。
 2. 所有 dialogue 的 character_id 必须出现在 characters 数组中。
 3. 禁止使用未声明的角色 ID。
 4. 如果故事中需要新角色，必须先把新角色加入 characters 数组。
-5. 每个非旁白角色必须填写 gender、age、description 和 voice_preferences。
+5. 每个角色填写 language、gender、age、description 和 voice_preferences。language 表示实际台词主要语种，使用 BCP 47 语言代码，默认 zh-CN；仅在实际说其他语言时指定其语种（例如 en-US），不能根据国籍推断。
 6. voice_preferences 最多5项，weight 必须是大于0的数字，所有 weight 之和必须等于1。
 7. type 必须从以下音色类别中选择：体育解说、儿童陪伴、初期催收提醒客服、动漫配音、医院社区引导型客服、古风有声书、商务汇报、娱乐搞笑、引导新手型客服、情感陪伴、新品推荐型客服、新闻播报、日常对话、智能助手、智能客服、有声书配音、有声阅读、标准通用型客服、核保理赔型客服、深夜电台、理财咨询型客服、理财顾问型客服、电商直播、监察回访型客服、知识分享、社交互动、社交陪伴、角色扮演、讲解引导型客服、账单提醒型客服。
 8. line_type 只能是 narration 或 dialogue。
@@ -499,6 +501,7 @@ def _script_preview_from_json(data):
             "id": str(raw.get("id") or ""),
             "name": str(raw.get("name") or ""),
             "description": str(raw.get("description") or ""),
+            "language": str(raw.get("language") or ""),
         })
     lines = []
     for raw in data.get("lines") or []:
@@ -571,6 +574,7 @@ def _script_from_json(data, topic):
             id=str(raw_char.get("id") or "char_{}".format(idx)),
             name=str(raw_char.get("name") or "角色{}".format(idx + 1)),
             description=str(raw_char.get("description") or ""),
+            language=str(raw_char.get("language") or "").strip() or None,
             gender=_character_gender(raw_char.get("gender")),
             age=_character_age(raw_char.get("age")),
             voice_preferences=_voice_preferences_from_llm(

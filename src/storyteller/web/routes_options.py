@@ -7,6 +7,7 @@ router = APIRouter()
 
 _DEFAULT_MODELS = {
     ("tts", "volcengine"): "seed-tts-2.0",
+    ("tts", "mimo"): "mimo-v2.5-tts",
     ("tts", "openai_compatible"): "tts-1",
 }
 
@@ -52,6 +53,8 @@ def _audio_models(config):
     result = []
     for provider in config.get("tts.providers", []) or []:
         names = configured_models(config, "tts", provider)
+        if not names and (provider.lower() == "mimo" or (config.get("tts.provider_config.{}".format(provider), {}) or {}).get("type") == "mimo"):
+            names.append("mimo-v2.5-tts")
         if not names and provider.lower() == "aliyun":
             # 白名单为空表示不限制：下拉提供本地音色目录里的全部模型；
             # 一旦后台勾选了模型，下拉严格等于勾选集合。

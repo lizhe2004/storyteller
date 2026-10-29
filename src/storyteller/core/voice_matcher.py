@@ -241,26 +241,26 @@ def _sample_voice_candidates(voices, gender, age, preferences,
     return selected[:limit]
 
 
-def _filter_sambert_voices_by_script_language(script, voices, explicit_voice_ids=None):
-    """Keep English-only Sambert voices out of automatic Chinese matching.
+def _legacy_script_language(script):
+    """Use spoken lines for older scripts, defaulting to Chinese."""
+    text = " ".join(getattr(line, "text", "") or "" for line in script.lines)
+    chinese = sum("\u4e00" <= char <= "\u9fff" for char in text)
+    latin = sum(char.isascii() and char.isalpha() for char in text)
+    return "en" if latin and latin > chinese else "zh"
 
-    Explicit voice ID selections are honored as given. Other scripts keep the
-    full Sambert catalog because this heuristic only distinguishes CJK from
-    Latin text and cannot reliably identify non-English Latin languages.
-    """
-    if explicit_voice_ids:
-        return voices
-    text = " ".join(
-        getattr(line, "text", "") or "" for line in getattr(script, "lines", [])
-    )
-    cjk_chars = sum("\u4e00" <= char <= "\u9fff" for char in text)
-    latin_chars = sum(char.isascii() and char.isalpha() for char in text)
-    if cjk_chars <= latin_chars:
-        return voices
-    return [
-        voice for voice in voices
-        if voice.model != "sambert" or "zh" in (voice.language or "").lower()
-    ]
+
+def _language_pool(voices, language):
+    """Prefer the role's language, then English."""
+    primary = str(language or 'zh-CN').strip().lower().replace('_', '-').split('-')[0]
+    def supports(voice, code):
+        import re
+        languages = re.split(r'[,;/\s]+', (voice.language or '').lower().replace('_', '-'))
+        return any(item.split('-')[0] == code for item in languages)
+    matches = [voice for voice in voices if supports(voice, primary)]
+    if matches:
+        return matches
+    english = [voice for voice in voices if supports(voice, 'en')]
+    return english
 
 
 class VoiceMatcher:
@@ -301,9 +301,6 @@ class VoiceMatcher:
         voices = self.registry.list_tts_voices(
             allowed_providers, allowed_voice_ids=allowed_voice_ids
         )
-        voices = _filter_sambert_voices_by_script_language(
-            script, voices, explicit_voice_ids=allowed_voice_ids
-        )
         if not voices:
             raise ProviderError(
                 "No TTS voices available for providers: {}".format(
@@ -331,10 +328,16 @@ class VoiceMatcher:
             age = character.age if character.age in _AGE_BANDS else _infer_age(text)
             wanted[character.id] = (gender, age)
 
+        pools = {
+            c.id: (voices if allowed_voice_ids else _language_pool(voices, c.language or _legacy_script_language(script)))
+            for c in ordered
+        }
+        if any(not pool for pool in pools.values()):
+            raise ProviderError("No matching or English TTS voice available")
         used_ids = set()
         llm_picks = {}
         if self.mode == "llm" and self.llm is not None:
-            llm_picks = self._safe_llm_assign(ordered, wanted, voices)
+            llm_picks = self._safe_llm_assign(ordered, wanted, voices, pools)
             for voice in llm_picks.values():
                 used_ids.add(voice.voice_id)
 
@@ -344,7 +347,7 @@ class VoiceMatcher:
                 continue
             gender, age = wanted[character.id]
             chosen = self._rule_pick(
-                voices, used_ids, default_provider,
+                pools[character.id], used_ids, default_provider,
                 gender=gender, age=age, narrator=gender is None,
             )
             character.voice_config = chosen
@@ -358,7 +361,7 @@ class VoiceMatcher:
         )
         return script
 
-    def _safe_llm_assign(self, ordered, wanted, voices):
+    def _safe_llm_assign(self, ordered, wanted, voices, pools=None):
         """Return {character_id: VoiceConfig} for valid LLM picks.
 
         Any failure (call error, unparseable JSON, out-of-range index,
@@ -366,7 +369,7 @@ class VoiceMatcher:
         caller fills it with rule matching; the method never raises.
         """
         try:
-            candidates, response = self._request_llm(ordered, wanted, voices)
+            candidates, response = self._request_llm(ordered, wanted, voices, pools)
         except Exception:
             return {}
 
@@ -407,18 +410,20 @@ class VoiceMatcher:
             voice = candidates[index - 1]
             # Hard constraint for dialogue only: gender must agree.
             # Narrators (want_gender is None) have no gender restriction.
+            if pools is not None and voice not in pools[char_id]:
+                continue
             if want_gender is not None and voice.gender != want_gender:
                 continue
             picks[str(char_id)] = voice
             used_index.add(index)
         return picks
 
-    def _request_llm(self, ordered, wanted, voices):
+    def _request_llm(self, ordered, wanted, voices, pools=None):
         by_id = {}
         for character in ordered:
             gender, age = wanted[character.id]
             character_candidates = _sample_voice_candidates(
-                voices, gender, age, character.voice_preferences
+                pools[character.id] if pools is not None else voices, gender, age, character.voice_preferences
             )
             candidate_details = [
                 {
@@ -460,13 +465,14 @@ class VoiceMatcher:
             index = len(lines) + 1
             gender_label = _GENDER_LABELS.get(voice.gender, "中性")
             lines.append(
-                "[{}] {} | {} | {} | {} | {}".format(
+                "[{}] {} | {} | {} | {} | {} | {}".format(
                     index,
                     voice.name or voice.voice_id,
                     gender_label,
                     _age_labels(voice.age),
                     voice.category or "-",
                     voice.description or "-",
+                    voice.language or "-",
                 )
             )
 
@@ -481,11 +487,12 @@ class VoiceMatcher:
                     _AGE_LABELS.get(age, age or "-"),
                 )
             char_lines.append(
-                "- character_id={} 「{}」：{} ｜ {}".format(
+                "- character_id={} 「{}」：{} ｜ {} ｜ 语种={}".format(
                     character.id,
                     character.name,
                     character.description or "-",
                     need,
+                    character.language or "zh-CN",
                 )
             )
 

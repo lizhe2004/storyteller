@@ -55,6 +55,7 @@ _PROVIDER_FORM_TYPES = {
         "mock": {"label": "模拟服务", "fields": []},
     },
     "tts": {
+        "mimo": {"label": "小米 MiMo", "fields": ["api_key", "base_url"]},
         "aliyun": {
             "label": "阿里云百炼",
             "fields": ["api_key", "models", "workspace_id"],
@@ -79,12 +80,12 @@ _PROVIDER_FORM_TYPES = {
 }
 _CUSTOM_PROVIDER_TYPES = {
     "llm": ["openai_compatible", "mock"],
-    "tts": ["volcengine", "aliyun", "openai_compatible", "mock"],
+    "tts": ["volcengine", "aliyun", "mimo", "openai_compatible", "mock"],
     "sound": ["mock"],
 }
 _FIXED_PROVIDER_NAMES = {
     "llm": [],
-    "tts": ["aliyun", "volcengine"],
+    "tts": ["aliyun", "volcengine", "mimo"],
     "sound": ["volcengine"],
 }
 
@@ -183,9 +184,9 @@ def _resolved_provider_form_type(group, name, provider_config):
             return provider_type
         return "volcengine" if normalized_name == "volcengine" else None
     if group == "tts":
-        if normalized_name in ("aliyun", "volcengine"):
+        if normalized_name in ("aliyun", "volcengine", "mimo"):
             return normalized_name
-        if provider_type in ("aliyun", "volcengine", "openai_compatible", "mock"):
+        if provider_type in ("aliyun", "volcengine", "mimo", "openai_compatible", "mock"):
             return provider_type
         # Provider bootstrap defaults untyped/unknown TTS names to Volcengine.
         return "volcengine"

@@ -62,6 +62,17 @@ STORYTELLER_TTS_VOLCENGINE_RESOURCE_ID=seed-tts-2.0
 | `STORYTELLER_TTS_<NAME>_WORKSPACE_ID` | 无 | 需要业务空间的 provider 的空间标识 |
 | `STORYTELLER_TTS_<NAME>_MODELS` | catalog 中全部模型 | 逗号分隔的模型白名单；当前主要用于阿里云 |
 
+小米 MiMo 预置音色模型可通过设置页面启用“小米 MiMo”并填写 API Key，或通过环境变量配置：
+
+```bash
+STORYTELLER_TTS_PROVIDERS=volcengine,mimo
+STORYTELLER_TTS_MIMO_API_KEY=your_mimo_api_key
+# 可选，默认 https://api.xiaomimimo.com/v1
+STORYTELLER_TTS_MIMO_BASE_URL=https://api.xiaomimimo.com/v1
+```
+
+提供 `mimo-v2.5-tts` 的九个预置音色和自然语言演绎指令；音色设计和克隆模型尚未接入。MiMo 的接口需要完整文本；Web 会在开场或单句文本完成后发起请求，并在音频片段返回时按顺序播放。
+
 OpenAI-compatible TTS 通过成组变量声明：`STORYTELLER_TTS_OPENAI_COMPATIBLE_<SLOT>_NAME`、`..._API_KEY`、`..._BASE_URL`、`..._MODEL`。如果设置了非空的 `STORYTELLER_TTS_PROVIDERS`，该 provider 的名称也必须在名单中。
 
 这里要区分四个阶段：provider 实现先由 bootstrap 注册到当前进程的 registry；当 `STORYTELLER_TTS_PROVIDERS` 非空时，它直接选择本次配置的 `tts.providers`，名单中的内置实现可以从该名单注册，即使没有发现凭据或 provider 配置；当 allowlist 为空时，`tts.providers` 才由环境中的凭据或 provider 配置项发现构建。最后，CLI 的 `--tts-providers` 只对当前一次生成或查询做更窄的选择，只能从已注册的 `tts.providers` 列表中选择。它不能注册、配置或启用 provider，也不能扩大 allowlist。名单中的真实 provider 在实例化进行合成时仍需凭据。

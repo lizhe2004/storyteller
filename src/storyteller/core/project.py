@@ -376,6 +376,7 @@ def _character_to_dict(char):
         "description": char.description,
         "gender": char.gender,
         "age": char.age,
+        "language": char.language,
         "voice_preferences": list(char.voice_preferences or []),
         "voice_config": _voice_to_dict(char.voice_config),
     }
@@ -388,6 +389,7 @@ def _character_from_dict(data):
         description=data["description"],
         gender=data.get("gender"),
         age=data.get("age"),
+        language=data.get("language"),
         voice_preferences=list(data.get("voice_preferences", []) or []),
         voice_config=_voice_from_dict(data.get("voice_config")),
     )

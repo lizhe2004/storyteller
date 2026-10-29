@@ -16,6 +16,8 @@ except ImportError:  # pragma: no cover
     OpenAICompatibleLLM = None
     OpenAICompatibleTTS = None
 
+from .mimo.tts import MiMoTTS
+
 try:
     from .aliyun.tts import AliyunTTS
 except ImportError:  # pragma: no cover
@@ -85,7 +87,9 @@ def _register_tts(config, registry):
 
         # Built-in provider names select their implementation directly.  The
         # optional type field is reserved for custom/provider-compatible names.
-        if name.lower() == "aliyun" and AliyunTTS:
+        if name.lower() == "mimo" or provider_type == "mimo":
+            registry.register_tts(name, lambda c, n=name: MiMoTTS(c, n))
+        elif name.lower() == "aliyun" and AliyunTTS:
             registry.register_tts(name, lambda c: AliyunTTS(c))
         elif name.lower() == "volcengine" and VolcengineTTS:
             registry.register_tts(name, lambda c: VolcengineTTS(c))

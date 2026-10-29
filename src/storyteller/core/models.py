@@ -114,6 +114,7 @@ class Character:
     # Generated with the script; legacy data may leave these unset.
     gender: Optional[str] = None
     age: Optional[str] = None
+    language: Optional[str] = None
 
 
 # ========== Script ==========

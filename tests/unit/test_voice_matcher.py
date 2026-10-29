@@ -701,3 +701,78 @@ def test_llm_logs_each_character_candidate_pool_before_merged_prompt(caplog):
         index for index, message in enumerate(messages)
         if "event=voice_matching_prompt" in message
     )
+
+
+@pytest.mark.parametrize('mode', ['rule', 'llm'])
+@pytest.mark.parametrize('provisional', [True, False])
+def test_chinese_mimo_matching_excludes_english_voices(mode, provisional):
+    voices = [
+        VoiceConfig('mimo', 'Chloe', model='mimo-v2.5-tts', language='en-US', gender='female'),
+        VoiceConfig('mimo', '冰糖', model='mimo-v2.5-tts', language='zh-CN', gender='female'),
+    ]
+    class Registry:
+        def list_tts_names(self): return ['mimo']
+        def list_tts_voices(self, providers, allowed_voice_ids=None): return voices
+    character = Character(id='hero', name='姑娘', description='女孩', gender='female')
+    script = Script(script_id='s', title='故事', topic='孙悟空', characters=[character],
+                    lines=[] if provisional else [ScriptLine(line_id='1', line_type='dialogue', text='你好')])
+    llm = _make_llm({'assignments': [{'character_id': 'hero', 'voice_index': 1}]})
+    VoiceMatcher(Registry(), llm=llm, mode=mode).match_voices(script)
+    assert character.voice_config.voice_id == '冰糖'
+
+
+def test_english_mimo_and_explicit_voice_remain_available():
+    voices = [VoiceConfig('mimo', 'Chloe', model='mimo-v2.5-tts', language='en-US', gender='female')]
+    class Registry:
+        def list_tts_names(self): return ['mimo']
+        def list_tts_voices(self, providers, allowed_voice_ids=None): return voices
+    character = Character(id='hero', name='Alice', description='woman', gender='female')
+    script = Script(script_id='s', title='A story', topic='adventure', characters=[character],
+                    lines=[ScriptLine(line_id='1', line_type='dialogue', text='Hello there')])
+    VoiceMatcher(Registry()).match_voices(script)
+    assert character.voice_config.voice_id == 'Chloe'
+    script.lines[0].text = '你好'
+    VoiceMatcher(Registry()).match_voices(script, allowed_voice_ids={'Chloe'})
+    assert character.voice_config.voice_id == 'Chloe'
+
+
+@pytest.mark.parametrize('mode', ['rule', 'llm'])
+def test_character_language_and_english_fallback(mode):
+    voices = [VoiceConfig('mimo', '冰糖', model='mimo-v2.5-tts', language='zh-CN', gender='female'),
+              VoiceConfig('mimo', 'Chloe', model='mimo-v2.5-tts', language='en-US', gender='female')]
+    class Registry:
+        def list_tts_names(self): return ['mimo']
+        def list_tts_voices(self, providers, allowed_voice_ids=None): return voices
+    a = Character(id='a', name='甲', description='女', gender='female', language='zh-CN')
+    b = Character(id='b', name='乙', description='女', gender='female', language='ja-JP')
+    script = Script(script_id='s', title='故事', topic='故事', characters=[a, b])
+    llm = _make_llm({'assignments': [{'character_id': 'a', 'voice_index': 1}, {'character_id': 'b', 'voice_index': 2}]})
+    VoiceMatcher(Registry(), llm=llm, mode=mode).match_voices(script)
+    assert a.voice_config.voice_id == '冰糖'
+    assert b.voice_config.voice_id == 'Chloe'
+
+
+def test_chinese_role_falls_back_to_english_when_chinese_unavailable():
+    voices = [VoiceConfig('mimo', 'Chloe', model='mimo-v2.5-tts', language='en-US', gender='female')]
+    class Registry:
+        def list_tts_names(self): return ['mimo']
+        def list_tts_voices(self, providers, allowed_voice_ids=None): return voices
+    character = Character(id='a', name='甲', description='女', gender='female')
+    script = Script(script_id='s', title='故事', topic='故事', characters=[character])
+    VoiceMatcher(Registry()).match_voices(script)
+    assert character.voice_config.voice_id == 'Chloe'
+
+
+def test_llm_cannot_assign_other_roles_language():
+    voices = [VoiceConfig('mimo', '冰糖', model='mimo-v2.5-tts', language='zh-CN', gender='female'),
+              VoiceConfig('mimo', 'Chloe', model='mimo-v2.5-tts', language='en-US', gender='female')]
+    class Registry:
+        def list_tts_names(self): return ['mimo']
+        def list_tts_voices(self, providers, allowed_voice_ids=None): return voices
+    a = Character(id='a', name='甲', description='女', gender='female', language='zh-CN')
+    b = Character(id='b', name='乙', description='女', gender='female', language='en-US')
+    script = Script(script_id='s', title='故事', topic='故事', characters=[a, b])
+    llm = _make_llm({'assignments': [{'character_id': 'a', 'voice_index': 1}, {'character_id': 'b', 'voice_index': 2}]})
+    VoiceMatcher(Registry(), llm=llm, mode='llm').match_voices(script)
+    assert a.voice_config.voice_id == '冰糖'
+    assert b.voice_config.voice_id == 'Chloe'

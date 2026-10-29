@@ -729,3 +729,21 @@ def test_with_sound_appends_sound_prompt():
     generator, llm2 = _make_generator()
     generator.generate_script(topic="测试", with_sound=False)
     assert "sound_effects" not in llm2.calls[-1]["messages"][0]["content"]
+
+
+def test_character_language_survives_preview_and_parse():
+    from storyteller.core.story_generator import _script_from_json, _script_preview_from_json
+    raw = {'title': '故事', 'characters': [{'id': 'a', 'name': 'Alice', 'description': '英语角色', 'language': 'en-US'}], 'lines': []}
+    preview = _script_preview_from_json(raw)
+    assert preview['characters'][0]['language'] == 'en-US'
+    assert _script_from_json(preview, '故事').characters[0].language == 'en-US'
+
+
+def test_character_language_round_trips_through_project():
+    from storyteller.core.models import Character
+    from storyteller.core.project import _character_from_dict, _character_to_dict
+    character = Character(id='a', name='Alice', description='', language='en-US')
+    assert _character_from_dict(_character_to_dict(character)).language == 'en-US'
+    old = _character_to_dict(character)
+    del old['language']
+    assert _character_from_dict(old).language is None
