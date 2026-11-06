@@ -19,7 +19,8 @@ const nativeError = ref('')
 const nativeCurrentMs = ref(0)
 const isPlaying = computed(() => playbackMode.value === 'native_mp3' ? nativePlaying.value : timeline.playing.value)
 const isPaused = computed(() => playbackMode.value === 'native_mp3' ? Boolean(nativeAudio.value?.src && nativeAudio.value.paused && !nativeEnded.value) : timeline.paused.value)
-const isEnded = computed(() => playbackMode.value === 'native_mp3' ? nativeEnded.value : timeline.ended.value)
+const isEnded = computed(() => playbackMode.value === 'native_mp3' ? nativeEnded.value && (Boolean(player.finalUrl) || player.terminalEventReceived) : timeline.ended.value)
+const waitingForNativeCompletion = computed(() => playbackMode.value === 'native_mp3' && nativeEnded.value && !player.finalUrl && !player.terminalEventReceived)
 const playedMs = computed(() => playbackMode.value === 'native_mp3' ? nativeCurrentMs.value : timeline.playedMs.value)
 const hasCapturedAudio = timeline.hasCapturedAudio
 const topic = ref('')
@@ -122,6 +123,19 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => document.removeEventListener('click', closeAudioModelMenu))
+let wasBackgrounded = false
+function onVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    wasBackgrounded = true
+    return
+  }
+  if (!wasBackgrounded) return
+  wasBackgrounded = false
+  if (playbackMode.value !== 'native_mp3' || !player.streamJobId || player.terminalEventReceived) return
+  player.reconnect(b => timeline.append(b), handleJobEvent)
+}
+onMounted(() => document.addEventListener('visibilitychange', onVisibilityChange))
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisibilityChange))
 
 watch(() => player.phase, phase => {
   if (['completed', 'failed', 'canceled'].includes(phase)) busy.value = false
@@ -151,6 +165,22 @@ function chooseStoryIdea(idea: string) {
   document.querySelector<HTMLTextAreaElement>('#topic')?.focus()
 }
 
+function handleJobEvent(e: Record<string, any>) {
+  if (e.type === 'ready' && playbackMode.value === 'native_mp3' && nativeAudio.value && !player.streamJobId) {
+    nativeAudio.value.src = `/api/streaming-jobs/${encodeURIComponent(e.job_id)}/audio`
+    nativeAudio.value.load()
+    void nativeAudio.value.play().then(() => { nativeNeedsTap.value = false }).catch((error: unknown) => {
+      nativeNeedsTap.value = true
+      nativeError.value = '浏览器拦截了自动播放，请点击“开始原生播放”。'
+      console.info('[storyteller-audio] Native audio autoplay requires a user gesture', error)
+    })
+  }
+  if (e.type === 'opening_audio_start') timeline.setUnit('filler:opening')
+  if (e.type === 'start_notice') timeline.setUnit('filler:notice')
+  if (e.type === 'line_start') timeline.setUnit(`line:${e.line_id}`)
+  if (e.type === 'complete') timeline.finish()
+}
+
 function submit() {
   if (!topic.value.trim() || busy.value) return
   nativeError.value = ''; nativeNeedsTap.value = false
@@ -172,21 +202,7 @@ function submit() {
     tts_model: selectedAudio.length
       ? selectedAudio.map(option => ({ provider: option.provider, model: option.model }))
       : undefined,
-  }, b => timeline.append(b), e => {
-    if (e.type === 'ready' && playbackMode.value === 'native_mp3' && nativeAudio.value) {
-      nativeAudio.value.src = `/api/streaming-jobs/${encodeURIComponent(e.job_id)}/audio`
-      nativeAudio.value.load()
-      void nativeAudio.value.play().then(() => { nativeNeedsTap.value = false }).catch((error: unknown) => {
-        nativeNeedsTap.value = true
-        nativeError.value = '浏览器拦截了自动播放，请点击“开始原生播放”。'
-        console.info('[storyteller-audio] Native audio autoplay requires a user gesture', error)
-      })
-    }
-    if (e.type === 'opening_audio_start') timeline.setUnit('filler:opening')
-    if (e.type === 'start_notice') timeline.setUnit('filler:notice')
-    if (e.type === 'line_start') timeline.setUnit(`line:${e.line_id}`)
-    if (e.type === 'complete') timeline.finish()
-  })
+  }, b => timeline.append(b), handleJobEvent)
 }
 
 function stopGeneration() {
@@ -270,7 +286,7 @@ function togglePlayback() {
           <div class="character-list"><span v-for="character in player.characters" :key="character.id" data-testid="character-chip" class="character-chip" tabindex="0"><span data-testid="character-summary"><b>{{ character.name }}</b><small>{{ character.description || '暂无角色描述' }}</small><small>{{ characterIdentityLabel(character.gender, character.age) }}</small></span><span v-if="character.voice" data-testid="voice-popover" class="voice-popover"><b>{{ character.voice.name || character.voice.voice_id || '未命名音色' }}</b><dl><dt>Provider</dt><dd>{{ character.voice.provider }}</dd><dt>模型</dt><dd>{{ character.voice.model || '未标注' }}</dd><dt>音色 ID</dt><dd>{{ character.voice.voice_id }}</dd><dt>性别</dt><dd>{{ voiceGenderLabel(character.voice.gender) }}</dd><dt>年龄</dt><dd>{{ voiceAgeLabel(character.voice.age) }}</dd><dt v-if="character.voice.category">分类</dt><dd v-if="character.voice.category">{{ character.voice.category }}</dd></dl><p v-if="character.voice.description">{{ character.voice.description }}</p></span></span></div>
         </div>
         <div class="player-controls">
-          <button v-if="isPlaying || isPaused || isEnded || !['completed', 'failed', 'canceled'].includes(player.phase)" class="round" :class="{ 'is-playing': isPlaying }" :aria-pressed="isPlaying" :aria-label="isPlaying ? '暂停播放' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" :title="isPlaying ? '暂停播放' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" @click="togglePlayback"><span aria-hidden="true">{{ isPlaying ? 'Ⅱ' : isEnded ? '↻' : '▶' }}</span><small>{{ isPlaying ? '暂停' : nativeNeedsTap ? '开始原生播放' : isEnded ? '重播' : '继续' }}</small></button>
+          <button v-if="isPlaying || isPaused || isEnded || !['completed', 'failed', 'canceled'].includes(player.phase)" class="round" :class="{ 'is-playing': isPlaying }" :disabled="waitingForNativeCompletion" :aria-pressed="isPlaying" :aria-label="isPlaying ? '暂停播放' : waitingForNativeCompletion ? '等待故事完成' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" :title="isPlaying ? '暂停播放' : waitingForNativeCompletion ? '等待故事完成后即可重播' : isPaused ? '继续播放' : isEnded ? '重新播放' : '继续播放'" @click="togglePlayback"><span aria-hidden="true">{{ isPlaying ? 'Ⅱ' : isEnded && !waitingForNativeCompletion ? '↻' : '▶' }}</span><small>{{ isPlaying ? '暂停' : nativeNeedsTap ? '开始原生播放' : waitingForNativeCompletion ? '收尾中' : isEnded ? '重播' : '继续' }}</small></button>
           <div class="meter"><i :style="{width: `${progressWidth}%`}"></i></div>
           <button v-if="hasCapturedAudio && !isEnded" class="cancel replay" @click="timeline.replay">↻ 重播缓存</button>
           <button v-if="hasCapturedAudio" class="cancel replay" @click="timeline.replayDirect">◌ 对照重播</button>

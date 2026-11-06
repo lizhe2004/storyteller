@@ -3,7 +3,7 @@ import type { ReadyAudio, StoryCharacter, StoryLine } from '../types'
 
 type EventRecord = Record<string, any>
 export const usePlayerStore = defineStore('player', {
-  state: () => ({ socket: null as WebSocket | null, phase: 'idle', message: '', title: '', characters: [] as StoryCharacter[], matchedCharacterVoices: {} as Record<string, NonNullable<StoryCharacter['voice']>>, lines: [] as StoryLine[], currentIndex: -1, lineDurations: {} as Record<string, number>, openingText: '', fillerText: '', noticeText: '', warning: '', jobId: '', finalUrl: '', audio: null as ReadyAudio | null, error: '', scriptReadyReceived: false, previewFrame: null as number | null, pendingPreview: null as EventRecord | null }),
+  state: () => ({ socket: null as WebSocket | null, phase: 'idle', message: '', title: '', characters: [] as StoryCharacter[], matchedCharacterVoices: {} as Record<string, NonNullable<StoryCharacter['voice']>>, lines: [] as StoryLine[], currentIndex: -1, lineDurations: {} as Record<string, number>, openingText: '', fillerText: '', noticeText: '', warning: '', streamJobId: '', terminalEventReceived: false, jobId: '', finalUrl: '', audio: null as ReadyAudio | null, error: '', scriptReadyReceived: false, previewFrame: null as number | null, pendingPreview: null as EventRecord | null }),
   actions: {
     withMatchedVoices(characters: StoryCharacter[]) {
       return characters.map((character) => ({
@@ -56,7 +56,7 @@ export const usePlayerStore = defineStore('player', {
       else if (!line.text.startsWith(incoming)) line.text += incoming   // pure suffix delta
     },
     applyEvent(item: EventRecord) {
-      if (item.type === 'ready') this.audio = item.audio
+      if (item.type === 'ready') { this.audio = item.audio; if (item.job_id) this.streamJobId = item.job_id }
       if (item.type === 'status') { this.phase = item.phase; this.message = item.message || ({ queued: '排队等待中…', script: '正在生成剧本…', voices: '正在匹配音色…', line: '正在生成故事…', finalizing: '正在整理完整音频…' } as Record<string, string>)[item.phase] || item.phase }
       if (item.type === 'script_preview') this.scheduleScriptPreview(item)
       if (item.type === 'characters_matched') this.applyCharactersMatched(item)
@@ -89,13 +89,13 @@ export const usePlayerStore = defineStore('player', {
       if (item.type === 'warning') this.warning = item.message || '这一句没有播放成功'
       if (item.type === 'line_end') { this.lineDurations[item.line_id] = item.duration_ms; this.message = '正在继续生成下一句…' }
       if (item.type === 'finalizing') { this.phase = 'finalizing'; this.message = '正在整理完整音频…' }
-      if (item.type === 'complete') { this.phase = 'completed'; this.message = '故事已完成'; this.finalUrl = item.audio_url; this.jobId = item.project_id }
-      if (item.type === 'error') { this.phase = 'failed'; this.message = '生成失败'; this.error = String(item.message || '未知错误').replace(/429 Client Error: Too Many Requests.*/i, '请求过于频繁，火山引擎暂时限流，请稍后再试'); console.error('[storyteller-web] generation error', item) }
-      if (item.type === 'canceled') { this.phase = 'canceled'; this.message = '已停止生成' }
+      if (item.type === 'complete') { this.phase = 'completed'; this.terminalEventReceived = true; this.message = '故事已完成'; this.finalUrl = item.audio_url; this.jobId = item.project_id }
+      if (item.type === 'error') { this.phase = 'failed'; this.terminalEventReceived = true; this.message = '生成失败'; this.error = String(item.message || '未知错误').replace(/429 Client Error: Too Many Requests.*/i, '请求过于频繁，火山引擎暂时限流，请稍后再试'); console.error('[storyteller-web] generation error', item) }
+      if (item.type === 'canceled') { this.phase = 'canceled'; this.terminalEventReceived = true; this.message = '已停止生成' }
     },
     start(payload: Record<string, unknown>, onBytes: (bytes: ArrayBuffer) => void, onEvent?: (event: EventRecord) => void) {
       this.socket?.close()
-      this.error = ''; this.warning = ''; this.message = ''; this.title = ''; this.characters = []; this.matchedCharacterVoices = {}; this.lines = []; this.currentIndex = -1; this.lineDurations = {}; this.openingText = ''; this.fillerText = ''; this.noticeText = ''; this.jobId = ''; this.finalUrl = ''; this.audio = null; this.phase = 'connecting'; this.scriptReadyReceived = false; this.pendingPreview = null; if (this.previewFrame !== null) { window.cancelAnimationFrame(this.previewFrame); this.previewFrame = null }
+      this.error = ''; this.warning = ''; this.message = ''; this.title = ''; this.characters = []; this.matchedCharacterVoices = {}; this.lines = []; this.currentIndex = -1; this.lineDurations = {}; this.openingText = ''; this.fillerText = ''; this.noticeText = ''; this.streamJobId = ''; this.terminalEventReceived = false; this.jobId = ''; this.finalUrl = ''; this.audio = null; this.phase = 'connecting'; this.scriptReadyReceived = false; this.pendingPreview = null; if (this.previewFrame !== null) { window.cancelAnimationFrame(this.previewFrame); this.previewFrame = null }
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
       const socket = new WebSocket(`${protocol}//${location.host}/ws`); socket.binaryType = 'arraybuffer'; this.socket = socket
       socket.onopen = () => socket.send(JSON.stringify({ type: 'start', ...payload }))
@@ -105,7 +105,28 @@ export const usePlayerStore = defineStore('player', {
         onEvent?.(item)
         this.applyEvent(item)
       }
-      socket.onerror = (event) => { this.error = '连接中断，请稍后再试'; this.message = '连接中断'; this.phase = 'failed'; console.error('[storyteller-web] websocket error', event) }
+      socket.onerror = (event) => { if (this.socket !== socket) return; this.error = '连接中断，请稍后再试'; this.message = '连接中断'; this.phase = 'failed'; console.error('[storyteller-web] websocket error', event) }
+    },
+    reconnect(onBytes: (bytes: ArrayBuffer) => void, onEvent?: (event: EventRecord) => void) {
+      if (!this.streamJobId) return false
+      const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const socket = new WebSocket(`${protocol}//${location.host}/ws?job_id=${encodeURIComponent(this.streamJobId)}`)
+      socket.binaryType = 'arraybuffer'
+      const previousSocket = this.socket
+      this.socket = socket
+      socket.onmessage = (event) => {
+        if (typeof event.data !== 'string') { onBytes(event.data); return }
+        const item = JSON.parse(event.data) as EventRecord
+        onEvent?.(item)
+        this.applyEvent(item)
+      }
+      socket.onerror = (event) => {
+        if (this.socket !== socket) return
+        this.error = '连接中断，请稍后再试'; this.message = '连接中断'; this.phase = 'failed'
+        console.error('[storyteller-web] websocket recovery error', event)
+      }
+      previousSocket?.close()
+      return true
     },
     cancel() { this.socket?.send(JSON.stringify({ type: 'cancel' })) },
     close() { this.socket?.close(); this.socket = null },
