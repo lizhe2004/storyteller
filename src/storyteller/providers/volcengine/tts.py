@@ -18,6 +18,7 @@ from ...core.models import VoiceConfig
 from ...core.streaming_tts import StreamingTTSProvider, StreamingTTSSession
 from ...core.tts import TTSProvider, StreamChunk, CHUNK_AUDIO, STREAM_SAMPLE_RATE
 from ..base import BaseProvider
+from ._errors import http_error_detail
 
 _DEFAULT_ENDPOINT = (
     "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
@@ -497,7 +498,8 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             audio_bytes = b"".join(self._iter_ndjson(response))
         except requests.RequestException as exc:
             raise TTSError(
-                "Volcengine TTS request failed: {}".format(exc)
+                "Volcengine TTS request failed: {}".format(
+                    http_error_detail(exc))
             ) from exc
         finally:
             if response is not None:
@@ -580,7 +582,8 @@ class VolcengineTTS(BaseProvider, TTSProvider, StreamingTTSProvider):
             for piece in self._iter_ndjson(response):
                 yield StreamChunk(CHUNK_AUDIO, bytes(piece))
         except requests.RequestException as exc:
-            raise TTSError("Volcengine TTS request failed: {}".format(exc)) from exc
+            raise TTSError("Volcengine TTS request failed: {}".format(
+                http_error_detail(exc))) from exc
         finally:
             if response is not None:
                 response.close()

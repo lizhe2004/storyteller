@@ -9,6 +9,7 @@ import requests
 from ...core.exceptions import TTSError
 from ...core.sfx import SoundEffectProvider
 from ..base import BaseProvider
+from ._errors import http_error_detail
 
 _DEFAULT_ENDPOINT = "https://openspeech.bytedance.com/api/v3/tts/create"
 _DEFAULT_MODEL = "seed-audio-1.0"
@@ -85,7 +86,8 @@ class VolcengineSoundProvider(BaseProvider, SoundEffectProvider):
             data = resp.json()
         except (requests.RequestException, ValueError) as exc:
             raise TTSError(
-                "Volcengine sound request failed: {}".format(exc)
+                "Volcengine sound request failed: {}".format(
+                    http_error_detail(exc))
             ) from exc
 
         code = data.get("code", 0)
