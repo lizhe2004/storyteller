@@ -74,6 +74,54 @@ def test_volcengine_llm_lists_active_then_retiring_chat_models():
     assert provider._session.requests[0]["url"].endswith("/api/v3/models")
 
 
+def test_volcengine_llm_keeps_published_text_models_and_text_router():
+    provider = VolcengineLLM(
+        _config(llm__provider_config__volcengine={"api_key": "test-key"})
+    )
+    provider._session = _FakeSession(
+        {
+            "data": [
+                {
+                    "id": "published-llm",
+                    "domain": "LLM",
+                    "status": "Published",
+                    "task_type": ["text_generation"],
+                },
+                {
+                    "id": "published-vlm",
+                    "domain": "VLM",
+                    "status": "Published",
+                    "task_type": ["text_generation", "visual_question_answering"],
+                },
+                {
+                    "id": "published-router",
+                    "domain": "Router",
+                    "status": "Published",
+                    "task_type": ["text_generation"],
+                },
+                {
+                    "id": "published-image-model",
+                    "domain": "ImageGeneration",
+                    "status": "Published",
+                    "task_type": ["text_to_image"],
+                },
+                {
+                    "id": "shutdown-llm",
+                    "domain": "LLM",
+                    "status": "Shutdown",
+                    "task_type": ["text_generation"],
+                },
+            ]
+        }
+    )
+
+    assert provider.list_models() == [
+        {"id": "published-llm", "retiring": False},
+        {"id": "published-router", "retiring": False},
+        {"id": "published-vlm", "retiring": False},
+    ]
+
+
 def test_volcengine_llm_rejects_bad_payload():
     provider = VolcengineLLM(
         _config(llm__provider_config__volcengine={"api_key": "test-key"})

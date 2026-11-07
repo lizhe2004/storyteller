@@ -84,11 +84,12 @@ class VolcengineLLM(BaseProvider, LLMProvider):
         """List chat-capable models visible to this Ark API key.
 
         Ark serves an OpenAI-compatible ``GET /models``. Entries carry a
-        ``domain`` and an optional ``status``: a missing status means the
-        model is active. ``Retiring`` entries are still callable and are
+        ``domain`` and an optional ``status``. ``Published`` and missing
+        statuses are active; ``Retiring`` entries are still callable and are
         listed after the active ones; ``Shutdown`` entries are dead and
-        excluded. Both ``LLM`` and ``VLM`` entries are kept — the seed-2.x
-        families are tagged VLM but handle text-only chat fine.
+        excluded. When ``task_type`` is present, only text-generation models
+        are kept. This also includes text-capable Router entries and avoids
+        relying on the domain alone as Ark adds new model domains.
         """
         url = "{}/models".format(self.endpoint)
         headers = {"Authorization": "Bearer {}".format(self.api_key)}
@@ -112,10 +113,22 @@ class VolcengineLLM(BaseProvider, LLMProvider):
         for item in items:
             if not isinstance(item, dict) or not item.get("id"):
                 continue
-            if item.get("domain") not in ("LLM", "VLM"):
-                continue
             status = item.get("status")
-            if not status:
+            if status not in (None, "", "Published", "Retiring"):
+                continue
+            task_types = item.get("task_type")
+            if isinstance(task_types, list) and task_types:
+                normalized_task_types = {
+                    str(task_type).lower().replace("-", "_")
+                    for task_type in task_types
+                }
+                if "text_generation" not in normalized_task_types:
+                    continue
+            elif item.get("domain") not in ("LLM", "VLM"):
+                # Older Ark responses did not expose task_type. Keep the
+                # original domain-based fallback for those responses.
+                continue
+            if status in (None, "", "Published"):
                 active.append(item["id"])
             elif status == "Retiring":
                 retiring.append(item["id"])
