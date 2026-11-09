@@ -75,6 +75,7 @@
 .provider-settings{padding-bottom:27px}
 .provider-card{margin-top:14px;padding:16px;border:1px solid #e1e7ea;border-radius:4px;background:#fbfcfc}
 .provider-card header{display:flex;align-items:center;gap:10px;margin-bottom:15px}
+.provider-test{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:16px;color:#238078;font-size:11px;line-height:1.5;overflow-wrap:anywhere}
 .provider-card h4{margin:0;color:#2c4052;font-size:13px;font-weight:650}
 .provider-card header span{padding:3px 7px;border-radius:3px;background:#edf2f3;color:#72818e;font-size:9px}
 .provider-fields{margin-top:14px}

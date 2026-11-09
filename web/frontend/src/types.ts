@@ -139,4 +139,6 @@ export interface ConnectionTestResult {
   ok: boolean
   provider: string
   message: string
+  model?: string | null
+  voice_id?: string | null
 }

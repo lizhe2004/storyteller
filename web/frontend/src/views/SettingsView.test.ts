@@ -358,12 +358,39 @@ describe('SettingsView', () => {
     await settle()
     click(element, 'tts-provider-option-mock-tts')
     await settle()
-    click(element, 'test-tts')
+    click(element, 'test-tts-aliyun')
     await settle()
-    expect(element.querySelector('[data-testid="status-tts"]')?.textContent).toContain('连接测试失败')
+    expect(element.querySelector('[data-testid="status-tts-aliyun"]')?.textContent).toContain('连接测试失败')
     expect(testSettings).toHaveBeenNthCalledWith(1, 'llm', expect.objectContaining({ provider: 'writer' }))
     expect(testSettings).toHaveBeenNthCalledWith(2, 'tts', expect.objectContaining({ provider: 'aliyun' }))
     expect(patchSettings).not.toHaveBeenCalled()
+  })
+
+
+  it('tests each TTS card using its own draft and displays the tested voice and model', async () => {
+    const testSettings = vi.spyOn(api, 'testSettings').mockResolvedValue({ ok: true, provider: 'aliyun', message: '连接成功', model: 'qwen-test', voice_id: 'test-voice' })
+    const { element } = await mountSettings()
+    await selectGroup(element, 'tts')
+    input(element, 'tts-aliyun-api-key', 'temporary-key')
+    click(element, 'test-tts-aliyun')
+    await settle()
+    expect(testSettings).toHaveBeenCalledWith('tts', expect.objectContaining({ provider: 'aliyun', config: expect.objectContaining({ api_key: 'temporary-key' }) }))
+    expect(element.querySelector('[data-testid="status-tts-aliyun"]')?.textContent).toContain('qwen-test')
+    expect(element.querySelector('[data-testid="status-tts-aliyun"]')?.textContent).toContain('test-voice')
+    expect(element.querySelector('[data-testid="test-tts"]')).toBeNull()
+    expect(element.querySelector('[data-testid="status-tts-mock-tts"]')?.textContent).not.toContain('连接成功')
+  })
+
+  it('tests a configured but disabled TTS provider without enabling it', async () => {
+    const testSettings = vi.spyOn(api, 'testSettings').mockResolvedValue({ ok: true, provider: 'volcengine', message: '连接成功', model: 'seed-tts-2.0', voice_id: 'voice-1' })
+    const { element } = await mountSettings()
+    await selectGroup(element, 'tts')
+    input(element, 'tts-volcengine-api-key', 'draft-key')
+    click(element, 'test-tts-volcengine')
+    await settle()
+    expect(testSettings).toHaveBeenCalledWith('tts', expect.objectContaining({ provider: 'volcengine', config: expect.objectContaining({ api_key: 'draft-key' }) }))
+    expect(element.querySelector('[data-testid="status-tts-volcengine"]')?.textContent).toContain('seed-tts-2.0')
+    expect(element.querySelector('[data-testid="provider-card-state-tts-volcengine"]')?.textContent).toContain('未启用')
   })
 
   it('resets a group only after confirmation', async () => {

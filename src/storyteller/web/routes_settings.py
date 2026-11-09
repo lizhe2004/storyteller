@@ -359,6 +359,16 @@ def _run_provider_test(kind, config, body):
     output_path = Path(name)
     try:
         provider.synthesize("连接测试", voice, output_path)
+        model = None
+        # Resolve the identifier actually used by the provider, including
+        # Sambert's per-voice model and Volcengine's resource ID.
+        for attribute in ("_provider_model_for", "_resource_id_for", "_model_for"):
+            resolver = getattr(provider, attribute, None)
+            if callable(resolver):
+                model = resolver(voice.voice_id)
+                break
+        model = model or getattr(provider, "model", None) or voice.model
+        return {"voice_id": voice.voice_id, "model": model}
     finally:
         try:
             output_path.unlink()
@@ -371,7 +381,7 @@ async def _test_connection(request, kind, body):
     loop = asyncio.get_running_loop()
     call = partial(_run_provider_test, kind, config, body)
     try:
-        await asyncio.wait_for(
+        result = await asyncio.wait_for(
             loop.run_in_executor(None, call), timeout=body.timeout_seconds
         )
     except asyncio.TimeoutError:
@@ -385,7 +395,7 @@ async def _test_connection(request, kind, body):
             status_code=502,
             detail="连接测试失败，请检查供应商配置和网络连接",
         )
-    return {"ok": True, "provider": body.provider, "message": "连接成功"}
+    return {"ok": True, "provider": body.provider, "message": "连接成功", **(result or {})}
 
 
 def _run_model_fetch(kind, config, body):

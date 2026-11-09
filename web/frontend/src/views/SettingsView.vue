@@ -8,7 +8,7 @@ const settings = ref<SettingsResponse | null>(null)
 const error = ref('')
 const notice = ref('')
 const saving = ref<string | null>(null)
-const testing = ref<string | null>(null)
+const testing = reactive<Record<string, boolean>>({})
 const statuses = reactive<Record<string, string>>({})
 const draft = reactive<any>({ web: {}, llm: {}, tts: {}, sound: {} })
 const dirtyGroups = reactive(new Set<string>())
@@ -195,19 +195,25 @@ async function save(group: string) {
   finally { saving.value = null }
 }
 
-function testPayload(group: 'llm' | 'tts'): ConnectionTestPayload {
+function testPayload(group: 'llm' | 'tts', name?: string): ConnectionTestPayload {
   const value: any = draft[group]
-  const provider = providerNames(group)[0] || ''
+  const provider = name || providerNames(group)[0] || ''
   const config = { ...(value.provider_config?.[provider] || {}) }
   if (!config.api_key) delete config.api_key
   return { provider, config }
 }
 
-async function testConnection(group: 'llm' | 'tts') {
-  testing.value = group; statuses[group] = ''
-  try { const result = await api.testSettings(group, testPayload(group)); statuses[group] = result.message }
-  catch (err: any) { statuses[group] = err?.message || '连接测试失败' }
-  finally { testing.value = null }
+async function testConnection(group: 'llm' | 'tts', name?: string) {
+  const key = name ? `${group}:${name}` : group
+  testing[key] = true; statuses[key] = ''
+  try {
+    const result = await api.testSettings(group, testPayload(group, name))
+    const details = group === 'tts'
+      ? ` · 模型：${result.model || '未提供'} · 音色：${result.voice_id || '未提供'}`
+      : ''
+    statuses[key] = result.message + details
+  } catch (err: any) { statuses[key] = err?.message || '连接测试失败' }
+  finally { testing[key] = false }
 }
 
 interface RemoteModel { id: string; retiring?: boolean }
@@ -602,6 +608,10 @@ watch(activeGroup, group => {
                     <p v-if="!providerFormFields(activeGroup, name).length" class="provider-empty">此服务无需额外参数。</p>
                   </div>
                   <p v-else class="provider-empty">先选择一种后端支持的服务类型。</p>
+                  <div v-if="activeGroup === 'tts' && providerFormType(activeGroup, name)" class="provider-test">
+                    <button type="button" class="settings-button secondary" :data-testid="`test-tts-${name}`" :disabled="testing[`tts:${name}`]" @click="testConnection('tts', name)">{{ testing[`tts:${name}`] ? '测试中…' : '测试此服务' }}</button>
+                    <span :data-testid="`status-tts-${name}`" aria-live="polite">{{ statuses[`tts:${name}`] }}</span>
+                  </div>
                 </div>
               </article>
             </template>
@@ -612,12 +622,12 @@ watch(activeGroup, group => {
 
         <footer class="settings-actions">
           <div class="settings-action-status" aria-live="polite">
-            <template v-if="activeGroup === 'llm' || activeGroup === 'tts'">
+            <template v-if="activeGroup === 'llm'">
               <span :data-testid="`status-${activeGroup}`">{{ statuses[activeGroup] }}</span>
             </template>
           </div>
           <div class="settings-action-buttons">
-            <button v-if="activeGroup === 'llm' || activeGroup === 'tts'" class="settings-button secondary" :data-testid="`test-${activeGroup}`" :disabled="testing === activeGroup" @click="testConnection(activeGroup as 'llm' | 'tts')">{{ testing === activeGroup ? '测试中…' : '测试连接' }}</button>
+            <button v-if="activeGroup === 'llm'" class="settings-button secondary" data-testid="test-llm" :disabled="testing.llm" @click="testConnection('llm')">{{ testing.llm ? '测试中…' : '测试连接' }}</button>
             <button class="settings-button secondary" :data-testid="`reset-${activeGroup}`" @click="resetGroup(activeGroup)">恢复环境变量</button>
             <button class="settings-button primary" :data-testid="`save-${activeGroup}`" :disabled="saving === activeGroup" @click="save(activeGroup)">{{ saving === activeGroup ? '保存中…' : '保存配置' }}</button>
           </div>

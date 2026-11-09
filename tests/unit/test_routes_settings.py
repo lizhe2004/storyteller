@@ -386,6 +386,7 @@ def test_provider_connection_test_succeeds_without_persisting(
         "ok": True,
         "provider": "mock",
         "message": "连接成功",
+        **({"voice_id": "narrator_01", "model": None} if kind == "tts" else {}),
     }
     assert not settings_path.exists()
     assert "temporary-key" not in response.text
@@ -566,3 +567,24 @@ def test_history_contains_no_sensitive_values(client, settings_app, tmp_path):
     )
     assert secret not in rendered
     assert secret not in persisted
+
+
+def test_tts_connection_returns_actual_provider_model_and_voice(client, monkeypatch):
+    from storyteller.core.models import VoiceConfig
+    from storyteller.web import routes_settings
+
+    class Provider:
+        model = 'configured-but-not-used'
+        def list_voices(self):
+            return [VoiceConfig(provider='mock', voice_id='actual-voice', model='catalog-model')]
+        def _resource_id_for(self, voice_id):
+            assert voice_id == 'actual-voice'
+            return 'actual-resource'
+        def synthesize(self, text, voice, output_path):
+            output_path.write_bytes(b'audio')
+
+    monkeypatch.setattr(routes_settings.ProviderRegistry, 'get_tts', lambda self, name: Provider())
+    response = client.post('/api/settings/test/tts', json={'provider': 'mock'})
+    assert response.status_code == 200
+    assert response.json()['model'] == 'actual-resource'
+    assert response.json()['voice_id'] == 'actual-voice'

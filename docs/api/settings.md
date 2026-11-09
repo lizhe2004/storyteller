@@ -129,7 +129,7 @@ Content-Type: application/json
 
 `config` 会与当前 provider 配置合并用于本次测试，不会因为测试自动保存设置；空的 `api_key` 不会覆盖已保存值。LLM 测试发送最小聊天请求；TTS 测试列出音色并合成短测试音频，指定 `voice_id` 时会先校验音色。
 
-成功返回 `{"ok":true,"provider":"<PROVIDER_NAME>","message":"连接成功"}`。超时返回 504；provider、网络或合成失败返回 502；没有音色或 voice ID 不存在也会归入连接测试失败。请求的 `timeout_seconds` 必须大于 0 且不超过 30。
+成功返回 `{"ok":true,"provider":"<PROVIDER_NAME>","message":"连接成功"}`；TTS 成功响应还包含实际使用的 `voice_id` 和 `model`（模型信息不可用时为 `null`）。超时返回 504；provider、网络或合成失败返回 502；没有音色或 voice ID 不存在也会归入连接测试失败。请求的 `timeout_seconds` 必须大于 0 且不超过 30。
 
 ## 拉取模型列表
 
