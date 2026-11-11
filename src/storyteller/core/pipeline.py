@@ -127,6 +127,22 @@ class Pipeline:
         self._sound_provider = sound_provider
         self._sound_library = sound_library
 
+    def _sound_prompt_instruction(self):
+        """Choose the prompt policy without requiring provider credentials."""
+        names = self.config.get("sound.providers", []) or []
+        selected = self.config.get("sound.default_provider")
+        if selected not in names:
+            selected = names[0] if len(names) == 1 else None
+        settings = self.config.get("sound.provider_config.{}".format(selected), {}) or {}
+        if selected and (selected.lower() == "elevenlabs" or settings.get("type") == "elevenlabs"):
+            return ("\n音效与背景音乐的 prompt 字段必须全部使用简洁英文描述声音；"
+                    "name、description、故事和台词仍使用中文。不要在 prompt 中加入时长控制语。\n")
+        return ""
+
+    def _prepare_sound_prompt(self, provider, prompt):
+        from .sound_prompt import prepare_sound_prompt
+        return prepare_sound_prompt(provider, prompt, self._get_default_llm)
+
     # ----- public entry points -----
     def run(self, topic, length="medium", complexity="simple", **kwargs):
         """Run a fresh pipeline from topic to audio output."""
@@ -161,7 +177,9 @@ class Pipeline:
         )
         llm = self._get_default_llm()
         self._log_progress("Generating script...")
-        state.script = StoryGenerator(llm).generate_script(
+        generator = StoryGenerator(llm)
+        generator.sound_prompt_instruction = self._sound_prompt_instruction()
+        state.script = generator.generate_script(
             topic, length, complexity, with_sound=self._sound_enabled()
         )
         state.state = "script_generated"
@@ -181,6 +199,7 @@ class Pipeline:
         if state.state not in ("script_generated", "voice_configured", "voice_configuring", "generating_audio", "audio_generated", "post_processing"):
             llm = self._get_default_llm()
             generator = StoryGenerator(llm)
+            generator.sound_prompt_instruction = self._sound_prompt_instruction()
             self._log_progress("Generating script...")
             state.script = generator.generate_script(
                 topic, length, complexity, with_sound=self._sound_enabled()
@@ -360,9 +379,8 @@ class Pipeline:
 
     def materialize_line_cues(self, state, line, line_duration, provider,
                               library, referenced_paths):
-        cues = list(line.sound_effects)
-        if line.background_music is not None:
-            cues.append(line.background_music)
+        # Background music generation and mixing are paused to avoid charges.
+        cues = [cue for cue in line.sound_effects if cue.type != "music"]
         entries = []
         for cue in cues:
             if not cue.source_path and not cue.prompt:
@@ -377,7 +395,8 @@ class Pipeline:
                 try:
                     record, _ = self._materialize_cue(
                         provider, library, cue, raw_path, gen_prompt,
-                        record=record)
+                        record=record, duration_seconds=sound_duration_seconds(
+                            cue.type, line_duration, offset))
                 except Exception as exc:
                     self._log_error(cue.effect_id, exc)
                     continue
@@ -559,7 +578,7 @@ class Pipeline:
         return self._sound_library
 
     def _generate_cue_with_retry(
-        self, provider, library, cue, raw_path, gen_prompt
+        self, provider, library, cue, raw_path, gen_prompt, duration_seconds=None
     ):
         """Generate one cue, retrying near-silent results up to the limit.
 
@@ -569,13 +588,20 @@ class Pipeline:
         API) propagate to the caller without retry.
         """
         last_error = None
+        request_prompt = self._prepare_sound_prompt(provider, cue.prompt)
         for attempt in range(1, MAX_SOUND_ATTEMPTS + 1):
             attempt_timing = {"attempt": attempt, "started_at": human_time()}
             cue.generation_history.append(attempt_timing)
             try:
-                _, gen_duration = provider.generate(
-                    gen_prompt, raw_path, audio_format="mp3"
-                )
+                if getattr(provider, "supports_duration_parameter", False):
+                    _, gen_duration = provider.generate(
+                        request_prompt, raw_path, audio_format="mp3",
+                        duration_seconds=duration_seconds,
+                    )
+                else:
+                    _, gen_duration = provider.generate(
+                        gen_prompt, raw_path, audio_format="mp3"
+                    )
             finally:
                 attempt_timing["ended_at"] = human_time()
             try:
@@ -602,7 +628,8 @@ class Pipeline:
         raise last_error
 
     def _materialize_cue(
-        self, provider, library, cue, raw_path, gen_prompt, record=None
+        self, provider, library, cue, raw_path, gen_prompt, record=None,
+        duration_seconds=None,
     ):
         """Return an audible clip for one cue: cache hit or retried generate.
 
@@ -619,19 +646,16 @@ class Pipeline:
             shutil.copy2(library.path_for(record), raw_path)
             return record, False
         return self._generate_cue_with_retry(
-            provider, library, cue, raw_path, gen_prompt
+            provider, library, cue, raw_path, gen_prompt, duration_seconds
         ), True
 
     def _apply_soundtrack(self, state, output_path):
-        """Generate/cache BGM + effects and mix them into the concatenated file."""
+        """Generate/cache effects and mix them into the concatenated file."""
         script = state.script
-        cues = list(script.sound_effects)
-        if script.background_music is not None:
-            cues.append(script.background_music)
+        # Background music generation is paused alongside its final mix.
+        cues = [cue for cue in script.sound_effects if cue.type != "music"]
         for line in script.lines:
-            cues.extend(line.sound_effects)
-            if line.background_music is not None:
-                cues.append(line.background_music)
+            cues.extend(cue for cue in line.sound_effects if cue.type != "music")
         pending = [c for c in cues if c.prompt and not c.source_path]
         if not pending and not any(c.source_path for c in cues):
             return
@@ -652,20 +676,15 @@ class Pipeline:
         cue_context = {}
         for line in script.lines:
             _, line_duration = timing.get(line.line_id, (0.0, 0.0))
-            line_cues = list(line.sound_effects)
-            if line.background_music is not None:
-                line_cues.append(line.background_music)
+            line_cues = [cue for cue in line.sound_effects if cue.type != "music"]
             for cue in line_cues:
                 cue_context[id(cue)] = (
                     line_duration,
                     self._anchor_offset(line, cue, line_duration),
                 )
         for cue in script.sound_effects:
-            cue_context.setdefault(id(cue), (total_duration, 0.0))
-        if script.background_music is not None:
-            cue_context.setdefault(
-                id(script.background_music), (total_duration, 0.0)
-            )
+            if cue.type != "music":
+                cue_context.setdefault(id(cue), (total_duration, 0.0))
 
         total_pending = len(pending)
         # Paths already owned by cues materialized this pass, so same-named
@@ -708,6 +727,8 @@ class Pipeline:
                     raw_path,
                     gen_prompt,
                     record=record,
+                    duration_seconds=sound_duration_seconds(
+                        cue.type, line_duration, anchor_offset),
                 )
             except Exception as exc:
                 # The raw clip (if any) stays in the project's sounds/ dir
@@ -739,10 +760,7 @@ class Pipeline:
         groups = []
         for line in script.lines:
             start, duration = timing.get(line.line_id, (0.0, 0.0))
-            cues = list(line.sound_effects)
-            if line.background_music is not None:
-                cues.append(line.background_music)
-            cues = [c for c in cues if c.source_path]
+            cues = [c for c in line.sound_effects if c.type != "music" and c.source_path]
             if cues:
                 entries = [
                     (c, self._anchor_offset(line, c, duration)) for c in cues
@@ -750,7 +768,7 @@ class Pipeline:
                 groups.append((start, duration, entries))
         # Script-scoped cues have no owning line: play from the start without
         # a line-end trim.
-        top_cues = [c for c in script.sound_effects if c.source_path]
+        top_cues = [c for c in script.sound_effects if c.type != "music" and c.source_path]
         if top_cues:
             groups.append((0.0, None, [(c, 0.0) for c in top_cues]))
 
@@ -774,7 +792,7 @@ class Pipeline:
             finally:
                 mix_ended = human_time()
                 for line in script.lines:
-                    if any(c.source_path for c in line.sound_effects) or line.background_music is not None:
+                    if any(c.source_path and c.type != "music" for c in line.sound_effects):
                         line.processing["mixing"] = {"started_at": mix_started, "ended_at": mix_ended}
             if working_path != output_path and working_path.exists():
                 working_path.unlink()

@@ -242,6 +242,7 @@ class StoryGenerator:
         self.llm = llm
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
         self.sound_prompt = sound_prompt if sound_prompt is not None else _SOUND_PROMPT
+        self.sound_prompt_instruction = ""
 
     def generate_script(
         self,
@@ -253,7 +254,7 @@ class StoryGenerator:
     ):
         system_content = self.system_prompt
         if with_sound:
-            system_content = system_content + self.sound_prompt
+            system_content = system_content + self.sound_prompt + self.sound_prompt_instruction
         messages = [
             {"role": "system", "content": system_content},
             {
@@ -307,7 +308,7 @@ class StoryGenerator:
         """
         system_content = self.system_prompt
         if with_sound:
-            system_content = system_content + self.sound_prompt
+            system_content = system_content + self.sound_prompt + self.sound_prompt_instruction
         messages = [
             {"role": "system", "content": system_content},
             {"role": "user", "content": self._build_user_prompt(topic, length, complexity)},

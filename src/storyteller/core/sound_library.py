@@ -68,6 +68,12 @@ def unique_path(directory, stem, ext):
     return candidate
 
 
+def _cache_model(provider):
+    model = getattr(provider, "model", None) or provider.name
+    version = getattr(provider, "cache_version", None)
+    return "{}|{}".format(model, version) if version else model
+
+
 class SoundLibrary:
     """A global, cross-project cache of generated sounds.
 
@@ -94,7 +100,7 @@ class SoundLibrary:
         if not prompt:
             raise ValueError("prompt must not be empty")
         fingerprint = fingerprint_for(
-            getattr(provider, "model", None) or provider.name,
+            _cache_model(provider),
             prompt,
             audio_format,
         )
@@ -143,7 +149,7 @@ class SoundLibrary:
             )
 
         fingerprint = fingerprint_for(
-            getattr(provider, "model", None) or provider.name,
+            _cache_model(provider),
             prompt,
             audio_format,
         )

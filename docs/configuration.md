@@ -90,11 +90,13 @@ OpenAI-compatible TTS 通过成组变量声明：`STORYTELLER_TTS_OPENAI_COMPATI
 
 | 环境变量 | 默认值 | 作用 |
 | --- | --- | --- |
-| `STORYTELLER_SOUND_ENABLED` | `false` | 是否在生成时加入音效/BGM；接受 `1`、`true`、`yes`、`on` |
+| `STORYTELLER_SOUND_ENABLED` | `false` | 是否在生成时加入音效和环境声；背景音乐生成和混音已暂停。接受 `1`、`true`、`yes`、`on` |
 | `STORYTELLER_SOUND_PROVIDER` | 唯一自动发现的 provider，否则无 | 默认音效 provider；`--sound-provider` 可覆盖本次运行 |
 | `STORYTELLER_SOUND_DIR` | `<data_dir>/sounds` | 全局音效库目录 |
 | `STORYTELLER_SOUND_<NAME>_API_KEY` | 无 | 独立的音效 provider 凭据；通常不复用 TTS key |
 | `STORYTELLER_SOUND_<NAME>_MODEL` | provider 默认 | 音效模型，例如 `seed-audio-1.0` |
+
+ElevenLabs 音效可在 Web 的“音效服务”中选择并配置 API Key；CLI 可设置 `STORYTELLER_SOUND_PROVIDER=elevenlabs`、`STORYTELLER_SOUND_ELEVENLABS_API_KEY`，可选 `STORYTELLER_SOUND_ELEVENLABS_MODEL`（默认 `eleven_text_to_sound_v2`，也可配置 `eleven_text_to_sound_v3`）。生成使用 MP3；故事音效提示词对 ElevenLabs 使用英文，旧剧本的非英文提示词会由当前故事模型转换后再生成，时长通过接口参数设置（最高 30 秒）。其他音效服务保留各自的提示词规则。
 
 `generate --with-sfx` 只对当前生成开启音效；`make-sound` 会查找或生成全局音效库记录。多个已发现音效 provider 时必须使用环境选择器或 `--sound-provider`。
 

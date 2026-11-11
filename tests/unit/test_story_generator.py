@@ -747,3 +747,19 @@ def test_character_language_round_trips_through_project():
     old = _character_to_dict(character)
     del old['language']
     assert _character_from_dict(old).language is None
+
+
+def test_english_sound_instructions_apply_only_when_sound_enabled():
+    generator, llm = _make_generator()
+    generator.sound_prompt_instruction = '音效 prompt 必须使用英文'
+    generator.generate_script('测试', with_sound=True)
+    assert '音效 prompt 必须使用英文' in llm.calls[-1]['messages'][0]['content']
+    generator.generate_script('测试', with_sound=False)
+    assert '音效 prompt 必须使用英文' not in llm.calls[-1]['messages'][0]['content']
+
+
+def test_streaming_english_sound_instruction_is_sent_to_llm():
+    generator, llm = _make_generator()
+    generator.sound_prompt_instruction = '音效 prompt 必须使用英文'
+    generator.generate_script_stream('测试', with_sound=True)
+    assert '音效 prompt 必须使用英文' in llm.stream_calls[-1]['messages'][0]['content']

@@ -71,6 +71,7 @@ _PROVIDER_FORM_TYPES = {
         "mock": {"label": "模拟服务", "fields": []},
     },
     "sound": {
+        "elevenlabs": {"label": "ElevenLabs 音效", "fields": ["api_key", "model"]},
         "volcengine": {
             "label": "火山引擎音效",
             "fields": ["api_key", "model"],
@@ -81,12 +82,12 @@ _PROVIDER_FORM_TYPES = {
 _CUSTOM_PROVIDER_TYPES = {
     "llm": ["openai_compatible", "mock"],
     "tts": ["volcengine", "aliyun", "mimo", "openai_compatible", "mock"],
-    "sound": ["mock"],
+    "sound": ["elevenlabs", "mock"],
 }
 _FIXED_PROVIDER_NAMES = {
     "llm": [],
     "tts": ["aliyun", "volcengine", "mimo"],
-    "sound": ["volcengine"],
+    "sound": ["volcengine", "elevenlabs"],
 }
 
 
@@ -193,6 +194,8 @@ def _resolved_provider_form_type(group, name, provider_config):
     if group == "sound":
         if provider_type == "mock":
             return "mock"
+        if normalized_name == "elevenlabs" or provider_type == "elevenlabs":
+            return "elevenlabs"
         if normalized_name == "volcengine" and provider_type in (None, "volcengine"):
             return "volcengine"
     return None

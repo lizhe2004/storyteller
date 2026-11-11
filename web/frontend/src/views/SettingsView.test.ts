@@ -73,7 +73,7 @@ const settings: SettingsResponse = {
       custom_types: ['openai_compatible', 'mock'], fixed_names: ['aliyun', 'volcengine'],
     },
     sound: {
-      types: { volcengine: { label: '火山引擎音效', fields: ['api_key', 'model'] }, mock: { label: '模拟服务', fields: [] } },
+      types: { elevenlabs: { label: 'ElevenLabs 音效', fields: ['api_key', 'model'] }, volcengine: { label: '火山引擎音效', fields: ['api_key', 'model'] }, mock: { label: '模拟服务', fields: [] } },
       providers: { 'mock-sound': 'mock' }, custom_types: ['mock'], fixed_names: ['volcengine'],
     },
   },
@@ -391,6 +391,23 @@ describe('SettingsView', () => {
     expect(testSettings).toHaveBeenCalledWith('tts', expect.objectContaining({ provider: 'volcengine', config: expect.objectContaining({ api_key: 'draft-key' }) }))
     expect(element.querySelector('[data-testid="status-tts-volcengine"]')?.textContent).toContain('seed-tts-2.0')
     expect(element.querySelector('[data-testid="provider-card-state-tts-volcengine"]')?.textContent).toContain('未启用')
+  })
+
+  it('configures ElevenLabs as the sound provider', async () => {
+    const patchSettings = vi.spyOn(api, 'patchSettings').mockResolvedValue(mutationResponse())
+    const { element } = await mountSettings()
+    await selectGroup(element, 'sound')
+    choose(element, 'sound-provider-type', 'elevenlabs')
+    await settle()
+    input(element, 'sound-elevenlabs-api-key', 'test-key')
+    const model = element.querySelector('[data-testid="field-sound-elevenlabs-model"]') as HTMLSelectElement
+    expect(model.tagName).toBe('SELECT')
+    expect(Array.from(model.options).map(option => option.value)).toEqual(['eleven_text_to_sound_v2', 'eleven_text_to_sound_v3'])
+    expect(model.value).toBe('eleven_text_to_sound_v2')
+    choose(element, 'field-sound-elevenlabs-model', 'eleven_text_to_sound_v3')
+    click(element, 'save-sound')
+    await settle()
+    expect(patchSettings).toHaveBeenCalledWith(expect.objectContaining({ sound: expect.objectContaining({ providers: ['elevenlabs'], provider_config: expect.objectContaining({ elevenlabs: expect.objectContaining({ api_key: 'test-key', model: 'eleven_text_to_sound_v3' }) }) }) }))
   })
 
   it('resets a group only after confirmation', async () => {

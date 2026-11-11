@@ -591,6 +591,14 @@ watch(activeGroup, group => {
                         <small v-else-if="modelEditorKind(activeGroup, name) === 'multi'">勾选的模型才参与音色匹配；全部取消则表示不限制。列表来自服务商接口与本地音色目录。</small>
                         <small v-else>选择语音合成使用的模型。列表来自服务商接口与本地音色目录。</small>
                       </div>
+                      <label v-else-if="activeGroup === 'sound' && providerFormType(activeGroup, name) === 'elevenlabs' && field === 'model'">模型
+                        <select :data-testid="`field-sound-${name}-model`" :value="draft.sound.provider_config[name].model || 'eleven_text_to_sound_v2'" @change="draft.sound.provider_config[name].model = ($event.target as HTMLSelectElement).value; markDirty()">
+                          <option value="eleven_text_to_sound_v2">eleven_text_to_sound_v2（默认）</option>
+                          <option value="eleven_text_to_sound_v3">eleven_text_to_sound_v3</option>
+                          <option v-if="draft.sound.provider_config[name].model && !['eleven_text_to_sound_v2', 'eleven_text_to_sound_v3'].includes(draft.sound.provider_config[name].model)" :value="draft.sound.provider_config[name].model">{{ draft.sound.provider_config[name].model }}（当前配置）</option>
+                        </select>
+                        <small>选择 ElevenLabs 音效生成模型。</small>
+                      </label>
                       <label v-else-if="!(activeGroup === 'llm' && field === 'model')">{{ providerFieldLabels[field] || field }}
                         <input
                           :type="field === 'api_key' ? 'password' : field === 'base_url' ? 'url' : 'text'"

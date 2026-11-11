@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_app(config, registry=None):
+    owns_registry = registry is None
     runtime_settings = RuntimeSettingsStore(config.get("data_dir"), config)
     runtime_config = runtime_settings.snapshot().to_config()
     if registry is None:
@@ -75,7 +76,7 @@ def create_app(config, registry=None):
         )
         app.state.limiter.reconfigure(current.get("web.rate_limit_per_min"))
         app.state.jobs.reconfigure(current.get("web.concurrency"))
-        if registry is None:
+        if owns_registry:
             from ..providers.registry import ProviderRegistry
             from ..providers.bootstrap import register_providers_from_config
             refreshed = ProviderRegistry(current)

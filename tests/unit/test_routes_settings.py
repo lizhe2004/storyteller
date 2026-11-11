@@ -588,3 +588,15 @@ def test_tts_connection_returns_actual_provider_model_and_voice(client, monkeypa
     assert response.status_code == 200
     assert response.json()['model'] == 'actual-resource'
     assert response.json()['voice_id'] == 'actual-voice'
+
+
+def test_save_elevenlabs_sound_provider(client, settings_app):
+    response = client.patch('/api/settings', json={'sound': {
+        'enabled': True,
+        'providers': ['elevenlabs'],
+        'provider_config': {'elevenlabs': {'type': 'elevenlabs', 'api_key': 'test-key', 'model': 'eleven_text_to_sound_v3'}},
+    }})
+    assert response.status_code == 200
+    assert response.json()['settings']['provider_schemas']['sound']['providers']['elevenlabs'] == 'elevenlabs'
+    assert settings_app.state.registry.get_sound('elevenlabs').model == 'eleven_text_to_sound_v3'
+    assert 'test-key' not in response.text

@@ -502,8 +502,12 @@ def make_sound(prompt, name, kind, description, tags, audio_format,
         stem = safe_sound_name(name or prompt[:12], fallback="sound")
         raw_path = unique_path(Path(sound_root) / "raw", stem, ext)
         raw_path.parent.mkdir(parents=True, exist_ok=True)
+        from ..core.pipeline import Pipeline
+        prompt_pipeline = Pipeline(config)
+        prompt_pipeline.registry = registry
+        request_prompt = prompt_pipeline._prepare_sound_prompt(provider, prompt)
         _, gen_duration = provider.generate(
-            prompt, raw_path, audio_format=audio_format
+            request_prompt, raw_path, audio_format=audio_format
         )
         record = library.admit(
             raw_path,

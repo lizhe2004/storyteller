@@ -17,6 +17,7 @@ except ImportError:  # pragma: no cover
     OpenAICompatibleTTS = None
 
 from .mimo.tts import MiMoTTS
+from .elevenlabs.sfx import ElevenLabsSoundProvider
 
 try:
     from .aliyun.tts import AliyunTTS
@@ -117,7 +118,9 @@ def _register_sounds(config, registry):
         ) or {}
         provider_type = provider_config.get("type")
 
-        if provider_type == "mock" and MockSoundProvider:
+        if name.lower() == "elevenlabs" or provider_type == "elevenlabs":
+            registry.register_sound(name, lambda c, n=name: ElevenLabsSoundProvider(c, n))
+        elif provider_type == "mock" and MockSoundProvider:
             registry.register_sound(
                 name, lambda c: MockSoundProvider(c)
             )

@@ -293,8 +293,7 @@ def test_sound_generation_prints_per_cue_progress(tmp_path, capsys):
     pipeline.run("雨夜")
 
     output = capsys.readouterr().out
-    assert "Generating sound 1/2" in output
-    assert "Generating sound 2/2" in output
+    assert "Generating sound 1/1" in output
     assert "Mixing soundtrack..." in output
 
 
@@ -375,8 +374,8 @@ def test_cached_cue_reports_cache_hit_not_generating(tmp_path, capsys):
     ][-1]
     second_output = output[second_run_start:]
     assert not any("Generating sound" in l for l in second_output)
-    # ...both cues explicitly report cache hits.
-    assert sum("cached" in l for l in second_output) == 2
+    # ...the ambient cue explicitly reports a cache hit.
+    assert sum("cached" in l for l in second_output) == 1
 
 
 def test_resume_from_script_generated(tmp_path):
@@ -484,26 +483,24 @@ def test_run_with_sound_mixes_and_backfills_paths(tmp_path):
     result_path = Path(pipeline.run("雨夜"))
     assert result_path.exists()
 
-    # Both the BGM and the inline ambient cue were generated exactly once.
-    assert len(provider.calls) == 2
-    assert len(library.all()) == 2
+    # Ambient sound is generated, while background music is paused.
+    assert len(provider.calls) == 1
+    assert len(library.all()) == 1
 
     data = _json.loads(
         (result_path.parent / "story.script.json").read_text(encoding="utf-8")
     )
-    assert data["background_music"]["source_path"]
+    assert data["background_music"]["source_path"] is None
     assert data["lines"][0]["sound_effects"][0]["source_path"]
 
-    # Every cue has a Chinese-named raw clip INSIDE the project dir...
+    # The ambient cue has a Chinese-named raw clip inside the project dir.
     project_sounds = result_path.parent / "sounds"
     raw_names = sorted(p.name for p in project_sounds.glob("*.mp3"))
-    assert raw_names == ["宁静夜曲.mp3", "雨声.mp3"]
-    bgm_path = Path(data["background_music"]["source_path"])
+    assert raw_names == ["雨声.mp3"]
     cue_path = Path(data["lines"][0]["sound_effects"][0]["source_path"])
-    assert bgm_path.parent == project_sounds
     assert cue_path.parent == project_sounds
     # ...and an admitted snd_ copy in the global library.
-    assert len(list((tmp_path / "sounds").glob("snd_*.mp3"))) == 2
+    assert len(list((tmp_path / "sounds").glob("snd_*.mp3"))) == 1
 
     # No stray temp bed left behind.
     assert list(result_path.parent.glob("*.bgm.mp3")) == []
@@ -525,8 +522,8 @@ def test_run_with_sound_reuses_cache_on_second_story(tmp_path):
         result_path = pipeline.run("雨夜")
         assert Path(result_path).exists()
 
-    # Two distinct sounds, requested twice -> still only two API generations.
-    assert len(provider.calls) == 2
+    # The ambient sound is generated once and reused by the second story.
+    assert len(provider.calls) == 1
 
     # Both projects are self-contained: cache hits are COPIED into each
     # project dir under the cue name, never regenerated.
@@ -536,13 +533,12 @@ def test_run_with_sound_reuses_cache_on_second_story(tmp_path):
     assert len(project_dirs) == 2
     for project_dir in project_dirs:
         names = sorted(p.name for p in (project_dir / "sounds").glob("*.mp3"))
-        assert names == ["宁静夜曲.mp3", "雨声.mp3"]
+        assert names == ["雨声.mp3"]
 
 
 def test_sound_prompts_include_target_duration_from_line_length(tmp_path):
-    # Each TTS line is 6s: the inline ambient must ask for ~6s and the
-    # script-level BGM for the full 12s. The same enhanced prompt reaches
-    # the cache record, so cache lookups stay consistent.
+    # Each TTS line is 6s: the inline ambient must ask for ~6s.
+    # The enhanced prompt also reaches the cache record.
     from storyteller.providers.mock.sfx import MockSoundProvider
     from storyteller.core.sound_library import SoundLibrary
 
@@ -558,11 +554,11 @@ def test_sound_prompts_include_target_duration_from_line_length(tmp_path):
 
     prompts = [call["prompt"] for call in provider.calls]
     assert any("持续约6秒" in p for p in prompts), prompts
-    assert any("持续约12秒" in p for p in prompts), prompts
+    assert len(prompts) == 1
     assert all("无人声" in p for p in prompts)
     cached = {r["name"]: r["prompt"] for r in library.all()}
     assert "持续约6秒" in cached["雨声"]
-    assert "持续约12秒" in cached["宁静夜曲"]
+    assert "宁静夜曲" not in cached
 
 
 class _FixedDurationTTS(MockTTSProvider):
@@ -776,10 +772,9 @@ def test_failed_sound_clip_is_kept_in_project_but_not_mixed(tmp_path):
     result_path = Path(pipeline.run("雨夜"))
     assert result_path.exists()
 
-    # Both clips failed the gate: raw files kept with cue names...
+    # The ambient clip failed the gate: its raw file is kept...
     project_sounds = result_path.parent / "sounds"
     assert sorted(p.name for p in project_sounds.glob("*.mp3")) == [
-        "宁静夜曲.mp3",
         "雨声.mp3",
     ]
     # ...nothing admitted to the global library...
@@ -826,8 +821,8 @@ def test_run_resolves_sound_provider_from_registry(tmp_path):
 
     result_path = Path(pipeline.run("雨夜"))
     assert result_path.exists()
-    # Both cues generated through the registry-resolved mock provider.
-    assert len(library.all()) == 2
+    # The ambient cue is generated through the registry-resolved provider.
+    assert len(library.all()) == 1
     assert isinstance(pipeline._get_sound_provider(), MockSoundProvider)
 
 

@@ -210,3 +210,16 @@ def test_failed_admit_can_be_retried(tmp_path):
     )
     assert library.path_for(record).exists()
     assert len(library.all()) == 1
+
+
+def test_versioned_provider_does_not_reuse_legacy_cache(tmp_path):
+    library = SoundLibrary(tmp_path / 'sounds')
+    raw = _write_tone(tmp_path / 'old.wav')
+    legacy = _StubProvider()
+    library.admit(raw, legacy, prompt='测试', name='旧音效')
+    updated = _StubProvider()
+    updated.cache_version = 'structured-duration-v1'
+    assert library.find(updated, '测试') is None
+    new = library.admit(raw, updated, prompt='测试', name='新音效')
+    assert library.find(updated, '测试')['id'] == new['id']
+    assert new['model'] == legacy.model

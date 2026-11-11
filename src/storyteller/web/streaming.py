@@ -1041,7 +1041,9 @@ class StreamOrchestrator:
 
         try:
             with timed_event(job_logger, "script_generation", phase="script", topic=params.topic):
-                state.script = StoryGenerator(llm).generate_script_stream(
+                generator = StoryGenerator(llm)
+                generator.sound_prompt_instruction = self.pipeline._sound_prompt_instruction()
+                state.script = generator.generate_script_stream(
                     params.topic, params.length, params.complexity,
                     with_sound=bool(params.with_sound),
                     on_preview=emit_script_preview,
@@ -1154,10 +1156,12 @@ class StreamOrchestrator:
                     phase="line", line_id=line.line_id,
                 )
                 continue
-            has_cues = with_sound and bool(line.sound_effects or line.background_music)
+            has_cues = with_sound and any(cue.type != "music" for cue in line.sound_effects)
             incremental = line_coordinator.get(index - 1)
             if incremental is None:
-                publisher.add_phase(("line", index), live=True)
+                # Hold the line until TTS and any requested cues have been
+                # mixed, so the client never receives a speech-only version.
+                publisher.add_phase(("line", index), live=False)
             job.line_index = index
             if incremental is None:
                 job.emit({"type": "line_start", "line_id": line.line_id, "index": index,
